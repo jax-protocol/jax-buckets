@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::bucket_state_provider::{BucketLogProvider, BucketSyncStatus};
+use crate::bucket_state_provider::BucketLogProvider;
 
 use crate::crypto::SecretKey;
 use crate::linked_data::Link;

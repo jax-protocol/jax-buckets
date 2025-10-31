@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use iroh::NodeAddr;
 use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash, HashAndFormat};
 use serde::{Deserialize, Serialize};
@@ -6,9 +8,16 @@ use crate::crypto::PublicKey;
 
 use super::ipld::{Cid, LinkedData, Multihash, BLAKE3_HASH_CODE, LD_CBOR_CODEC, LD_RAW_CODEC};
 
+// TODO (pr-draft): this should be a CID
 /// TODO (amiller68): revisit a better way to serialize this
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Link(u64, Hash, BlobFormat);
+
+impl Display for Link {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.1)
+    }
+}
 
 // TODO (amiller68): i am really not sure if we need the BlobFormat
 // ... idk if ever actually use it for retrieval
