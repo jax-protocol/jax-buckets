@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -27,8 +29,8 @@ pub enum BucketLogError<T> {
 }
 
 #[async_trait]
-pub trait BucketLogProvider: Send + Sync + std::fmt::Debug {
-    type Error;
+pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
+    type Error: Display + Debug;
 
     /// Get the possible heads for a bucket
     ///  based on passed height

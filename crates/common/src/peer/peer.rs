@@ -1,32 +1,19 @@
-use uuid::Uuid;
-
-use crate::bucket_log_provider::BucketLogProvider;
-
 use crate::crypto::SecretKey;
-use crate::linked_data::Link;
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::path::PathBuf;
 
-use futures::FutureExt;
 use iroh::discovery::pkarr::dht::DhtDiscovery;
-use iroh::{protocol::Router, Endpoint, NodeId};
-use tokio::sync::watch::Receiver as WatchReceiver;
+use iroh::{Endpoint, NodeId};
 
-pub use super::blobs_store::{BlobsStore, BlobsStoreError};
-// pub use super::protocol::{
-//     announce_to_peer, fetch_bucket, ping_peer, JaxProtocol, PeerStateProvider, PingRequest,
-//     PingResponse, ShareInfo, SyncStatus, JAX_ALPN,
-// };
+pub use super::blobs_store::BlobsStore;
 
-// Re-export iroh types for convenience
-pub use iroh::NodeAddr;
+use crate::bucket_log::BucketLogProvider;
 
 #[derive(Clone, Default)]
 pub struct PeerBuilder<L: BucketLogProvider> {
     /// the socket addr to expose the peer on
     ///  if not set, an ephemeral port will be used
-    socket_addr: Option<SocketAddr>,
+    socket_address: Option<SocketAddr>,
     /// the identity of the peer, as a SecretKey
     secret_key: Option<SecretKey>,
     /// pre-loaded blobs store (if provided, blobs_store_path is ignored)
@@ -38,15 +25,15 @@ pub struct PeerBuilder<L: BucketLogProvider> {
 impl<L: BucketLogProvider> PeerBuilder<L> {
     pub fn new() -> Self {
         PeerBuilder {
-            socket_addr: None,
+            socket_address: None,
             secret_key: None,
             blobs_store: None,
             log_provider: None,
         }
     }
 
-    pub fn socket_addr(mut self, socket_addr: SocketAddr) -> Self {
-        self.socket_addr = Some(socket_addr);
+    pub fn socket_address(mut self, socket_addr: SocketAddr) -> Self {
+        self.socket_address = Some(socket_addr);
         self
     }
 
@@ -68,7 +55,7 @@ impl<L: BucketLogProvider> PeerBuilder<L> {
     pub async fn build(self) -> Peer<L> {
         // set the socket port to unspecified if not set
         let socket_addr = self
-            .socket_addr
+            .socket_address
             .unwrap_or_else(|| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0));
         // generate a new secret key if not set
         let secret_key = self.secret_key.unwrap_or_else(SecretKey::generate);
@@ -105,9 +92,7 @@ impl<L: BucketLogProvider> PeerBuilder<L> {
             .expect("failed to bind ephemeral endpoint");
 
         // get the log provider, must be set
-        let log_provider = self
-            .log_provider
-            .expect("log_provider must be set");
+        let log_provider = self.log_provider.expect("log_provider is required");
 
         Peer {
             log_provider,
@@ -132,55 +117,7 @@ pub struct Peer<L: BucketLogProvider> {
 }
 
 impl<L: BucketLogProvider> Peer<L> {
-    /// Create a Peer from a log provider and blobs store path
-    pub fn from_state(log_provider: L, _blobs_store_path: PathBuf) -> Self {
-        // Get necessary components from the bucket state provider
-        // For now, we'll use default values - this should be updated based on the actual state interface
-        let socket_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0);
-        let secret_key = SecretKey::generate();
-
-        // Setup our discovery mechanism for our peer
-        let mainline_discovery = DhtDiscovery::builder()
-            .secret_key(secret_key.0.clone())
-            .build()
-            .expect("failed to build mainline discovery");
-
-        // Convert the SocketAddr to a SocketAddrV4
-        let addr = SocketAddrV4::new(
-            socket_addr
-                .ip()
-                .to_string()
-                .parse::<Ipv4Addr>()
-                .expect("failed to parse IP address"),
-            socket_addr.port(),
-        );
-
-        // Create the endpoint with our key and discovery
-        let endpoint = Endpoint::builder()
-            .secret_key(secret_key.0.clone())
-            .discovery(mainline_discovery)
-            .bind_addr_v4(addr)
-            .bind()
-            .now_or_never()
-            .expect("failed to bind immediately")
-            .expect("failed to bind ephemeral endpoint");
-
-        // Create blobs store in memory for now
-        let blobs_store = BlobsStore::memory()
-            .now_or_never()
-            .expect("failed to create blobs store immediately")
-            .expect("failed to create blobs store");
-
-        Peer {
-            log_provider,
-            socket_address: socket_addr,
-            blobs_store,
-            secret_key,
-            endpoint,
-        }
-    }
-
-    pub fn log_provider(&self) -> &L {
+    pub fn logs(&self) -> &L {
         &self.log_provider
     }
 

@@ -1,4 +1,4 @@
-pub mod bucket_log_provider;
+pub mod bucket_log;
 /**
  * Cryptographic types and operations.
  *  - Public and Private key implementations
