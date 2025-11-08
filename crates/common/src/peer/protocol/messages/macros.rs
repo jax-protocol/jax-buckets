@@ -49,6 +49,7 @@ macro_rules! register_handlers {
             ) -> Result<(), iroh::protocol::AcceptError>
             where
                 L: crate::bucket_log::BucketLogProvider,
+                L::Error: std::error::Error + Send + Sync + 'static,
             {
                 match self {
                     $(

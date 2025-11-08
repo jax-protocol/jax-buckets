@@ -44,11 +44,15 @@ pub trait BidirectionalHandler: Sized {
     /// block the peer from receiving it.
     ///
     /// Default implementation does nothing.
-    fn after_response_sent<L: BucketLogProvider>(
+    fn after_response_sent<L>(
         _peer: &Peer<L>,
         _req: &Self::Request,
         _resp: &Self::Response,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
+    ) -> impl std::future::Future<Output = Result<()>> + Send
+    where
+        L: BucketLogProvider,
+        L::Error: std::error::Error + Send + Sync + 'static,
+    {
         async { Ok(()) }
     }
 
@@ -58,10 +62,13 @@ pub trait BidirectionalHandler: Sized {
     ///
     /// Implement only the business logic - deserialization is handled automatically.
     /// This is where you decide what to do based on the peer's response.
-    fn handle_response<L: BucketLogProvider>(
+    fn handle_response<L>(
         peer: &Peer<L>,
         resp: &Self::Response,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    ) -> impl std::future::Future<Output = Result<()>> + Send
+    where
+        L: BucketLogProvider,
+        L::Error: std::error::Error + Send + Sync + 'static;
 
     /// Process an incoming request on the responder peer
     ///
@@ -79,6 +86,7 @@ pub trait BidirectionalHandler: Sized {
     ) -> Result<(), AcceptError>
     where
         L: BucketLogProvider,
+        L::Error: std::error::Error + Send + Sync + 'static,
     {
         // Call the handler to get the response
         let response = Self::handle_request(peer, &request).await;
@@ -190,6 +198,7 @@ pub trait BidirectionalHandler: Sized {
     ) -> Result<()>
     where
         L: BucketLogProvider,
+        L::Error: std::error::Error + Send + Sync + 'static,
     {
         let response = Self::send_to_peer::<L>(endpoint, peer_addr, request).await?;
         Self::handle_response(peer, &response).await

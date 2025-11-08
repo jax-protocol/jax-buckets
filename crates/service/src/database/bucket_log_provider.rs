@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use common::bucket_log_provider::BucketLogProvider;
+use common::bucket_log::BucketLogProvider;
 use common::linked_data::Link;
 
 use crate::database::{types::DCid, Database};
@@ -14,7 +14,7 @@ impl BucketLogProvider for Database {
         &self,
         id: Uuid,
         height: u64,
-    ) -> Result<Vec<Link>, common::bucket_log_provider::BucketLogError<Self::Error>> {
+    ) -> Result<Vec<Link>, common::bucket_log::BucketLogError<Self::Error>> {
         let height_i64 = height as i64;
 
         let rows = sqlx::query!(
@@ -28,7 +28,7 @@ impl BucketLogProvider for Database {
         )
         .fetch_all(&**self)
         .await
-        .map_err(common::bucket_log_provider::BucketLogError::Provider)?;
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
 
         Ok(rows.into_iter().map(|r| r.current_link.into()).collect())
     }
@@ -40,14 +40,14 @@ impl BucketLogProvider for Database {
         current: Link,
         previous: Option<Link>,
         height: u64,
-    ) -> Result<(), common::bucket_log_provider::BucketLogError<Self::Error>> {
+    ) -> Result<(), common::bucket_log::BucketLogError<Self::Error>> {
         let current_dcid: DCid = current.clone().into();
         let previous_dcid: Option<DCid> = previous.clone().map(Into::into);
         let height_i64 = height as i64;
 
         // Validate: For genesis (previous_link is None), height should be 0
         if previous.is_none() && height != 0 {
-            return Err(common::bucket_log_provider::BucketLogError::InvalidAppend(
+            return Err(common::bucket_log::BucketLogError::InvalidAppend(
                 current,
                 Link::default(),
                 height,
@@ -57,7 +57,7 @@ impl BucketLogProvider for Database {
         // For non-genesis, validate that previous link exists at height - 1
         if let Some(prev_link) = previous.clone() {
             if height == 0 {
-                return Err(common::bucket_log_provider::BucketLogError::InvalidAppend(
+                return Err(common::bucket_log::BucketLogError::InvalidAppend(
                     current,
                     prev_link,
                     height,
@@ -79,10 +79,10 @@ impl BucketLogProvider for Database {
             )
             .fetch_one(&**self)
             .await
-            .map_err(common::bucket_log_provider::BucketLogError::Provider)?;
+            .map_err(common::bucket_log::BucketLogError::Provider)?;
 
             if exists.count == 0 {
-                return Err(common::bucket_log_provider::BucketLogError::InvalidAppend(
+                return Err(common::bucket_log::BucketLogError::InvalidAppend(
                     current,
                     prev_link,
                     height,
@@ -106,12 +106,12 @@ impl BucketLogProvider for Database {
         .map_err(|e| match e {
             sqlx::Error::Database(ref db_error) => {
                 if db_error.constraint().is_some() {
-                    common::bucket_log_provider::BucketLogError::Conflict
+                    common::bucket_log::BucketLogError::Conflict
                 } else {
-                    common::bucket_log_provider::BucketLogError::Provider(e)
+                    common::bucket_log::BucketLogError::Provider(e)
                 }
             }
-            _ => common::bucket_log_provider::BucketLogError::Provider(e),
+            _ => common::bucket_log::BucketLogError::Provider(e),
         })?;
 
         // Update the bucket name in the buckets table
@@ -126,7 +126,7 @@ impl BucketLogProvider for Database {
         )
         .execute(&**self)
         .await
-        .map_err(common::bucket_log_provider::BucketLogError::Provider)?;
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
 
         Ok(())
     }
@@ -134,7 +134,7 @@ impl BucketLogProvider for Database {
     async fn height(
         &self,
         id: Uuid,
-    ) -> Result<u64, common::bucket_log_provider::BucketLogError<Self::Error>> {
+    ) -> Result<u64, common::bucket_log::BucketLogError<Self::Error>> {
         let result = sqlx::query!(
             r#"
             SELECT MAX(height) as "max_height: i64"
@@ -145,11 +145,11 @@ impl BucketLogProvider for Database {
         )
         .fetch_one(&**self)
         .await
-        .map_err(common::bucket_log_provider::BucketLogError::Provider)?;
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
 
         match result.max_height {
             Some(h) => Ok(h as u64),
-            None => Err(common::bucket_log_provider::BucketLogError::HeadNotFound(0)),
+            None => Err(common::bucket_log::BucketLogError::HeadNotFound(0)),
         }
     }
 
@@ -157,7 +157,7 @@ impl BucketLogProvider for Database {
         &self,
         id: Uuid,
         link: Link,
-    ) -> Result<Vec<u64>, common::bucket_log_provider::BucketLogError<Self::Error>> {
+    ) -> Result<Vec<u64>, common::bucket_log::BucketLogError<Self::Error>> {
         let dcid: DCid = link.into();
 
         let rows = sqlx::query!(
@@ -171,7 +171,7 @@ impl BucketLogProvider for Database {
         )
         .fetch_all(&**self)
         .await
-        .map_err(common::bucket_log_provider::BucketLogError::Provider)?;
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
 
         Ok(rows.into_iter().map(|r| r.height as u64).collect())
     }

@@ -11,6 +11,7 @@ mod messages;
 use messages::Message;
 
 // Re-export for external users implementing custom handlers
+#[allow(unused_imports)]
 pub use bidirectional::BidirectionalHandler;
 
 // TODO ( amiller68): migrate the alpn, idt there's a great
@@ -31,6 +32,7 @@ async fn handle_connection<L>(
 ) -> Result<(), AcceptError>
 where
     L: crate::bucket_log::BucketLogProvider,
+    L::Error: std::error::Error + Send + Sync + 'static,
 {
     tracing::debug!("new connection from {:?}", conn.remote_node_id());
 
@@ -65,6 +67,7 @@ where
 impl<L> ProtocolHandler for Peer<L>
 where
     L: crate::bucket_log::BucketLogProvider,
+    L::Error: std::error::Error + Send + Sync + 'static,
 {
     #[allow(refining_impl_trait)]
     fn accept(

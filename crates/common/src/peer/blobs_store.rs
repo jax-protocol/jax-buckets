@@ -17,6 +17,8 @@ use iroh_blobs::{
     BlobsProtocol, Hash,
 };
 
+use crate::linked_data::{BlockEncoded, CodecError, DagCborCodec};
+
 // TODO (amiller68): maybe at some point it would make sense
 //  to implement some sort of `BlockStore` trait over BlobStore
 /// Client over a local iroh-blob store.
@@ -46,6 +48,8 @@ pub enum BlobsStoreError {
     ExportBao(#[from] ExportBaoError),
     #[error("request error: {0}")]
     Request(#[from] RequestError),
+    #[error("decode error: {0}")]
+    Decode(#[from] CodecError),
 }
 
 impl BlobsStore {
@@ -89,6 +93,15 @@ impl BlobsStore {
     pub async fn get(&self, hash: &Hash) -> Result<Bytes, BlobsStoreError> {
         let bytes = self.blobs().get_bytes(*hash).await?;
         Ok(bytes)
+    }
+
+    /// Get a blob as a block encoded
+    pub async fn get_cbor<T: BlockEncoded<DagCborCodec>>(
+        &self,
+        hash: &Hash,
+    ) -> Result<T, BlobsStoreError> {
+        let bytes = self.blobs().get_bytes(*hash).await?;
+        Ok(T::decode(&bytes)?)
     }
 
     /// Get a blob from the store as a reader
