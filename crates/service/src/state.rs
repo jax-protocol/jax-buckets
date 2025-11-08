@@ -7,7 +7,7 @@ use super::peer_state::ServicePeerState;
 use super::sync_coordinator::SyncEvent;
 
 use common::crypto::SecretKey;
-use common::peer::{BlobsStore, Peer};
+use common::peer::{BlobsStore, Peer, PeerBuilder};
 
 /// Main service state - orchestrates all components
 #[derive(Clone)]
@@ -70,7 +70,16 @@ impl State {
         );
 
         // 5. Build peer from the database as the log provider
-        let peer = Peer::from_state(database.clone(), blobs_store_path);
+        let mut peer_builder = PeerBuilder::new()
+            .log_provider(database.clone())
+            .blobs_store(blobs.clone())
+            .secret_key(node_secret.clone());
+
+        if let Some(addr) = config.node_listen_addr {
+            peer_builder = peer_builder.socket_address(addr);
+        }
+
+        let peer = peer_builder.build().await;
 
         // Log the bound addresses
         let bound_addrs = peer.endpoint().bound_sockets();

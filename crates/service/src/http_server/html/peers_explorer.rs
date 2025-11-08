@@ -1,14 +1,12 @@
 use askama::Template;
 use askama_axum::IntoResponse;
 use axum::extract::{Path, State};
-use tokio::time::{timeout, Duration};
 use tracing::instrument;
 use uuid::Uuid;
 
 use common::crypto::PublicKey;
 // FIXME: ping_peer and SyncStatus don't exist yet in common::peer
 // use common::peer::{ping_peer, NodeAddr, SyncStatus};
-use crate::database::models::SyncStatus;
 
 use crate::mount_ops;
 use crate::ServiceState;

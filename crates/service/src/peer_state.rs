@@ -1,16 +1,12 @@
-use async_trait::async_trait;
 use std::collections::HashSet;
-use uuid::Uuid;
 
 use common::mount::Manifest;
 use common::crypto::SecretKey;
 use common::linked_data::{BlockEncoded, Link};
 // FIXME: BucketSyncStatus, PeerStateProvider, ShareInfo, SyncStatus don't exist yet
 use common::peer::BlobsStore;
-use iroh::Endpoint;
 
-use crate::database::models::SyncStatus as DbSyncStatus;
-use crate::database::{models::Bucket, Database};
+use crate::database::Database;
 
 /// Maximum depth to traverse when checking bucket history
 pub const MAX_HISTORY_DEPTH: usize = 100;

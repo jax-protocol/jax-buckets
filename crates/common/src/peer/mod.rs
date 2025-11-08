@@ -7,7 +7,7 @@ mod peer;
 mod protocol;
 
 pub use blobs_store::{BlobsStore, BlobsStoreError};
-pub use jobs::{Job, JobDispatcher, JobReceiver};
+pub use jobs::{Job, JobDispatcher};
 pub use protocol::ALPN;
 
 pub use iroh::NodeAddr;
@@ -20,16 +20,18 @@ pub use crate::peer::peer::{Peer, PeerBuilder};
 /// and the background job worker (for processing sync tasks and other jobs).
 /// Both are gracefully shut down when the shutdown signal is received.
 ///
+/// **Note:** This function can only be called once per peer instance, as it consumes
+/// the internal job receiver. Subsequent calls will panic.
+///
 /// # Arguments
 ///
-/// * `peer` - The peer instance to run
-/// * `job_receiver` - The job receiver from PeerBuilder::build()
+/// * `peer` - The peer instance to run (must be the original from PeerBuilder, not a clone)
 /// * `shutdown_rx` - Watch receiver for shutdown signal
 ///
 /// # Example
 ///
 /// ```ignore
-/// let (peer, job_receiver) = PeerBuilder::new()
+/// let peer = PeerBuilder::new()
 ///     .log_provider(database)
 ///     .build()
 ///     .await;
@@ -37,14 +39,13 @@ pub use crate::peer::peer::{Peer, PeerBuilder};
 /// let (shutdown_tx, shutdown_rx) = watch::channel(());
 ///
 /// tokio::spawn(async move {
-///     if let Err(e) = peer::spawn(peer, job_receiver, shutdown_rx).await {
+///     if let Err(e) = peer::spawn(peer, shutdown_rx).await {
 ///         tracing::error!("Peer failed: {}", e);
 ///     }
 /// });
 /// ```
 pub async fn spawn<L>(
-    peer: Peer<L>,
-    job_receiver: jobs::JobReceiver,
+    mut peer: Peer<L>,
     mut shutdown_rx: WatchReceiver<()>,
 ) -> Result<(), PeerError>
 where
@@ -53,6 +54,10 @@ where
 {
     let node_id = peer.id();
     tracing::info!(peer_id = %node_id, "Starting peer");
+
+    // Extract the job receiver (can only be done once)
+    let job_receiver = peer.take_job_receiver()
+        .expect("job receiver already consumed - peer::spawn can only be called once per peer instance");
 
     // Clone peer for the worker task
     let worker_peer = peer.clone();

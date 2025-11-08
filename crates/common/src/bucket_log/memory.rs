@@ -132,8 +132,8 @@ impl BucketLogProvider for MemoryBucketLogProvider {
             .push(current.clone());
 
         // Update max height
-        let current_max = inner.max_heights.get(&id).copied().unwrap_or(0);
-        if height > current_max {
+        let current_max = inner.max_heights.get(&id).copied();
+        if current_max.is_none() || height > current_max.unwrap() {
             inner.max_heights.insert(id, height);
         }
 
@@ -184,12 +184,13 @@ impl BucketLogProvider for MemoryBucketLogProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iroh_blobs::{BlobFormat, Hash};
 
     #[tokio::test]
     async fn test_genesis_append() {
         let provider = MemoryBucketLogProvider::new();
         let id = Uuid::new_v4();
-        let link = Link::default();
+        let link = Link::new(0x55, Hash::from_bytes([1; 32]), BlobFormat::Raw);
 
         // Genesis append should succeed
         let result = provider
@@ -210,7 +211,7 @@ mod tests {
     async fn test_conflict() {
         let provider = MemoryBucketLogProvider::new();
         let id = Uuid::new_v4();
-        let link = Link::default();
+        let link = Link::new(0x55, Hash::from_bytes([1; 32]), BlobFormat::Raw);
 
         // First append succeeds
         provider
@@ -229,8 +230,8 @@ mod tests {
     async fn test_invalid_append() {
         let provider = MemoryBucketLogProvider::new();
         let id = Uuid::new_v4();
-        let link1 = Link::default();
-        let link2 = Link::default();
+        let link1 = Link::new(0x55, Hash::from_bytes([1; 32]), BlobFormat::Raw);
+        let link2 = Link::new(0x55, Hash::from_bytes([2; 32]), BlobFormat::Raw);
 
         // Genesis
         provider
@@ -249,8 +250,8 @@ mod tests {
     async fn test_valid_chain() {
         let provider = MemoryBucketLogProvider::new();
         let id = Uuid::new_v4();
-        let link1 = Link::default();
-        let link2 = Link::default();
+        let link1 = Link::new(0x55, Hash::from_bytes([1; 32]), BlobFormat::Raw);
+        let link2 = Link::new(0x55, Hash::from_bytes([2; 32]), BlobFormat::Raw);
 
         // Genesis
         provider

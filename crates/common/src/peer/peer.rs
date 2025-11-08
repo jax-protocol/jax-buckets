@@ -56,7 +56,7 @@ impl<L: BucketLogProvider> PeerBuilder<L> {
         self
     }
 
-    pub async fn build(self) -> (Peer<L>, super::jobs::JobReceiver) {
+    pub async fn build(self) -> Peer<L> {
         // set the socket port to unspecified if not set
         let socket_addr = self
             .socket_address
@@ -101,23 +101,22 @@ impl<L: BucketLogProvider> PeerBuilder<L> {
         // Create the job dispatcher and receiver
         let (jobs, job_receiver) = super::jobs::JobDispatcher::new();
 
-        let peer = Peer {
+        Peer {
             log_provider,
             socket_address: socket_addr,
             blobs_store,
             secret_key,
             endpoint,
             jobs,
-        };
-
-        (peer, job_receiver)
+            job_receiver: Some(job_receiver),
+        }
     }
 }
 
 /// Overview of a peer's state, generic over a bucket log provider.
 ///  Provides everything that a peer needs in order to
 ///  load data, interact with peers, and manage buckets.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Peer<L: BucketLogProvider> {
     log_provider: L,
     socket_address: SocketAddr,
@@ -125,6 +124,25 @@ pub struct Peer<L: BucketLogProvider> {
     secret_key: SecretKey,
     endpoint: Endpoint,
     jobs: super::jobs::JobDispatcher,
+    job_receiver: Option<super::jobs::JobReceiver>,
+}
+
+impl<L: BucketLogProvider> Clone for Peer<L>
+where
+    L: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            log_provider: self.log_provider.clone(),
+            socket_address: self.socket_address,
+            blobs_store: self.blobs_store.clone(),
+            secret_key: self.secret_key.clone(),
+            endpoint: self.endpoint.clone(),
+            jobs: self.jobs.clone(),
+            // JobReceiver cannot be cloned - only the original peer can spawn worker
+            job_receiver: None,
+        }
+    }
 }
 
 impl<L: BucketLogProvider> Peer<L> {
@@ -154,6 +172,13 @@ impl<L: BucketLogProvider> Peer<L> {
 
     pub fn jobs(&self) -> &super::jobs::JobDispatcher {
         &self.jobs
+    }
+
+    /// Extract the job receiver (internal use by peer::spawn)
+    ///
+    /// This can only be called once. Subsequent calls will return None.
+    pub(super) fn take_job_receiver(&mut self) -> Option<super::jobs::JobReceiver> {
+        self.job_receiver.take()
     }
 
     // ========================================
