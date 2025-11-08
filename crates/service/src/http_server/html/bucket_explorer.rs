@@ -139,7 +139,7 @@ pub async fn handler(
     // Load the full bucket data from blobs to get previous link and format it
     let blobs = state.node().blobs();
     let (previous_link, previous_link_full, previous_link_short, bucket_data_formatted) =
-        match blobs.get(bucket.link.hash()).await {
+        match blobs.get(&bucket.link.hash()).await {
             Ok(data) => match Manifest::decode(&data) {
                 Ok(bucket_data) => {
                     // Format bucket data as pretty JSON

@@ -1,4 +1,4 @@
-mod memory;
+pub mod memory;
 mod provider;
 
 pub use memory::{MemoryBucketLogProvider, MemoryBucketLogProviderError};

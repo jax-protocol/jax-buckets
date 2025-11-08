@@ -190,6 +190,7 @@ pub trait BidirectionalHandler: Sized {
     /// Send a request to a peer and automatically handle the response
     ///
     /// This is a convenience method that combines `send_to_peer` and `handle_response`.
+    #[allow(dead_code)]
     async fn send_and_handle<L>(
         peer: &Peer<L>,
         endpoint: &Endpoint,

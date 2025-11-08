@@ -13,6 +13,9 @@ categories.workspace = true
 name = "common"
 path = "src/lib.rs"
 
+[features]
+testkit = []
+
 [dependencies]
 thiserror = { workspace = true }
 anyhow = { workspace = true }
@@ -60,3 +63,4 @@ chrono = { workspace = true }
 [dev-dependencies]
 tempfile = "3.8"
 serde_json.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

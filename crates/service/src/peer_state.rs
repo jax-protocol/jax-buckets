@@ -9,12 +9,14 @@ use common::peer::BlobsStore;
 use crate::database::Database;
 
 /// Maximum depth to traverse when checking bucket history
+#[allow(dead_code)]
 pub const MAX_HISTORY_DEPTH: usize = 100;
 
 /// State implementation for the peer
 ///
 /// This provides read-only and write access to bucket state
 /// for the peer and protocol handlers.
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ServicePeerState {
     database: Database,
@@ -96,8 +98,9 @@ impl ServicePeerState {
     }
 
     /// Load a BucketData from a link
+    #[allow(dead_code)]
     async fn load_bucket_data(&self, link: &Link) -> Result<Manifest, anyhow::Error> {
-        let data = self.blobs.get(link.hash()).await?;
+        let data = self.blobs.get(&link.hash()).await?;
         Ok(Manifest::decode(&data)?)
     }
 
@@ -107,6 +110,7 @@ impl ServicePeerState {
     /// - Some(true) if the link is found (target is an ancestor)
     /// - Some(false) if we reached max depth without finding it
     /// - None if we exhausted the history without finding it
+    #[allow(dead_code)]
     async fn is_link_in_history(
         &self,
         current_link: &Link,

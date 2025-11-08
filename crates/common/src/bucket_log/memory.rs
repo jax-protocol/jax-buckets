@@ -179,18 +179,29 @@ impl BucketLogProvider for MemoryBucketLogProvider {
             .cloned()
             .unwrap_or_default())
     }
+
+    async fn list_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>> {
+        let inner = self.inner.read().map_err(|e| {
+            BucketLogError::Provider(MemoryBucketLogProviderError::Internal(format!(
+                "failed to acquire read lock: {}",
+                e
+            )))
+        })?;
+
+        Ok(inner.entries.keys().copied().collect())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iroh_blobs::{BlobFormat, Hash};
+    use iroh_blobs::Hash;
 
     #[tokio::test]
     async fn test_genesis_append() {
         let provider = MemoryBucketLogProvider::new();
         let id = Uuid::new_v4();
-        let link = Link::new(0x55, Hash::from_bytes([1; 32]), BlobFormat::Raw);
+        let link = Link::new(0x55, Hash::from_bytes([1; 32]));
 
         // Genesis append should succeed
         let result = provider
@@ -211,7 +222,7 @@ mod tests {
     async fn test_conflict() {
         let provider = MemoryBucketLogProvider::new();
         let id = Uuid::new_v4();
-        let link = Link::new(0x55, Hash::from_bytes([1; 32]), BlobFormat::Raw);
+        let link = Link::new(0x55, Hash::from_bytes([1; 32]));
 
         // First append succeeds
         provider
@@ -230,8 +241,8 @@ mod tests {
     async fn test_invalid_append() {
         let provider = MemoryBucketLogProvider::new();
         let id = Uuid::new_v4();
-        let link1 = Link::new(0x55, Hash::from_bytes([1; 32]), BlobFormat::Raw);
-        let link2 = Link::new(0x55, Hash::from_bytes([2; 32]), BlobFormat::Raw);
+        let link1 = Link::new(0x55, Hash::from_bytes([1; 32]));
+        let link2 = Link::new(0x55, Hash::from_bytes([2; 32]));
 
         // Genesis
         provider
@@ -250,8 +261,8 @@ mod tests {
     async fn test_valid_chain() {
         let provider = MemoryBucketLogProvider::new();
         let id = Uuid::new_v4();
-        let link1 = Link::new(0x55, Hash::from_bytes([1; 32]), BlobFormat::Raw);
-        let link2 = Link::new(0x55, Hash::from_bytes([2; 32]), BlobFormat::Raw);
+        let link1 = Link::new(0x55, Hash::from_bytes([1; 32]));
+        let link2 = Link::new(0x55, Hash::from_bytes([2; 32]));
 
         // Genesis
         provider

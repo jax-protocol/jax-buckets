@@ -1,6 +1,6 @@
 #[macro_use]
 mod macros;
-mod ping;
+pub mod ping;
 
 // Re-export handler types and their request/response types
 pub use ping::PingHandler;

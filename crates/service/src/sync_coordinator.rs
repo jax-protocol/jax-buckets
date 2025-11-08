@@ -25,6 +25,7 @@ pub enum SyncEvent {
 ///
 /// This replaces the large SyncManager with a simple event loop
 /// that delegates all sync logic to the Peer.
+#[allow(dead_code)]
 pub struct SyncCoordinator {
     peer: Peer<crate::database::Database>,
     state: Arc<ServicePeerState>,

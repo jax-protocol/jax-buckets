@@ -104,8 +104,8 @@ impl Mount {
         let entry = Self::_put_node_in_blobs(&inner.entry, &secret, blobs).await?;
         // Serialize current pins to blobs
         // put the new root link into the pins, as well as the previous link
-        inner.pins.insert(*entry.clone().hash());
-        inner.pins.insert(*previous.hash());
+        inner.pins.insert(entry.clone().hash());
+        inner.pins.insert(previous.hash());
         let pins_link = Self::_put_pins_in_blobs(&inner.pins, blobs).await?;
         // Update the bucket's share with the new root link
         // (add_share creates the Share internally)
@@ -146,7 +146,7 @@ impl Mount {
         let share = SecretShare::new(&secret, &owner.public())?;
         // Initialize pins with root node hash
         let mut pins = Pins::new();
-        pins.insert(*entry_link.hash());
+        pins.insert(entry_link.hash());
         // Put the pins in blobs to get a pins link
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
         // construct the new manifest
@@ -242,11 +242,7 @@ impl Mount {
 
         let hash = blobs.put_stream(stream).await?;
 
-        let link = Link::new(
-            crate::linked_data::LD_RAW_CODEC,
-            hash,
-            iroh_blobs::BlobFormat::Raw,
-        );
+        let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
 
         let node_link = NodeLink::new_data_from_path(link.clone(), secret, path);
 
@@ -299,7 +295,7 @@ impl Mount {
 
             let mut inner = self.0.lock();
             // Track the new root node hash
-            inner.pins.insert(*link.hash());
+            inner.pins.insert(link.hash());
             inner.entry = parent_node;
         } else {
             // Save the modified parent node to blobs
@@ -314,7 +310,7 @@ impl Mount {
                 Self::_set_node_link_at_path(entry, node_link, &abs_parent_path, blobs).await?;
 
             // Track the parent node hash and all created node hashes
-            inner.pins.insert(*parent_link.hash());
+            inner.pins.insert(parent_link.hash());
             inner.pins.extend(node_hashes);
 
             if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
@@ -439,7 +435,7 @@ impl Mount {
 
         match link {
             NodeLink::Data(link, secret, _) => {
-                let encrypted_data = blobs.get(link.hash()).await?;
+                let encrypted_data = blobs.get(&link.hash()).await?;
                 let data = secret.decrypt(&encrypted_data)?;
                 Ok(data)
             }
@@ -539,7 +535,7 @@ impl Mount {
             node.insert(name, node_link.clone());
             let secret = Secret::generate();
             let link = Self::_put_node_in_blobs(&node, &secret, blobs).await?;
-            created_hashes.push(*link.hash());
+            created_hashes.push(link.hash());
             node_link = NodeLink::Dir(link, secret);
             name = path
                 .file_name()
@@ -562,7 +558,7 @@ impl Mount {
         let hash = link.hash();
         tracing::debug!("_get_bucket_from_blobs: Bucket hash: {}", hash);
 
-        match blobs.stat(hash).await {
+        match blobs.stat(&hash).await {
             Ok(true) => {
                 tracing::debug!(
                     "_get_bucket_from_blobs: Bucket hash {} exists in blobs",
@@ -584,7 +580,7 @@ impl Mount {
         }
 
         tracing::debug!("_get_bucket_from_blobs: Reading bucket data from blobs");
-        let data = blobs.get(hash).await?;
+        let data = blobs.get(&hash).await?;
         tracing::debug!(
             "_get_bucket_from_blobs: Got {} bytes of bucket data",
             data.len()
@@ -604,7 +600,7 @@ impl Mount {
         let hash = link.hash();
         tracing::debug!("_get_pins_from_blobs: Pins hash: {}", hash);
 
-        match blobs.stat(hash).await {
+        match blobs.stat(&hash).await {
             Ok(true) => {
                 tracing::debug!("_get_pins_from_blobs: Pins hash {} exists in blobs", hash);
             }
@@ -627,7 +623,7 @@ impl Mount {
 
         tracing::debug!("_get_pins_from_blobs: Reading hash list from blobs");
         // Read hashes from the hash list blob
-        let hashes = blobs.read_hash_list(*hash).await?;
+        let hashes = blobs.read_hash_list(hash).await?;
         tracing::debug!(
             "_get_pins_from_blobs: Successfully read {} hashes from pinset",
             hashes.len()
@@ -646,7 +642,7 @@ impl Mount {
 
         tracing::debug!("_get_node_from_blobs: Checking for node at hash {}", hash);
 
-        match blobs.stat(hash).await {
+        match blobs.stat(&hash).await {
             Ok(true) => {
                 tracing::debug!("_get_node_from_blobs: Node hash {} exists in blobs", hash);
             }
@@ -668,7 +664,7 @@ impl Mount {
         }
 
         tracing::debug!("_get_node_from_blobs: Reading encrypted node blob");
-        let blob = blobs.get(hash).await?;
+        let blob = blobs.get(&hash).await?;
         tracing::debug!(
             "_get_node_from_blobs: Got {} bytes of encrypted node data",
             blob.len()
@@ -697,11 +693,7 @@ impl Mount {
         let hash = blobs.put(data).await?;
         // NOTE (amiller68): nodes are always stored as raw
         //  since they are encrypted blobs
-        let link = Link::new(
-            crate::linked_data::LD_RAW_CODEC,
-            hash,
-            iroh_blobs::BlobFormat::Raw,
-        );
+        let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
         Ok(link)
     }
 
@@ -713,7 +705,7 @@ impl Mount {
         let hash = blobs.put(data).await?;
         // NOTE (amiller68): buckets are unencrypted, so they can inherit
         //  the codec of the bucket itself (which is currently always cbor)
-        let link = Link::new(bucket_data.codec(), hash, iroh_blobs::BlobFormat::Raw);
+        let link = Link::new(bucket_data.codec(), hash);
         Ok(link)
     }
 
@@ -721,11 +713,8 @@ impl Mount {
         // Create a hash list blob from the pins (raw bytes: 32 bytes per hash, concatenated)
         let hash = blobs.create_hash_list(pins.iter().copied()).await?;
         // Pins are stored as raw blobs containing concatenated hashes
-        let link = Link::new(
-            crate::linked_data::LD_RAW_CODEC,
-            hash,
-            iroh_blobs::BlobFormat::HashSeq,
-        );
+        // Note: The underlying blob is HashSeq format, but Link doesn't track this
+        let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
         Ok(link)
     }
 }

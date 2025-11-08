@@ -104,6 +104,7 @@ impl Bucket {
     }
 
     /// Update sync status, last_sync_attempt, and sync_error
+    #[allow(dead_code)]
     pub async fn update_sync_status(
         &self,
         sync_status: SyncStatus,
@@ -127,6 +128,7 @@ impl Bucket {
     }
 
     /// Update link and mark as synced
+    #[allow(dead_code)]
     pub async fn update_link_and_sync(
         &self,
         new_link: Link,

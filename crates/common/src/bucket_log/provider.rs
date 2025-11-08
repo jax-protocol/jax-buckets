@@ -103,4 +103,24 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
             .max()
             .ok_or(BucketLogError::HeadNotFound(height))
     }
+
+    /// Get the current head (at max height) for a bucket
+    ///
+    /// # Arguments
+    /// * `id` - The UUID of the bucket
+    ///
+    /// # Returns
+    /// * `Ok(Link)` - The current head link for the bucket
+    /// * `Err(BucketLogError)` - An error occurred (e.g., bucket not found)
+    async fn current_head(&self, id: Uuid) -> Result<Link, BucketLogError<Self::Error>> {
+        let max_height = self.height(id).await?;
+        self.head(id, max_height).await
+    }
+
+    /// List all bucket IDs that have log entries
+    ///
+    /// # Returns
+    /// * `Ok(Vec<Uuid>)` - The list of bucket IDs
+    /// * `Err(BucketLogError)` - An error occurred while fetching bucket IDs
+    async fn list_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>>;
 }

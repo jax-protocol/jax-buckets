@@ -26,6 +26,18 @@ pub enum Job {
         /// The peer to sync from
         peer_id: PublicKey,
     },
+
+    /// Ping a peer to check bucket sync status
+    ///
+    /// This sends a ping to a peer for a specific bucket. The peer will respond
+    /// with their bucket state, and if they're ahead, a sync job will be automatically
+    /// dispatched.
+    PingPeer {
+        /// The bucket to ping about
+        bucket_id: Uuid,
+        /// The peer to ping
+        peer_id: PublicKey,
+    },
     // Future job types can be added here:
     // DownloadBlobs { ... },
     // AnnounceToNetwork { ... },

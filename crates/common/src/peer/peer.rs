@@ -393,7 +393,7 @@ impl<L: BucketLogProvider> Peer<L> {
                 })?;
 
             // Read and decode the manifest
-            let manifest: Manifest = self.blobs_store.get_cbor(current_link.hash()).await?;
+            let manifest: Manifest = self.blobs_store.get_cbor(&current_link.hash()).await?;
 
             // Store manifest with its link and height
             manifests.push((manifest.clone(), current_link.clone(), current_height));
@@ -546,6 +546,159 @@ impl<L: BucketLogProvider> Peer<L> {
     // Background Job Worker
     // ========================================
 
+    /// Schedule periodic pings to peers for all our buckets
+    ///
+    /// This queries all buckets, extracts peer IDs from manifest shares,
+    /// and dispatches ping jobs for each peer.
+    async fn schedule_periodic_pings(&self)
+    where
+        L::Error: std::error::Error + Send + Sync + 'static,
+    {
+        // Get all bucket IDs
+        let bucket_ids = match self.log_provider.list_buckets().await {
+            Ok(ids) => ids,
+            Err(e) => {
+                tracing::error!("Failed to list buckets for periodic pings: {}", e);
+                return;
+            }
+        };
+
+        tracing::debug!("Scheduling periodic pings for {} buckets", bucket_ids.len());
+
+        // For each bucket, dispatch pings to peers in shares
+        for bucket_id in bucket_ids {
+            if let Err(e) = self.ping_bucket_peers(bucket_id).await {
+                tracing::warn!(
+                    "Failed to ping peers for bucket {}: {}",
+                    bucket_id,
+                    e
+                );
+            }
+        }
+    }
+
+    /// Ping all peers listed in a bucket's manifest shares
+    async fn ping_bucket_peers(&self, bucket_id: Uuid) -> Result<()>
+    where
+        L::Error: std::error::Error + Send + Sync + 'static,
+    {
+        // Get current head link
+        let head_link = self.log_provider.current_head(bucket_id).await
+            .map_err(|e| anyhow!("Failed to get head for bucket {}: {}", bucket_id, e))?;
+
+        // Load manifest from blobs store
+        let manifest_bytes = self.blobs_store.get(&head_link.hash()).await
+            .map_err(|e| anyhow!("Failed to load manifest: {}", e))?;
+
+        let manifest: crate::prelude::Manifest = serde_ipld_dagcbor::from_slice(&manifest_bytes)
+            .map_err(|e| anyhow!("Failed to deserialize manifest: {}", e))?;
+
+        // Extract our own key to skip ourselves
+        let our_key = crate::crypto::PublicKey::from(*self.secret_key.public()).to_hex();
+
+        // For each peer in shares, dispatch a ping job
+        for (peer_key_hex, _share) in manifest.shares() {
+            if peer_key_hex == &our_key {
+                continue; // Skip ourselves
+            }
+
+            let peer_id = crate::crypto::PublicKey::from_hex(peer_key_hex)
+                .map_err(|e| anyhow!("Invalid peer key in shares: {}", e))?;
+
+            // Dispatch ping job
+            if let Err(e) = self.jobs.dispatch(super::jobs::Job::PingPeer {
+                bucket_id,
+                peer_id,
+            }) {
+                tracing::warn!(
+                    "Failed to dispatch ping job for bucket {} peer {}: {}",
+                    bucket_id,
+                    peer_key_hex,
+                    e
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle a ping peer job by sending a ping and processing the response
+    async fn handle_ping_peer(&self, bucket_id: Uuid, peer_id: crate::crypto::PublicKey)
+    where
+        L::Error: std::error::Error + Send + Sync + 'static,
+    {
+        use super::protocol::{Ping, PingHandler};
+        use super::protocol::bidirectional::BidirectionalHandler;
+
+        // Get our bucket state
+        let our_link = match self.log_provider.current_head(bucket_id).await {
+            Ok(link) => link,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to get head for bucket {} when pinging peer {}: {}",
+                    bucket_id,
+                    peer_id.to_hex(),
+                    e
+                );
+                return;
+            }
+        };
+
+        let our_height = match self.log_provider.height(bucket_id).await {
+            Ok(height) => height,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to get height for bucket {} when pinging peer {}: {}",
+                    bucket_id,
+                    peer_id.to_hex(),
+                    e
+                );
+                return;
+            }
+        };
+
+        // Construct ping
+        let ping = Ping {
+            bucket_id,
+            link: our_link,
+            height: our_height,
+            requester_id: crate::crypto::PublicKey::from(*self.secret_key.public()),
+        };
+
+        // Convert peer_id to NodeAddr
+        let iroh_node_id: iroh::NodeId = peer_id.into();
+        let node_addr = iroh::NodeAddr::new(iroh_node_id);
+
+        // Send ping
+        match PingHandler::send_to_peer::<L>(&self.endpoint, &node_addr, ping).await {
+            Ok(pong) => {
+                tracing::debug!(
+                    "Received pong from peer {} for bucket {}",
+                    peer_id.to_hex(),
+                    bucket_id
+                );
+
+                // Handle response (dispatches sync jobs if needed)
+                if let Err(e) = PingHandler::handle_response(self, &pong).await {
+                    tracing::error!(
+                        "Failed to handle pong from peer {} for bucket {}: {}",
+                        peer_id.to_hex(),
+                        bucket_id,
+                        e
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::debug!(
+                    "Failed to ping peer {} for bucket {}: {}",
+                    peer_id.to_hex(),
+                    bucket_id,
+                    e
+                );
+            }
+        }
+    }
+
     /// Run the background job worker
     ///
     /// This consumes the job receiver and processes jobs until the receiver is closed.
@@ -568,46 +721,75 @@ impl<L: BucketLogProvider> Peer<L> {
     {
         use super::jobs::Job;
         use futures::StreamExt;
+        use tokio::time::{interval, Duration};
 
         tracing::info!("Starting background job worker for peer {}", self.id());
 
         // Convert to async stream for efficient async processing
         let mut stream = job_receiver.into_async();
 
-        while let Some(job) = stream.next().await {
-            match job {
-                Job::SyncBucket {
-                    bucket_id,
-                    target_link,
-                    target_height,
-                    peer_id,
-                } => {
-                    tracing::info!(
-                        "Processing sync job: bucket_id={}, peer_id={}, height={}",
-                        bucket_id,
-                        peer_id.to_hex(),
-                        target_height
-                    );
+        // Create interval timer for periodic pings (every 60 seconds)
+        let mut ping_interval = interval(Duration::from_secs(60));
+        ping_interval.tick().await; // Skip first immediate tick
 
-                    if let Err(e) = self
-                        .sync_from_peer(bucket_id, target_link, target_height, &peer_id)
-                        .await
-                    {
-                        tracing::error!(
-                            "Sync job failed for bucket {} from peer {}: {}",
+        loop {
+            tokio::select! {
+                // Process incoming jobs from the queue
+                Some(job) = stream.next() => {
+                    match job {
+                        Job::SyncBucket {
                             bucket_id,
-                            peer_id.to_hex(),
-                            e
-                        );
-                    } else {
-                        tracing::info!(
-                            "Sync job completed successfully for bucket {} from peer {}",
-                            bucket_id,
-                            peer_id.to_hex()
-                        );
+                            target_link,
+                            target_height,
+                            peer_id,
+                        } => {
+                            tracing::info!(
+                                "Processing sync job: bucket_id={}, peer_id={}, height={}",
+                                bucket_id,
+                                peer_id.to_hex(),
+                                target_height
+                            );
+
+                            if let Err(e) = self
+                                .sync_from_peer(bucket_id, target_link, target_height, &peer_id)
+                                .await
+                            {
+                                tracing::error!(
+                                    "Sync job failed for bucket {} from peer {}: {}",
+                                    bucket_id,
+                                    peer_id.to_hex(),
+                                    e
+                                );
+                            } else {
+                                tracing::info!(
+                                    "Sync job completed successfully for bucket {} from peer {}",
+                                    bucket_id,
+                                    peer_id.to_hex()
+                                );
+                            }
+                        }
+                        Job::PingPeer { bucket_id, peer_id } => {
+                            tracing::debug!(
+                                "Processing ping job: bucket_id={}, peer_id={}",
+                                bucket_id,
+                                peer_id.to_hex()
+                            );
+                            self.handle_ping_peer(bucket_id, peer_id).await;
+                        }
                     }
                 }
-                // Future job types can be handled here
+
+                // Periodic ping scheduler
+                _ = ping_interval.tick() => {
+                    tracing::debug!("Running periodic ping scheduler");
+                    self.schedule_periodic_pings().await;
+                }
+
+                // Stream closed (all senders dropped)
+                else => {
+                    tracing::info!("Job queue closed, shutting down worker");
+                    break;
+                }
             }
         }
 

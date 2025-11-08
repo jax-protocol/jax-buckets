@@ -175,4 +175,22 @@ impl BucketLogProvider for Database {
 
         Ok(rows.into_iter().map(|r| r.height as u64).collect())
     }
+
+    async fn list_buckets(&self) -> Result<Vec<Uuid>, common::bucket_log::BucketLogError<Self::Error>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT DISTINCT bucket_id
+            FROM bucket_log
+            ORDER BY bucket_id
+            "#
+        )
+        .fetch_all(&**self)
+        .await
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| Uuid::parse_str(&r.bucket_id).expect("invalid bucket_id UUID in database"))
+            .collect())
+    }
 }

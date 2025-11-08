@@ -6,13 +6,14 @@ use iroh::protocol::{AcceptError, ProtocolHandler};
 use super::peer::Peer;
 
 pub mod bidirectional;
-mod messages;
+pub mod messages;
 
 use messages::Message;
 
 // Re-export for external users implementing custom handlers
 #[allow(unused_imports)]
 pub use bidirectional::BidirectionalHandler;
+pub use messages::ping::{Ping, PingHandler};
 
 // TODO ( amiller68): migrate the alpn, idt there's a great
 //  reason to have an iroh prefix, nthis is not a n0 computer project
