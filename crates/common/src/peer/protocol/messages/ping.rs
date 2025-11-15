@@ -151,12 +151,18 @@ impl BidirectionalHandler for Ping {
                 );
 
                 // Dispatch sync job to background worker
-                if let Err(e) = peer.jobs().dispatch_sync(
-                    ping.bucket_id,
-                    ping.link.clone(),
-                    ping.height,
-                    *sender_node_id,
-                ) {
+                use crate::peer::sync::{SyncBucketJob, SyncJob, SyncTarget};
+                if let Err(e) = peer
+                    .dispatch(SyncJob::SyncBucket(SyncBucketJob {
+                        bucket_id: ping.bucket_id,
+                        target: SyncTarget {
+                            link: ping.link.clone(),
+                            height: ping.height,
+                            peer_id: *sender_node_id,
+                        },
+                    }))
+                    .await
+                {
                     tracing::error!("Failed to dispatch sync job: {}", e);
                 }
             }
@@ -182,12 +188,18 @@ impl BidirectionalHandler for Ping {
                 // TODO (amiller68): there should probably be a share message instead
                 //  of this
                 // Dispatch sync job to background worker
-                if let Err(e) = peer.jobs().dispatch_sync(
-                    ping.bucket_id,
-                    ping.link.clone(),
-                    ping.height,
-                    *sender_node_id,
-                ) {
+                use crate::peer::sync::{SyncBucketJob, SyncJob, SyncTarget};
+                if let Err(e) = peer
+                    .dispatch(SyncJob::SyncBucket(SyncBucketJob {
+                        bucket_id: ping.bucket_id,
+                        target: SyncTarget {
+                            link: ping.link.clone(),
+                            height: ping.height,
+                            peer_id: *sender_node_id,
+                        },
+                    }))
+                    .await
+                {
                     tracing::error!("Failed to dispatch sync job: {}", e);
                 }
             }
@@ -215,8 +227,7 @@ impl BidirectionalHandler for Ping {
                     recipient_node_id.to_hex(),
                     pong.bucket_id
                 );
-                // TODO: Could trigger an announce to share our bucket with them
-                // e.g., announce_to_peer(...).await?;
+                // The peer should attemp to fetch from us after this
             }
             PingReplyStatus::Ahead(link, height) => {
                 // Remote peer is ahead, dispatch a sync job
@@ -229,12 +240,18 @@ impl BidirectionalHandler for Ping {
                 );
 
                 // Dispatch sync job to background worker
-                if let Err(e) = peer.jobs().dispatch_sync(
-                    pong.bucket_id,
-                    link.clone(),
-                    *height,
-                    recipient_node_id.clone(),
-                ) {
+                use crate::peer::sync::{SyncBucketJob, SyncJob, SyncTarget};
+                if let Err(e) = peer
+                    .dispatch(SyncJob::SyncBucket(SyncBucketJob {
+                        bucket_id: pong.bucket_id,
+                        target: SyncTarget {
+                            link: link.clone(),
+                            height: *height,
+                            peer_id: *recipient_node_id,
+                        },
+                    }))
+                    .await
+                {
                     tracing::error!("Failed to dispatch sync job: {}", e);
                 }
             }

@@ -152,9 +152,15 @@ pub trait BidirectionalHandler: Sized {
             AcceptError::from(std::io::Error::other(e))
         })?;
 
-        // Finish the stream
+        // Finish the stream and wait for it to be acknowledged
         send.finish().map_err(|e| {
             tracing::error!("failed to finish stream: {}", e);
+            AcceptError::from(std::io::Error::other(e))
+        })?;
+
+        // Wait for the stream to be gracefully closed
+        send.stopped().await.map_err(|e| {
+            tracing::error!("failed to stop stream: {}", e);
             AcceptError::from(std::io::Error::other(e))
         })?;
 
@@ -223,7 +229,7 @@ pub trait BidirectionalHandler: Sized {
             "BIDIRECTIONAL: Serialized request to {} bytes, first byte: {}",
             request_bytes.len(),
             request_bytes
-                .get(0)
+                .first()
                 .map(|b| b.to_string())
                 .unwrap_or_else(|| "none".to_string())
         );

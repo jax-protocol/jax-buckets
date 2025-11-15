@@ -5,7 +5,7 @@ use iroh::protocol::{AcceptError, ProtocolHandler};
 
 use crate::crypto::PublicKey;
 
-use super::peer::Peer;
+use super::peer_inner::Peer;
 
 pub mod bidirectional;
 pub mod messages;
@@ -15,7 +15,7 @@ use messages::Message;
 // Re-export for external users implementing custom handlers
 #[allow(unused_imports)]
 pub use bidirectional::BidirectionalHandler;
-pub use messages::ping::{Ping, PingMessage};
+pub use messages::ping::{Ping, PingMessage, PingReplyStatus};
 
 // TODO ( amiller68): migrate the alpn, idt there's a great
 //  reason to have an iroh prefix, nthis is not a n0 computer project

@@ -44,12 +44,12 @@
 
 mod manifest;
 mod maybe_mime;
-mod mount;
+mod mount_inner;
 mod node;
 mod pins;
 mod principal;
 
 pub use manifest::{Manifest, Share, Shares};
-pub use mount::{Mount, MountError};
+pub use mount_inner::{Mount, MountError};
 pub use node::{Node, NodeError, NodeLink};
 pub use pins::Pins;

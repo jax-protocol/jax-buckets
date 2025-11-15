@@ -33,8 +33,8 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
 
     let (graceful_waiter, shutdown_rx) = utils::graceful_shutdown_blocker();
 
-    // Create state but don't Arc it yet - we need to extract the peer first
-    let mut state = match ServiceState::from_config(service_config).await {
+    // Create state
+    let state = match ServiceState::from_config(service_config).await {
         Ok(state) => state,
         Err(e) => {
             tracing::error!("error creating server state: {}", e);
@@ -52,21 +52,17 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
         .api_listen_addr
         .unwrap_or_else(|| SocketAddr::from_str("0.0.0.0:3000").unwrap());
 
-    // Extract peer and spawn worker BEFORE Arc-ing the state
-    tracing::info!("PROCESS: About to call state.take_peer()");
-    let peer = state.take_peer();
-    tracing::info!("PROCESS: Called state.take_peer(), got peer back");
+    // Spawn peer router
+    let peer = state.peer().clone();
     let peer_rx = shutdown_rx.clone();
     let peer_handle = tokio::spawn(async move {
-        tracing::info!("PROCESS: Inside peer worker spawn task, about to call peer::spawn");
         if let Err(e) = common::peer::spawn(peer, peer_rx).await {
-            tracing::error!("Peer worker error: {}", e);
+            tracing::error!("Peer error: {}", e);
         }
-        tracing::info!("PROCESS: peer::spawn returned, worker task exiting");
     });
     handles.push(peer_handle);
 
-    // Now Arc the state for sharing with servers
+    // Arc the state for sharing with servers
     let state = std::sync::Arc::new(state);
 
     // Start HTML server

@@ -6,6 +6,8 @@ use crate::daemon::database::{Database, DatabaseSetupError};
 use common::crypto::SecretKey;
 use common::peer::{BlobsStore, Peer, PeerBuilder};
 
+use super::sync_provider::{QueuedSyncConfig, QueuedSyncProvider};
+
 /// Main service state - orchestrates all components
 #[derive(Clone)]
 pub struct State {
@@ -50,7 +52,13 @@ impl State {
         tracing::debug!("ServiceState::from_config - blobs store loaded successfully");
 
         // 4. Build peer from the database as the log provider
+        // TODO: Make queue size configurable via config
+
+        // Create sync provider with worker
+        let (sync_provider, job_receiver) = QueuedSyncProvider::new(QueuedSyncConfig::default());
+
         let mut peer_builder = PeerBuilder::new()
+            .with_sync_provider(std::sync::Arc::new(sync_provider))
             .log_provider(database.clone())
             .blobs_store(blobs.clone())
             .secret_key(node_secret.clone());
@@ -66,6 +74,14 @@ impl State {
         tracing::info!("Node id: {} (with JAX protocol)", peer.id());
         tracing::info!("Peer listening on: {:?}", bound_addrs);
 
+        // Spawn the worker for the queued sync provider
+        // The worker is managed outside the peer, like the database
+        let peer_for_worker = peer.clone();
+        let job_stream = job_receiver.into_async();
+        tokio::spawn(async move {
+            super::sync_provider::run_worker(peer_for_worker, job_stream).await;
+        });
+
         Ok(Self { database, peer })
     }
 
@@ -76,16 +92,6 @@ impl State {
     pub fn node(&self) -> &Peer<Database> {
         // Alias for backwards compatibility
         &self.peer
-    }
-
-    /// Take ownership of the peer (can only be called once before State is Arc'd)
-    ///
-    /// This is used during startup to extract the peer for spawning the worker,
-    /// which requires ownership (not a clone) to access the job_receiver.
-    pub fn take_peer(&mut self) -> Peer<Database> {
-        // Clone first, then replace
-        let peer_clone = self.peer.clone();
-        std::mem::replace(&mut self.peer, peer_clone)
     }
 
     pub fn database(&self) -> &Database {

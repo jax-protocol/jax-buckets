@@ -6,8 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use common::crypto::PublicKey;
-// FIXME: ping_peer and SyncStatus don't exist yet in common::peer
-// use common::peer::{ping_peer, NodeAddr, SyncStatus};
+use common::peer::PingReplyStatus;
 
 use crate::daemon::http_server::Config;
 use crate::ServiceState;
@@ -28,15 +27,14 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 }
 
 /// Get status badge styling for a given sync status
-// FIXME: Commented out until SyncStatus is properly defined
-// fn status_badge_class(status: &SyncStatus) -> (&'static str, &'static str) {
-//     match status {
-//         SyncStatus::NotFound => ("Not Found", "bg-gray-100 text-gray-800"),
-//         SyncStatus::Behind => ("Behind", "bg-yellow-100 text-yellow-800"),
-//         SyncStatus::InSync => ("In Sync", "bg-green-100 text-green-800"),
-//         SyncStatus::Ahead => ("Ahead", "bg-orange-100 text-orange-800"),
-//     }
-// }
+fn status_badge_class(status: &PingReplyStatus) -> (&'static str, &'static str) {
+    match status {
+        PingReplyStatus::NotFound => ("Not Found", "bg-gray-100 text-gray-800"),
+        PingReplyStatus::Behind(_, _) => ("Behind", "bg-yellow-100 text-yellow-800"),
+        PingReplyStatus::InSync => ("In Sync", "bg-green-100 text-green-800"),
+        PingReplyStatus::Ahead(_, _) => ("Ahead", "bg-orange-100 text-orange-800"),
+    }
+}
 
 #[derive(Template)]
 #[template(path = "peers_explorer.html")]
@@ -94,7 +92,20 @@ pub async fn handler(
     let our_node_id = state.node().id();
     let our_node_id_hex = our_node_id.to_string();
 
-    // Ping each peer to check their status (excluding ourselves)
+    // Ping all peers and collect responses (with 5 second timeout)
+    let ping_results = match state
+        .peer()
+        .ping_and_collect(bucket_id, Some(std::time::Duration::from_secs(5)))
+        .await
+    {
+        Ok(results) => results,
+        Err(e) => {
+            tracing::error!("Failed to ping peers: {}", e);
+            Default::default()
+        }
+    };
+
+    // Build peer list with status
     let mut peers = Vec::new();
     for share in shares {
         // Skip ourselves by comparing hex strings
@@ -112,12 +123,17 @@ pub async fn handler(
             }
         };
 
-        // FIXME: ping_peer and NodeAddr don't exist yet
-        // Temporarily stub out peer pinging functionality
-        let peer_status = (
-            "Unknown".to_string(),
-            "bg-gray-100 text-gray-800".to_string(),
-        );
+        // Get ping status for this peer
+        let peer_status = match ping_results.get(&share.public_key) {
+            Some(status) => {
+                let (label, class) = status_badge_class(status);
+                (label.to_string(), class.to_string())
+            }
+            None => (
+                "Unknown".to_string(),
+                "bg-gray-100 text-gray-800".to_string(),
+            ),
+        };
 
         peers.push(PeerInfo {
             public_key: share.public_key.clone(),

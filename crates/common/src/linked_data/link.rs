@@ -81,7 +81,7 @@ impl From<Link> for LinkedData {
 impl From<Link> for HashAndFormat {
     fn from(val: Link) -> Self {
         HashAndFormat {
-            hash: val.hash().clone(),
+            hash: val.hash(),
             format: BlobFormat::Raw,
         }
     }
@@ -89,7 +89,7 @@ impl From<Link> for HashAndFormat {
 
 impl From<Link> for Hash {
     fn from(val: Link) -> Self {
-        val.hash().clone()
+        val.hash()
     }
 }
 

@@ -45,15 +45,14 @@ pub async fn handler(
     tracing::info!("PING API: Parsed peer public key successfully");
 
     // Dispatch ping job
-    let job = common::peer::Job::PingPeer {
-        bucket_id: req.bucket_id,
-        peer_id: peer_public_key,
-    };
-
+    use common::peer::sync::{PingPeerJob, SyncJob};
     state
         .peer()
-        .jobs()
-        .dispatch(job)
+        .dispatch(SyncJob::PingPeer(PingPeerJob {
+            bucket_id: req.bucket_id,
+            peer_id: peer_public_key,
+        }))
+        .await
         .map_err(|e| PingError::Failed(e.to_string()))?;
 
     tracing::info!(

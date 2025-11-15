@@ -779,7 +779,7 @@ mod test {
 
     #[tokio::test]
     async fn test_add_and_cat() {
-        let (mut mount, blobs, _, _temp) = setup_test_env().await;
+        let (mut mount, _, _, _temp) = setup_test_env().await;
 
         let data = b"Hello, world!";
         let path = PathBuf::from("/test.txt");
@@ -792,7 +792,7 @@ mod test {
 
     #[tokio::test]
     async fn test_add_with_metadata() {
-        let (mut mount, blobs, _, _temp) = setup_test_env().await;
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
 
         let data = b"{ \"key\": \"value\" }";
         let path = PathBuf::from("/data.json");
@@ -815,7 +815,7 @@ mod test {
 
     #[tokio::test]
     async fn test_ls() {
-        let (mut mount, blobs, _, _temp) = setup_test_env().await;
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
 
         mount
             .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
@@ -847,7 +847,7 @@ mod test {
 
     #[tokio::test]
     async fn test_ls_deep() {
-        let (mut mount, blobs, _, _temp) = setup_test_env().await;
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
 
         mount
             .add(&PathBuf::from("/a.txt"), Cursor::new(b"a".to_vec()))
@@ -885,7 +885,7 @@ mod test {
 
     #[tokio::test]
     async fn test_rm() {
-        let (mut mount, blobs, _, _temp) = setup_test_env().await;
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
 
         mount
             .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
@@ -912,7 +912,7 @@ mod test {
 
     #[tokio::test]
     async fn test_nested_operations() {
-        let (mut mount, blobs, _, _temp) = setup_test_env().await;
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
 
         let files = vec![
             ("/root.txt", b"root" as &[u8]),
@@ -953,7 +953,7 @@ mod test {
 
     #[tokio::test]
     async fn test_various_file_types() {
-        let (mut mount, blobs, _, _temp) = setup_test_env().await;
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
 
         let test_files = vec![
             ("/image.png", "image/png"),
@@ -986,7 +986,7 @@ mod test {
 
     #[tokio::test]
     async fn test_error_cases() {
-        let (mount, blobs, _, _temp) = setup_test_env().await;
+        let (mount, _blobs, _, _temp) = setup_test_env().await;
 
         let result = mount.cat(&PathBuf::from("/does_not_exist.txt")).await;
         assert!(result.is_err());
@@ -994,7 +994,7 @@ mod test {
         let result = mount.ls(&PathBuf::from("/does_not_exist")).await;
         assert!(result.is_err() || result.unwrap().is_empty());
 
-        let (mut mount, blobs, _, _temp) = setup_test_env().await;
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
         mount
             .add(
                 &PathBuf::from("/dir/file.txt"),

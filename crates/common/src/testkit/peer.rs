@@ -53,12 +53,15 @@ impl TestPeer {
         };
 
         // Build the peer - let it bind to ephemeral port
-        let peer = PeerBuilder::new()
+        let peer_with_receiver = PeerBuilder::new()
+            .with_queued_sync(crate::peer::QueuedSyncConfig::default())
             .log_provider(log_provider)
             .blobs_store(blobs)
             .secret_key(secret.clone())
             .build()
             .await;
+
+        let peer = peer_with_receiver.peer.clone();
 
         Ok(Self {
             name,
@@ -83,14 +86,15 @@ impl TestPeer {
         let secret = self.secret.clone();
 
         let peer_for_spawn = PeerBuilder::new()
+            .with_queued_sync(crate::peer::QueuedSyncConfig::default())
             .log_provider(log_provider)
             .blobs_store(blobs)
             .secret_key(secret)
             .build()
             .await;
 
-        // Clone for our use (this clone won't have job_receiver, but that's ok)
-        self.peer = peer_for_spawn.clone();
+        // Store peer for our use (clone without receiver)
+        self.peer = peer_for_spawn.peer.clone();
 
         let name = self.name.clone();
 

@@ -65,7 +65,7 @@ pub async fn handler(
     Query(query): Query<LogsQuery>,
 ) -> askama_axum::Response {
     // Validate and cap page size
-    let page_size = query.page_size.min(100).max(1);
+    let page_size = query.page_size.clamp(1, 100);
     let page = query.page;
 
     // Get bucket info to show the bucket name
