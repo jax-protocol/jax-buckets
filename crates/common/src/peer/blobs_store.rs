@@ -13,8 +13,13 @@ use iroh_blobs::{
         downloader::{Downloader, Shuffled},
         ExportBaoError, RequestError,
     },
-    store::fs::FsStore,
+    store::{fs::FsStore, mem::MemStore},
     BlobsProtocol, Hash,
+};
+
+use crate::{
+    crypto::PublicKey,
+    linked_data::{BlockEncoded, CodecError, DagCborCodec},
 };
 
 // TODO (amiller68): maybe at some point it would make sense
@@ -46,6 +51,8 @@ pub enum BlobsStoreError {
     ExportBao(#[from] ExportBaoError),
     #[error("request error: {0}")]
     Request(#[from] RequestError),
+    #[error("decode error: {0}")]
+    Decode(#[from] CodecError),
 }
 
 impl BlobsStore {
@@ -59,9 +66,20 @@ impl BlobsStore {
     ///     Exposes a peer for the private key used to initiate
     ///     the endpoint.
     #[allow(clippy::doc_overindented_list_items)]
-    pub async fn load(path: &Path) -> Result<Self, BlobsStoreError> {
+    pub async fn fs(path: &Path) -> Result<Self, BlobsStoreError> {
+        tracing::debug!("BlobsStore::load called with path: {:?}", path);
         let store = FsStore::load(path).await?;
+        tracing::debug!("BlobsStore::load completed loading FsStore");
         // let blobs = Blobs::builder(store).build(&endpoint);
+        let blobs = BlobsProtocol::new(&store, None);
+        Ok(Self {
+            inner: Arc::new(blobs),
+        })
+    }
+
+    /// Load a memory blobs store
+    pub async fn memory() -> Result<Self, BlobsStoreError> {
+        let store = MemStore::new();
         let blobs = BlobsProtocol::new(&store, None);
         Ok(Self {
             inner: Arc::new(blobs),
@@ -78,6 +96,15 @@ impl BlobsStore {
     pub async fn get(&self, hash: &Hash) -> Result<Bytes, BlobsStoreError> {
         let bytes = self.blobs().get_bytes(*hash).await?;
         Ok(bytes)
+    }
+
+    /// Get a blob as a block encoded
+    pub async fn get_cbor<T: BlockEncoded<DagCborCodec>>(
+        &self,
+        hash: &Hash,
+    ) -> Result<T, BlobsStoreError> {
+        let bytes = self.blobs().get_bytes(*hash).await?;
+        Ok(T::decode(&bytes)?)
     }
 
     /// Get a blob from the store as a reader
@@ -125,7 +152,7 @@ impl BlobsStore {
     pub async fn download_hash(
         &self,
         hash: Hash,
-        peer_ids: Vec<NodeId>,
+        peer_ids: Vec<PublicKey>,
         endpoint: &Endpoint,
     ) -> Result<(), BlobsStoreError> {
         tracing::debug!("download_hash: Checking if hash {} exists locally", hash);
@@ -150,7 +177,12 @@ impl BlobsStore {
         let downloader = Downloader::new(self.inner.store(), endpoint);
 
         // Create content discovery with shuffled peers
-        let discovery = Shuffled::new(peer_ids.clone());
+        let discovery = Shuffled::new(
+            peer_ids
+                .iter()
+                .map(|peer_id| NodeId::from(*peer_id))
+                .collect(),
+        );
 
         tracing::debug!(
             "download_hash: Starting download of hash {} with downloader",
@@ -200,7 +232,7 @@ impl BlobsStore {
     pub async fn download_hash_list(
         &self,
         hash_list_hash: Hash,
-        peer_ids: Vec<NodeId>,
+        peer_ids: Vec<PublicKey>,
         endpoint: &Endpoint,
     ) -> Result<(), BlobsStoreError> {
         tracing::debug!(
@@ -338,7 +370,7 @@ mod tests {
 
         // let store = FsStore::load(&blob_path).await.unwrap();
         // let blobs = BlobsProtocol::new(&store, None);
-        let blobs = BlobsStore::load(&blob_path).await.unwrap();
+        let blobs = BlobsStore::fs(&blob_path).await.unwrap();
         (blobs, temp_dir)
     }
 
