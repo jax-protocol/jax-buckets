@@ -37,7 +37,7 @@ fn status_badge_class(status: &PingReplyStatus) -> (&'static str, &'static str) 
 }
 
 #[derive(Template)]
-#[template(path = "peers_explorer.html")]
+#[template(path = "pages/buckets/peers.html")]
 pub struct PeersExplorerTemplate {
     pub bucket_id: String,
     pub bucket_name: String,

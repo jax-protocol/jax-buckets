@@ -9,7 +9,7 @@ use crate::daemon::http_server::Config;
 use crate::ServiceState;
 
 #[derive(Template)]
-#[template(path = "buckets.html")]
+#[template(path = "pages/index.html")]
 pub struct BucketsTemplate {
     pub buckets: Vec<BucketDisplayInfo>,
     pub read_only: bool,

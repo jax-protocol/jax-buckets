@@ -1,10 +1,12 @@
 use askama::Template;
 use askama_axum::IntoResponse;
 use axum::extract::{Path, Query, State};
+use axum::Extension;
 use serde::Deserialize;
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::daemon::http_server::Config;
 use crate::ServiceState;
 
 #[derive(Debug, Clone)]
@@ -20,7 +22,7 @@ pub struct PathSegment {
 }
 
 #[derive(Template)]
-#[template(path = "file_viewer.html")]
+#[template(path = "pages/buckets/viewer.html")]
 pub struct FileViewerTemplate {
     pub bucket_id: String,
     pub bucket_name: String,
@@ -30,18 +32,27 @@ pub struct FileViewerTemplate {
     pub file_size: usize,
     pub mime_type: String,
     pub is_text: bool,
+    pub is_markdown: bool,
+    pub is_editable: bool,
     pub content: String,
     pub back_url: String,
+    pub viewing_history: bool,
+    pub at_hash: Option<String>,
+    pub return_url: String,
+    pub api_url: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ViewerQuery {
     pub path: String,
+    #[serde(default)]
+    pub at: Option<String>,
 }
 
-#[instrument(skip(state))]
+#[instrument(skip(state, config))]
 pub async fn handler(
     State(state): State<ServiceState>,
+    Extension(config): Extension<Config>,
     Path(bucket_id): Path<Uuid>,
     Query(query): Query<ViewerQuery>,
 ) -> askama_axum::Response {
@@ -54,12 +65,38 @@ pub async fn handler(
         Err(e) => return error_response(&format!("{}", e)),
     };
 
-    // Load mount and get file content
-    let mount = match state.peer().mount(bucket_id).await {
-        Ok(mount) => mount,
-        Err(e) => {
-            tracing::error!("Failed to load mount: {}", e);
-            return error_response("Failed to load bucket");
+    // Load mount - either from specific link or current state
+    let mount = if let Some(hash_str) = &query.at {
+        // Parse the hash string and create a Link with blake3 codec
+        match hash_str.parse::<common::linked_data::Hash>() {
+            Ok(hash) => {
+                let link = common::linked_data::Link::new(common::linked_data::LD_RAW_CODEC, hash);
+                match common::mount::Mount::load(
+                    &link,
+                    state.peer().secret(),
+                    state.peer().blobs(),
+                )
+                .await
+                {
+                    Ok(mount) => mount,
+                    Err(e) => {
+                        tracing::error!("Failed to load mount from link: {}", e);
+                        return error_response("Failed to load historical version");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to parse hash: {}", e);
+                return error_response("Invalid hash format");
+            }
+        }
+    } else {
+        match state.peer().mount(bucket_id).await {
+            Ok(mount) => mount,
+            Err(e) => {
+                tracing::error!("Failed to load mount: {}", e);
+                return error_response("Failed to load bucket");
+            }
         }
     };
 
@@ -151,7 +188,22 @@ pub async fn handler(
     let path_segments = build_path_segments(&file_path);
 
     // Build back URL (parent directory)
-    let back_url = build_back_url(&file_path, &bucket_id);
+    let back_url = build_back_url(&file_path, &bucket_id, query.at.as_ref());
+
+    // Check if file is markdown based on MIME type
+    let is_markdown = file_content.mime_type.starts_with("text/markdown");
+
+    // Check if file is editable based on MIME type (text/markdown and text/plain)
+    let is_editable = file_content.mime_type.starts_with("text/markdown")
+        || file_content.mime_type.starts_with("text/plain");
+
+    let api_url = config
+        .api_url
+        .clone()
+        .unwrap_or_else(|| "http://localhost:3000".to_string());
+
+    let viewing_history = query.at.is_some();
+    let return_url = format!("/buckets/{}/view?path={}", bucket_id, file_path);
 
     let template = FileViewerTemplate {
         bucket_id: bucket_id.to_string(),
@@ -162,8 +214,14 @@ pub async fn handler(
         file_size: file_content.data.len(),
         mime_type: file_content.mime_type,
         is_text,
+        is_markdown,
+        is_editable,
         content,
         back_url,
+        viewing_history,
+        at_hash: query.at,
+        return_url,
+        api_url,
     };
 
     template.into_response()
@@ -196,16 +254,24 @@ fn build_path_segments(file_path: &str) -> Vec<PathSegment> {
     segments
 }
 
-fn build_back_url(file_path: &str, bucket_id: &Uuid) -> String {
+fn build_back_url(file_path: &str, bucket_id: &Uuid, at_hash: Option<&String>) -> String {
     let parent = std::path::Path::new(file_path)
         .parent()
         .and_then(|p| p.to_str())
         .unwrap_or("/");
 
     if parent == "/" {
-        format!("/buckets/{}", bucket_id)
+        if let Some(hash) = at_hash {
+            format!("/buckets/{}?at={}", bucket_id, hash)
+        } else {
+            format!("/buckets/{}", bucket_id)
+        }
     } else {
-        format!("/buckets/{}?path={}", bucket_id, parent)
+        if let Some(hash) = at_hash {
+            format!("/buckets/{}?path={}&at={}", bucket_id, parent, hash)
+        } else {
+            format!("/buckets/{}?path={}", bucket_id, parent)
+        }
     }
 }
 

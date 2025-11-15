@@ -1,18 +1,21 @@
-{% extends "base.html" %}
+{% extends "layouts/base.html" %}
 
 {% block title %}{{ bucket_name }} - Jax{% endblock %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto space-y-6">
+    <!-- Historical version banner -->
+    {% include "components/historical_banner.html" %}
+
     <!-- Breadcrumb navigation -->
     <nav aria-label="Breadcrumb">
         <ol class="flex items-center gap-2 text-sm">
             <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
             <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
-            <li><a href="/buckets/{{ bucket_id }}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
+            <li><a href="/buckets/{{ bucket_id }}{% if viewing_history %}?at={{ bucket_link }}{% endif %}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
             {% for segment in path_segments %}
             <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
-            <li><a href="/buckets/{{ bucket_id }}?path={{ segment.path }}" class="text-primary hover:underline">{{ segment.name }}</a></li>
+            <li><a href="/buckets/{{ bucket_id }}?path={{ segment.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="text-primary hover:underline">{{ segment.name }}</a></li>
             {% endfor %}
         </ol>
     </nav>
@@ -46,8 +49,11 @@
         </div>
         <div class="flex gap-2">
             {% if !read_only %}
-            <button uk-toggle="target: #upload-modal" class="button button-primary">
-                <i class="fas fa-plus"></i> Add File
+            <button uk-toggle="target: #new-file-modal" class="button button-primary">
+                <i class="fas fa-file-plus"></i> New File
+            </button>
+            <button uk-toggle="target: #upload-modal" class="button">
+                <i class="fas fa-upload"></i> Upload
             </button>
             {% endif %}
             <a href="/buckets/{{ bucket_id }}/logs" class="button">
@@ -72,8 +78,37 @@
         </div>
     </div>
 
-    <!-- Upload Modal -->
+    <!-- New File Modal -->
     {% if !read_only %}
+    <div id="new-file-modal" uk-modal>
+        <div class="uk-modal-dialog uk-modal-body">
+            <h2 class="uk-modal-title">Create New File</h2>
+            <form id="newFileForm" class="space-y-4">
+                <div>
+                    <label for="newFileName" class="block text-sm font-medium mb-2">File Name</label>
+                    <input type="text" id="newFileName" name="filename" class="uk-input"
+                           placeholder="example.txt or example.md" required>
+                    <p class="text-xs text-muted-foreground mt-1">Supported: .txt and .md files</p>
+                </div>
+                <div>
+                    <label for="newFileContent" class="block text-sm font-medium mb-2">Initial Content (Optional)</label>
+                    <textarea id="newFileContent" name="content" class="uk-input" rows="6"
+                              placeholder="Start typing or leave empty..."></textarea>
+                </div>
+                <div id="newFileStatus" class="hidden"></div>
+                <div class="flex gap-4 justify-end mt-4">
+                    <button class="button button-danger uk-modal-close" type="button">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="submit" class="button button-primary">
+                        <i class="fas fa-check"></i> Create & Edit
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
     <div id="upload-modal" uk-modal>
         <div class="uk-modal-dialog uk-modal-body">
             <h2 class="uk-modal-title">Upload File</h2>
@@ -131,6 +166,48 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="rename-modal" uk-modal>
+        <div class="uk-modal-dialog uk-modal-body">
+            <h2 class="uk-modal-title">Rename <span id="renameItemType"></span></h2>
+            <form id="renameForm" class="space-y-4">
+                <input type="hidden" id="renameOldPath" name="old_path">
+                <div>
+                    <label for="renameNewName" class="block text-sm font-medium mb-2">New Name</label>
+                    <input type="text" id="renameNewName" name="new_name" class="uk-input" required>
+                </div>
+                <div id="renameStatus" class="hidden"></div>
+                <div class="flex gap-4 justify-end mt-4">
+                    <button class="button button-danger uk-modal-close" type="button">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="submit" class="button button-primary">
+                        <i class="fas fa-check"></i> Rename
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" uk-modal>
+        <div class="uk-modal-dialog uk-modal-body">
+            <h2 class="uk-modal-title">Delete <span id="deleteItemType"></span></h2>
+            <p>Are you sure you want to delete <strong id="deleteItemName"></strong>?</p>
+            <p class="text-sm text-muted-foreground">This action cannot be undone.</p>
+            <input type="hidden" id="deleteItemPath">
+            <div id="deleteStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button onclick="confirmDelete()" class="button button-danger">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
         </div>
     </div>
 
@@ -197,15 +274,25 @@
                     <td class="text-xs text-muted-foreground">{{ item.mime_type }}</td>
                     <td><code class="text-xs text-muted-foreground">{{ item.link }}</code></td>
                     <td>
-                        {% if item.is_dir %}
-                        <a href="/buckets/{{ bucket_id }}?path={{ item.path }}" class="button button-sm">
-                            <i class="fas fa-folder-open"></i> Open
-                        </a>
-                        {% else %}
-                        <a href="/buckets/{{ bucket_id }}/view?path={{ item.path }}" class="button button-sm button-primary">
-                            <i class="fas fa-eye"></i> View
-                        </a>
-                        {% endif %}
+                        <div class="flex gap-2 flex-wrap">
+                            {% if item.is_dir %}
+                            <a href="/buckets/{{ bucket_id }}?path={{ item.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="button button-sm">
+                                <i class="fas fa-folder-open"></i> Open
+                            </a>
+                            {% else %}
+                            <a href="/buckets/{{ bucket_id }}/view?path={{ item.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="button button-sm button-primary">
+                                <i class="fas fa-eye"></i> View
+                            </a>
+                            {% endif %}
+                            {% if !read_only %}
+                            <button onclick="openRenameModal('{{ item.path }}', '{{ item.name }}', {{ item.is_dir }})" class="button button-sm">
+                                <i class="fas fa-i-cursor"></i> Rename
+                            </button>
+                            <button onclick="openDeleteModal('{{ item.path }}', '{{ item.name }}', {{ item.is_dir }})" class="button button-sm button-danger">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -220,5 +307,6 @@
 <script>
 window.JAX_API_URL = '{{ api_url }}';
 window.JAX_BUCKET_ID = '{{ bucket_id }}';
+window.JAX_CURRENT_PATH = '{{ current_path }}';
 </script>
 {% endblock %}

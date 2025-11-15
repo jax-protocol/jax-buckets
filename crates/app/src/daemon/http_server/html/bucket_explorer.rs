@@ -14,7 +14,7 @@ use crate::daemon::http_server::Config;
 use crate::ServiceState;
 
 #[derive(Template)]
-#[template(path = "bucket_explorer.html")]
+#[template(path = "pages/buckets/index.html")]
 pub struct BucketExplorerTemplate {
     pub bucket_id: String,
     pub bucket_name: String,
@@ -29,6 +29,9 @@ pub struct BucketExplorerTemplate {
     pub parent_path_url: String,
     pub items: Vec<FileDisplayInfo>,
     pub read_only: bool,
+    pub viewing_history: bool,
+    pub at_hash: Option<String>,
+    pub return_url: String,
     pub api_url: String,
 }
 
@@ -51,6 +54,8 @@ pub struct FileDisplayInfo {
 pub struct ExplorerQuery {
     #[serde(default)]
     pub path: Option<String>,
+    #[serde(default)]
+    pub at: Option<String>,
 }
 
 #[instrument(skip(state, config))]
@@ -61,8 +66,9 @@ pub async fn handler(
     Path(bucket_id): Path<Uuid>,
     Query(query): Query<ExplorerQuery>,
 ) -> askama_axum::Response {
-    // Use the read_only flag from config
-    let read_only = config.read_only;
+    // If viewing a specific version, always make it read-only
+    let viewing_history = query.at.is_some();
+    let read_only = config.read_only || viewing_history;
 
     let current_path = query.path.unwrap_or_else(|| "/".to_string());
 
@@ -73,12 +79,40 @@ pub async fn handler(
         Err(e) => return error_response(&format!("{}", e)),
     };
 
-    // Load mount and list bucket contents
-    let mount = match state.peer().mount(bucket_id).await {
-        Ok(mount) => mount,
-        Err(e) => {
-            tracing::error!("Failed to load mount: {}", e);
-            return error_response("Failed to load bucket");
+    // Load mount - either from specific link or current state
+    let mount = if let Some(hash_str) = &query.at {
+        // Parse the hash string and create a Link with blake3 codec
+        match hash_str.parse::<common::linked_data::Hash>() {
+            Ok(hash) => {
+                // Create a Link from the hash using the raw codec
+                let link = common::linked_data::Link::new(common::linked_data::LD_RAW_CODEC, hash);
+                match common::mount::Mount::load(
+                    &link,
+                    state.peer().secret(),
+                    state.peer().blobs(),
+                )
+                .await
+                {
+                    Ok(mount) => mount,
+                    Err(e) => {
+                        tracing::error!("Failed to load mount from link: {}", e);
+                        return error_response("Failed to load historical version");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to parse hash: {}", e);
+                return error_response("Invalid hash format");
+            }
+        }
+    } else {
+        // Load current version
+        match state.peer().mount(bucket_id).await {
+            Ok(mount) => mount,
+            Err(e) => {
+                tracing::error!("Failed to load mount: {}", e);
+                return error_response("Failed to load bucket");
+            }
         }
     };
 
@@ -95,7 +129,7 @@ pub async fn handler(
     let path_segments = build_path_segments(&current_path);
 
     // Build parent path URL
-    let parent_path_url = build_parent_path_url(&current_path, &bucket_id);
+    let parent_path_url = build_parent_path_url(&current_path, &bucket_id, query.at.as_ref());
 
     // Convert BTreeMap<PathBuf, NodeLink> to display format
     let display_items: Vec<FileDisplayInfo> = items_map
@@ -116,6 +150,7 @@ pub async fn handler(
                     .map(|m| m.to_string())
                     .unwrap_or_else(|| "application/octet-stream".to_string())
             };
+
             FileDisplayInfo {
                 name,
                 path: format!("/{}", path.display()),
@@ -200,6 +235,8 @@ pub async fn handler(
             }
         };
 
+    let return_url = format!("/buckets/{}", bucket_id);
+
     let template = BucketExplorerTemplate {
         bucket_id: bucket_id.to_string(),
         bucket_name: bucket.name,
@@ -214,6 +251,9 @@ pub async fn handler(
         parent_path_url,
         items: display_items,
         read_only,
+        viewing_history,
+        at_hash: query.at,
+        return_url,
         api_url,
     };
 
@@ -241,9 +281,13 @@ fn build_path_segments(path: &str) -> Vec<PathSegment> {
     segments
 }
 
-fn build_parent_path_url(current_path: &str, bucket_id: &Uuid) -> String {
+fn build_parent_path_url(current_path: &str, bucket_id: &Uuid, at_hash: Option<&String>) -> String {
     if current_path == "/" {
-        return format!("/buckets/{}", bucket_id);
+        return if let Some(hash) = at_hash {
+            format!("/buckets/{}?at={}", bucket_id, hash)
+        } else {
+            format!("/buckets/{}", bucket_id)
+        };
     }
 
     let parent = std::path::Path::new(current_path)
@@ -252,9 +296,17 @@ fn build_parent_path_url(current_path: &str, bucket_id: &Uuid) -> String {
         .unwrap_or("/");
 
     if parent == "/" {
-        format!("/buckets/{}", bucket_id)
+        if let Some(hash) = at_hash {
+            format!("/buckets/{}?at={}", bucket_id, hash)
+        } else {
+            format!("/buckets/{}", bucket_id)
+        }
     } else {
-        format!("/buckets/{}?path={}", bucket_id, parent)
+        if let Some(hash) = at_hash {
+            format!("/buckets/{}?path={}&at={}", bucket_id, parent, hash)
+        } else {
+            format!("/buckets/{}?path={}", bucket_id, parent)
+        }
     }
 }
 

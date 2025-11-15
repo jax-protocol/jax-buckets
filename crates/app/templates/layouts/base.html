@@ -52,7 +52,21 @@
     
     <!-- Custom styles -->
     <link rel="stylesheet" href="/static/style.css">
-    
+
+    <!-- Load CodeMirror 6 once for all pages -->
+    <script type="module">
+      import { EditorView, basicSetup } from "https://esm.sh/codemirror@6.0.1";
+      import { markdown } from "https://esm.sh/@codemirror/lang-markdown@6.2.4";
+      import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
+
+      // Store in window for global access
+      window.CodeMirror = { EditorView, basicSetup, markdown, oneDark };
+      window.CodeMirrorLoaded = true;
+
+      // Dispatch event for any listeners
+      window.dispatchEvent(new Event('codemirror-loaded'));
+    </script>
+
     {% block head %}{% endblock %}
 </head>
 <body class="bg-background text-foreground flex flex-col min-h-screen">

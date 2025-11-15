@@ -1,0 +1,381 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ file_name }} - Jax{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <!-- Historical version banner -->
+    {% include "components/historical_banner.html" %}
+
+    <!-- Breadcrumb navigation -->
+    <nav aria-label="Breadcrumb">
+        <ol class="flex items-center gap-2 text-sm">
+            <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}{% if at_hash.is_some() %}?at={{ at_hash.as_ref().unwrap() }}{% endif %}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
+            {% for segment in path_segments %}
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}?path={{ segment.path }}{% if at_hash.is_some() %}&at={{ at_hash.as_ref().unwrap() }}{% endif %}" class="text-primary hover:underline">{{ segment.name }}</a></li>
+            {% endfor %}
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li class="text-muted-foreground">{{ file_name }}</li>
+        </ol>
+    </nav>
+
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold">
+            <i class="fas fa-file mr-2"></i>{{ file_name }}
+        </h1>
+        <div class="flex gap-2">
+            {% if is_editable && at_hash.is_none() %}
+            <button id="toggleEditBtn" class="button button-primary">
+                <i class="fas fa-edit"></i> <span id="toggleEditText">Edit</span>
+            </button>
+            <button id="saveBtn" class="button button-primary" style="display: none;">
+                <i class="fas fa-save"></i> Save
+            </button>
+            {% endif %}
+            <button id="shareBtn" class="button">
+                <i class="fas fa-share-alt"></i> Share
+            </button>
+            <a href="{{ back_url }}" class="button">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+        </div>
+    </div>
+
+    <!-- Shareable link (hidden by default) -->
+    <div id="shareLinkSection" class="share-link-container hidden">
+        <div class="flex items-center gap-2 mb-2">
+            <i class="fas fa-link text-green-600"></i>
+            <h3 class="font-semibold text-sm">Shareable Link</h3>
+        </div>
+        <div class="flex gap-2">
+            <input type="text" id="shareableLink" readonly
+                   class="share-link-input flex-1 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                   value="" />
+            <button onclick="copyShareLink()" class="button button-sm whitespace-nowrap">
+                <i class="fas fa-copy"></i> Copy
+            </button>
+        </div>
+    </div>
+
+    <!-- File metadata card -->
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-info-circle"></i>
+            <h2>File Information</h2>
+        </div>
+        <div class="p-4 space-y-2">
+            <div class="flex justify-between">
+                <span class="font-semibold">Path:</span>
+                <code class="text-sm">{{ file_path }}</code>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-semibold">Size:</span>
+                <span class="text-sm">{{ file_size }} bytes</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-semibold">MIME Type:</span>
+                <code class="text-sm">{{ mime_type }}</code>
+            </div>
+        </div>
+    </div>
+
+    <!-- File content card -->
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-file-alt"></i>
+            <h2>Content</h2>
+        </div>
+
+        <!-- Images -->
+        {% if mime_type.starts_with("image/") %}
+        <div class="p-4 text-center">
+            <img src="data:{{ mime_type }};base64,{{ content }}" alt="{{ file_name }}" class="max-w-full h-auto mx-auto border rounded">
+        </div>
+
+        <!-- Videos -->
+        {% else if mime_type.starts_with("video/") %}
+        <div class="p-4">
+            <video controls class="w-full max-w-4xl mx-auto rounded">
+                <source src="data:{{ mime_type }};base64,{{ content }}" type="{{ mime_type }}">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <!-- Audio -->
+        {% else if mime_type.starts_with("audio/") %}
+        <div class="p-4">
+            <audio controls class="w-full max-w-2xl mx-auto">
+                <source src="data:{{ mime_type }};base64,{{ content }}" type="{{ mime_type }}">
+                Your browser does not support the audio tag.
+            </audio>
+        </div>
+
+        <!-- Text files -->
+        {% else if is_text %}
+        <div class="p-4">
+            {% include "components/inline_editor.html" %}
+        </div>
+
+        <!-- Binary files -->
+        {% else %}
+        <div class="p-4 text-center">
+            <p class="text-muted-foreground mb-4">
+                <i class="fas fa-file-code text-4xl mb-2"></i><br>
+                Binary file ({{ file_size }} bytes)
+            </p>
+            <details class="text-left">
+                <summary class="cursor-pointer text-primary hover:underline mb-2">Show hex dump</summary>
+                <pre class="bg-muted p-4 rounded overflow-x-auto text-xs"><code>{{ content }}</code></pre>
+            </details>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<!-- CodeMirror 6 CSS (only loaded if file is editable) -->
+{% if is_editable && at_hash.is_none() %}
+<style>
+    .cm-editor {
+        height: 70vh;
+        min-height: 500px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    .dark .cm-editor {
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+</style>
+{% endif %}
+
+<style>
+    /* Shareable link section */
+    .share-link-container {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
+        border-radius: 12px;
+        padding: 1rem;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        animation: slideIn 0.3s ease;
+    }
+
+    .dark .share-link-container {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%);
+        border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .share-link-input {
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 0.875rem;
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .dark .share-link-input {
+        background: rgba(0, 0, 0, 0.3);
+        border-color: rgba(255, 255, 255, 0.2);
+        color: #e5e5e5;
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Markdown content styling */
+    #markdownContent {
+        line-height: 1.7;
+        color: inherit;
+    }
+
+    #markdownContent h1, #markdownContent h2, #markdownContent h3,
+    #markdownContent h4, #markdownContent h5, #markdownContent h6 {
+        margin-top: 1.5em;
+        margin-bottom: 0.75em;
+        font-weight: 600;
+        line-height: 1.25;
+    }
+
+    #markdownContent h1 { font-size: 2em; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 0.3em; }
+    #markdownContent h2 { font-size: 1.5em; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 0.3em; }
+    #markdownContent h3 { font-size: 1.25em; }
+    #markdownContent h4 { font-size: 1.1em; }
+    #markdownContent h5 { font-size: 1em; }
+    #markdownContent h6 { font-size: 0.9em; color: #6b7280; }
+
+    .dark #markdownContent h1, .dark #markdownContent h2 { border-bottom-color: rgba(255,255,255,0.1); }
+    .dark #markdownContent h6 { color: #9ca3af; }
+
+    #markdownContent p { margin-bottom: 1em; }
+    #markdownContent a { color: #3b82f6; text-decoration: underline; }
+    #markdownContent a:hover { color: #2563eb; }
+    .dark #markdownContent a { color: #60a5fa; }
+    .dark #markdownContent a:hover { color: #93c5fd; }
+
+    #markdownContent ul, #markdownContent ol { margin-left: 1.5em; margin-bottom: 1em; }
+    #markdownContent li { margin-bottom: 0.5em; }
+    #markdownContent ul { list-style-type: disc; }
+    #markdownContent ol { list-style-type: decimal; }
+
+    #markdownContent code {
+        background: rgba(0,0,0,0.05);
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
+    }
+    .dark #markdownContent code { background: rgba(255,255,255,0.1); }
+
+    #markdownContent pre {
+        background: rgba(0,0,0,0.05);
+        padding: 1em;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin-bottom: 1em;
+    }
+    .dark #markdownContent pre { background: rgba(255,255,255,0.05); }
+
+    #markdownContent pre code {
+        background: none;
+        padding: 0;
+        border-radius: 0;
+    }
+
+    #markdownContent blockquote {
+        border-left: 4px solid #e5e7eb;
+        padding-left: 1em;
+        margin-left: 0;
+        margin-bottom: 1em;
+        color: #6b7280;
+        font-style: italic;
+    }
+    .dark #markdownContent blockquote { border-left-color: #374151; color: #9ca3af; }
+
+    #markdownContent table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 1em;
+    }
+    #markdownContent th, #markdownContent td {
+        border: 1px solid #e5e7eb;
+        padding: 0.5em 1em;
+        text-align: left;
+    }
+    .dark #markdownContent th, .dark #markdownContent td { border-color: #374151; }
+    #markdownContent th { background: rgba(0,0,0,0.05); font-weight: 600; }
+    .dark #markdownContent th { background: rgba(255,255,255,0.05); }
+
+    #markdownContent hr {
+        border: none;
+        border-top: 1px solid #e5e7eb;
+        margin: 2em 0;
+    }
+    .dark #markdownContent hr { border-top-color: #374151; }
+
+    #markdownContent img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 6px;
+        margin: 1em 0;
+    }
+</style>
+
+<script>
+// Global configuration
+window.JAX_API_URL = '{{ api_url }}';
+window.JAX_BUCKET_ID = '{{ bucket_id }}';
+window.JAX_FILE_PATH = '{{ file_path }}';
+window.JAX_IS_MARKDOWN = {{ is_markdown }};
+window.JAX_IS_EDITABLE = {{ is_editable }};
+{% if at_hash.is_none() %}
+window.JAX_AT_HASH = null;
+{% else %}
+window.JAX_AT_HASH = '{{ at_hash.as_ref().unwrap() }}';
+{% endif %}
+
+// Share link functionality
+function copyShareLink() {
+    const input = document.getElementById('shareableLink');
+    input.select();
+    document.execCommand('copy');
+
+    const btn = event.target.closest('button');
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+    setTimeout(() => {
+        btn.innerHTML = originalHTML;
+    }, 2000);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const shareBtn = document.getElementById('shareBtn');
+    if (shareBtn) {
+        shareBtn.addEventListener('click', function() {
+            const section = document.getElementById('shareLinkSection');
+            const input = document.getElementById('shareableLink');
+
+            // Generate shareable link
+            const url = window.location.href;
+            input.value = url;
+
+            // Toggle visibility
+            section.classList.toggle('hidden');
+        });
+    }
+});
+</script>
+
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"></script>
+
+<!-- Initialize inline editor module -->
+{% if is_editable && at_hash.is_none() %}
+<script type="module">
+    import { initInlineEditor, initMarkdownRendering } from '/static/js/inline-editor.js';
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initInlineEditor(
+            window.JAX_BUCKET_ID,
+            window.JAX_FILE_PATH,
+            window.JAX_IS_MARKDOWN
+        );
+
+        if (window.JAX_IS_MARKDOWN) {
+            // Wait for marked.js to load
+            if (window.marked) {
+                initMarkdownRendering();
+            } else {
+                window.addEventListener('load', initMarkdownRendering);
+            }
+        }
+    });
+</script>
+{% else %}
+<script type="module">
+    import { initMarkdownRendering } from '/static/js/inline-editor.js';
+
+    document.addEventListener('DOMContentLoaded', function() {
+        if (window.JAX_IS_MARKDOWN) {
+            // Wait for marked.js to load
+            if (window.marked) {
+                initMarkdownRendering();
+            } else {
+                window.addEventListener('load', initMarkdownRendering);
+            }
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

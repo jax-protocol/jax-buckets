@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::ServiceState;
 
 #[derive(Template)]
-#[template(path = "pins_explorer.html")]
+#[template(path = "pages/buckets/pins.html")]
 pub struct PinsExplorerTemplate {
     pub bucket_id: String,
     pub bucket_name: String,

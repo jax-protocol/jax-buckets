@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "layouts/base.html" %}
 
 {% block title %}{{ bucket_name }} - History - Jax{% endblock %}
 
@@ -48,6 +48,7 @@
                     <th>Current Link</th>
                     <th>Previous Link</th>
                     <th>Created At</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -79,6 +80,11 @@
                     </td>
                     <td class="text-sm text-muted-foreground">
                         {{ entry.created_at_formatted }}
+                    </td>
+                    <td>
+                        <a href="/buckets/{{ bucket_id }}?at={{ entry.current_link }}" class="button button-sm button-primary">
+                            <i class="fas fa-folder-open"></i> Browse
+                        </a>
                     </td>
                 </tr>
                 {% endfor %}

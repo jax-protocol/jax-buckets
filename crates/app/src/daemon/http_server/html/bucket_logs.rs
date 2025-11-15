@@ -20,7 +20,7 @@ pub struct LogEntryDisplay {
 }
 
 #[derive(Template)]
-#[template(path = "bucket_logs.html")]
+#[template(path = "pages/buckets/logs.html")]
 pub struct BucketLogsTemplate {
     pub bucket_id: String,
     pub bucket_name: String,

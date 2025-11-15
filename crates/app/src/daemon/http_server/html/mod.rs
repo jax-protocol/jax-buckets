@@ -8,7 +8,6 @@ mod bucket_explorer;
 mod bucket_logs;
 mod buckets;
 mod file_viewer;
-mod index;
 mod peers_explorer;
 mod pins_explorer;
 
@@ -22,7 +21,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .allow_credentials(false);
 
     Router::new()
-        .route("/", get(index::handler))
+        .route("/", get(buckets::handler))
         .route("/buckets", get(buckets::handler))
         .route("/buckets/:bucket_id", get(bucket_explorer::handler))
         .route("/buckets/:bucket_id/view", get(file_viewer::handler))

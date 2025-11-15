@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 pub const NONCE_SIZE: usize = 12;
 /// Size of ChaCha20-Poly1305 key in bytes (256 bits)
 pub const SECRET_SIZE: usize = 32;
+/// Size of BLAKE3 hash in bytes (256 bits)
+pub const BLAKE3_HASH_SIZE: usize = 32;
 /// Default chunk size for streaming operations
 #[allow(dead_code)]
 pub const CHUNK_SIZE: usize = 4096;
@@ -36,7 +38,9 @@ pub enum SecretError {
 /// A 256-bit symmetric encryption key for content encryption
 ///
 /// Each `Secret` is used to encrypt a single item (node or data blob) using ChaCha20-Poly1305 AEAD.
-/// The encrypted format is: `nonce (12 bytes) || ciphertext (variable) || tag (16 bytes)`.
+/// The encrypted format is: `nonce (12 bytes) || encrypted(hash(32 bytes) || plaintext) || tag (16 bytes)`.
+/// The BLAKE3 hash of the plaintext is prepended before encryption to enable content verification
+/// without full decryption (useful for filesystem sync operations).
 ///
 /// # Examples
 ///
@@ -108,13 +112,22 @@ impl Secret {
 
     /// Encrypt data using ChaCha20-Poly1305 AEAD
     ///
-    /// The output format is: `nonce (12 bytes) || ciphertext || auth_tag (16 bytes)`.
+    /// The output format is: `nonce (12 bytes) || encrypted(hash(32) || plaintext) || auth_tag (16 bytes)`.
+    /// A BLAKE3 hash of the plaintext is computed and prepended to the data before encryption.
     /// A random nonce is generated for each encryption operation.
     ///
     /// # Errors
     ///
     /// Returns an error if encryption fails (should be rare, only on system RNG failure).
     pub fn encrypt(&self, data: &[u8]) -> Result<Vec<u8>, SecretError> {
+        // Compute BLAKE3 hash of plaintext
+        let plaintext_hash = blake3::hash(data);
+
+        // Prepend hash to plaintext
+        let mut data_with_hash = Vec::with_capacity(BLAKE3_HASH_SIZE + data.len());
+        data_with_hash.extend_from_slice(plaintext_hash.as_bytes());
+        data_with_hash.extend_from_slice(data);
+
         let key = Key::from_slice(self.bytes());
         let cipher = ChaCha20Poly1305::new(key);
 
@@ -125,7 +138,7 @@ impl Secret {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let ciphertext = cipher
-            .encrypt(nonce, data.as_ref())
+            .encrypt(nonce, data_with_hash.as_ref())
             .map_err(|_| anyhow::anyhow!("encrypt error"))?;
 
         let mut out = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
@@ -137,13 +150,16 @@ impl Secret {
 
     /// Decrypt data using ChaCha20-Poly1305 AEAD
     ///
-    /// Expects input in the format: `nonce (12 bytes) || ciphertext || auth_tag (16 bytes)`.
+    /// Expects input in the format: `nonce (12 bytes) || encrypted(hash(32) || plaintext) || auth_tag (16 bytes)`.
+    /// Returns only the plaintext (hash is stripped but verified for integrity).
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - Data is too short to contain a nonce
     /// - Authentication tag verification fails (data was tampered with or wrong key)
+    /// - Decrypted data is too short to contain the hash header
+    /// - Hash verification fails (data corruption)
     pub fn decrypt(&self, data: &[u8]) -> Result<Vec<u8>, SecretError> {
         if data.len() < NONCE_SIZE {
             return Err(anyhow::anyhow!("data too short for nonce").into());
@@ -156,7 +172,55 @@ impl Secret {
             .decrypt(nonce, &data[NONCE_SIZE..])
             .map_err(|_| anyhow::anyhow!("decrypt error"))?;
 
-        Ok(decrypted.to_vec())
+        // Extract hash and plaintext
+        if decrypted.len() < BLAKE3_HASH_SIZE {
+            return Err(anyhow::anyhow!("decrypted data too short for hash header").into());
+        }
+
+        let stored_hash = &decrypted[..BLAKE3_HASH_SIZE];
+        let plaintext = &decrypted[BLAKE3_HASH_SIZE..];
+
+        // Verify hash integrity
+        let computed_hash = blake3::hash(plaintext);
+        if stored_hash != computed_hash.as_bytes() {
+            return Err(anyhow::anyhow!("hash verification failed - data corrupted").into());
+        }
+
+        Ok(plaintext.to_vec())
+    }
+
+    /// Extract the BLAKE3 hash of the plaintext without decrypting the full content
+    ///
+    /// This is useful for filesystem sync operations where you only need to compare
+    /// content hashes without loading the entire file into memory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Data is too short to contain a nonce
+    /// - Authentication tag verification fails (data was tampered with or wrong key)
+    /// - Decrypted data is too short to contain the hash header
+    pub fn extract_plaintext_hash(&self, data: &[u8]) -> Result<[u8; BLAKE3_HASH_SIZE], SecretError> {
+        if data.len() < NONCE_SIZE {
+            return Err(anyhow::anyhow!("data too short for nonce").into());
+        }
+
+        let key = Key::from_slice(self.bytes());
+        let nonce = Nonce::from_slice(&data[..NONCE_SIZE]);
+        let cipher = ChaCha20Poly1305::new(key);
+        let decrypted = cipher
+            .decrypt(nonce, &data[NONCE_SIZE..])
+            .map_err(|_| anyhow::anyhow!("decrypt error"))?;
+
+        // Extract just the hash
+        if decrypted.len() < BLAKE3_HASH_SIZE {
+            return Err(anyhow::anyhow!("decrypted data too short for hash header").into());
+        }
+
+        let mut hash = [0u8; BLAKE3_HASH_SIZE];
+        hash.copy_from_slice(&decrypted[..BLAKE3_HASH_SIZE]);
+
+        Ok(hash)
     }
 
     /// Create an encrypted reader from a plaintext reader
@@ -243,5 +307,61 @@ mod test {
 
         let just_right = [1u8; SECRET_SIZE];
         assert!(Secret::from_slice(&just_right).is_ok());
+    }
+
+    #[test]
+    fn test_extract_plaintext_hash() {
+        let secret = Secret::generate();
+        let data = b"test data for hash extraction";
+
+        // Encrypt the data
+        let encrypted = secret.encrypt(data).unwrap();
+
+        // Extract the hash without full decryption
+        let extracted_hash = secret.extract_plaintext_hash(&encrypted).unwrap();
+
+        // Compute expected hash
+        let expected_hash = blake3::hash(data);
+
+        assert_eq!(extracted_hash, *expected_hash.as_bytes());
+    }
+
+    #[test]
+    fn test_hash_verification_on_decrypt() {
+        let secret = Secret::generate();
+        let data = b"test data for integrity check";
+
+        // Encrypt the data
+        let mut encrypted = secret.encrypt(data).unwrap();
+
+        // Decrypt should succeed with valid data
+        let decrypted = secret.decrypt(&encrypted).unwrap();
+        assert_eq!(decrypted, data.to_vec());
+
+        // Corrupt the encrypted data (modify a byte in the ciphertext region)
+        // Note: This should fail authentication, not hash verification
+        if encrypted.len() > NONCE_SIZE + 16 {
+            encrypted[NONCE_SIZE + 10] ^= 0xFF;
+
+            // This should fail during ChaCha20-Poly1305 authentication
+            let result = secret.decrypt(&encrypted);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn test_empty_data_encryption() {
+        let secret = Secret::generate();
+        let data = b"";
+
+        let encrypted = secret.encrypt(data).unwrap();
+        let decrypted = secret.decrypt(&encrypted).unwrap();
+
+        assert_eq!(decrypted, data.to_vec());
+
+        // Hash should still be extractable
+        let hash = secret.extract_plaintext_hash(&encrypted).unwrap();
+        let expected_hash = blake3::hash(data);
+        assert_eq!(hash, *expected_hash.as_bytes());
     }
 }

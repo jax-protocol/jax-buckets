@@ -2,10 +2,13 @@ use clap::{Args, Subcommand};
 
 pub mod add;
 pub mod cat;
+pub mod clone;
+pub mod clone_state;
 pub mod create;
 pub mod list;
 pub mod ls;
 pub mod share;
+pub mod sync;
 
 use crate::daemon::http_server::api::v0::bucket::{CreateRequest, ListRequest, ShareRequest};
 use crate::op::Op;
@@ -17,6 +20,8 @@ crate::command_enum! {
     (Ls, ls::Ls),
     (Cat, cat::Cat),
     (Share, ShareRequest),
+    (Clone, clone::Clone),
+    (Sync, sync::Sync),
 }
 
 // Rename the generated Command to BucketCommand for clarity

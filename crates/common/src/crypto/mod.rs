@@ -37,5 +37,5 @@ mod secret;
 mod secret_share;
 
 pub use keys::{PublicKey, SecretKey};
-pub use secret::{Secret, SecretError};
+pub use secret::{Secret, SecretError, BLAKE3_HASH_SIZE};
 pub use secret_share::{SecretShare, SecretShareError};
