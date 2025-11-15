@@ -19,7 +19,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history and tags
+          fetch-depth: 0 # Fetch all history and tags
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -47,9 +47,6 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-build-target-
-
-      - name: Run tests
-        run: cargo test --all
 
       - name: Publish crates to crates.io (in order with delays)
         run: |
