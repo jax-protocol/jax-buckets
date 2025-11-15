@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
+## v0.1.3 (2025-11-15)
+
 ## v0.1.2 (2025-11-15)
 
 <csr-id-1b2d7c55806152c9e67d452c90543966f1e6b7d6/>
@@ -70,9 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 1 commit contributed to the release.
- - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
- - 0 issues like '(#ID)' were seen in commit messages
+ - 5 commits contributed to the release.
+ - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#5](https://github.com/jax-ethdenver-2025/jax-buckets/issues/5)
 
 ### Commit Details
 
@@ -80,8 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <details><summary>view details</summary>
 
+ * **[#5](https://github.com/jax-ethdenver-2025/jax-buckets/issues/5)**
+    - Consolidate peer state management into unified architecture ([`1b2d7c5`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/1b2d7c55806152c9e67d452c90543966f1e6b7d6))
  * **Uncategorized**
+    - Bump jax-common v0.1.2 ([`e1d5272`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/e1d5272f93e6b1eeb60c0ccbf4976a5247fdc952))
     - Own ([`2f3e70f`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/2f3e70f535b5aff4a13ea4df9bbf59047d0dd8c9))
+    - Bump jax-common v0.1.2, jax-bucket v0.1.3 ([`625a2eb`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/625a2eb01786f8367e0446da8420c233447c0793))
+    - Adjusting changelogs prior to release of jax-common v0.1.1, jax-service v0.1.2, jax-bucket v0.1.2 ([`7cb3b73`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/7cb3b737b9febdcc7612cf9b827b7b63ee9fbb4f))
 </details>
 
 ## v0.1.1 (2025-10-12)
