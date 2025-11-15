@@ -75,16 +75,16 @@ where
     }
 
     // Determine between what links we should download manifests for
-    let stop_link = if let Some(ancestor) = common_ancestor {
-        Some(&ancestor.0.clone())
-    } else {
+    let stop_link_owned = common_ancestor.as_ref().map(|ancestor| ancestor.0.clone());
+    let stop_link = stop_link_owned.as_ref();
+
+    if stop_link.is_none() && common_ancestor.is_none() {
         // No common ancestor - we'll sync everything from the target back to genesis
         tracing::info!(
             "No common ancestor for bucket {}, syncing from genesis",
             job.bucket_id
         );
-        None
-    };
+    }
 
     // now we know there is a valid list of manifests we should
     //  fetch and apply to our log
