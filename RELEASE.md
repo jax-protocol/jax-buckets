@@ -27,9 +27,31 @@ Publishing to crates.io is handled automatically by GitHub Actions when tags are
 
 ## When to Release
 
-### From the Command Line (Current Workflow)
+### Automated via Release PR (Recommended)
 
-This is the recommended approach for now:
+This is the recommended approach:
+
+1. **Merge PRs to main** with conventional commit messages
+   - The `release-pr.yml` workflow automatically runs after each merge
+   - It creates/updates a PR on the `release-automation` branch
+   - The PR accumulates all version bumps and changelog updates
+
+2. **Review the Release PR**
+   - Check the version bumps in `Cargo.toml` files
+   - Review the `CHANGELOG.md` updates
+   - Verify conventional commits are categorized correctly
+
+3. **Merge the Release PR**
+   - This pushes the git tags to the repository
+   - GitHub Actions automatically publishes to crates.io via `publish-crate.yml`
+
+4. **Manual trigger** (if needed):
+   - Go to Actions → "Create Release PR" → "Run workflow"
+   - Useful if the automatic workflow didn't trigger
+
+### Manual Release (Alternative)
+
+If you prefer to release manually from the command line:
 
 1. **Make sure all changes are committed and pushed**
    ```bash
@@ -114,25 +136,26 @@ Or use:
 cargo changelog --write jax-bucket
 ```
 
-## Automating Releases via PR (Future)
+## How the Automation Works
 
-Currently, releases are done manually from the command line. In the future, we could automate this with:
+The automated release process is implemented in `.github/workflows/release-pr.yml`:
 
-### Option 1: Release PR Bot
-- Use a bot that creates "Release PR" when commits accumulate
-- PR shows the changelog preview
-- Merging the PR triggers the release
+1. **Triggered on push to main** (after PR merges) or manual workflow dispatch
+2. **Checks if release is needed** by running `cargo smart-release` dry-run
+3. **Creates/updates release branch** (`release-automation`)
+4. **Runs cargo-smart-release** with `--execute --no-publish --allow-dirty`
+   - Bumps versions based on conventional commits
+   - Updates CHANGELOGs
+   - Creates git tags locally
+5. **Opens or updates a PR** showing all changes for review
+6. **On merge**: Tags are pushed, triggering `publish-crate.yml` to publish to crates.io
 
-### Option 2: GitHub Actions Workflow Dispatch
-- Add a manual workflow that runs `cargo-smart-release`
-- Triggered via GitHub UI "Run workflow" button
-- Would need to configure git credentials in the action
-
-### Option 3: Label-Based Releases
-- Add a label like `release:ready` to a PR
-- On merge, a GitHub Action runs the release process
-
-**For now, manual command-line releases are simpler and give you full control.**
+### Benefits of Automated Approach
+- No need to manually run `cargo smart-release`
+- Changes accumulate automatically after each merge
+- Full audit trail via PR review
+- One merge triggers the entire release process
+- Can still manually trigger via GitHub Actions UI
 
 ## Troubleshooting
 
@@ -152,11 +175,33 @@ Make sure you have push permissions to the repository. Check `git remote -v` to 
 
 - `release.toml` - Configuration for cargo-smart-release
 - `crates/*/CHANGELOG.md` - Per-crate changelogs
-- `.github/workflows/publish-crate.yml` - Automated publishing workflow
+- `.github/workflows/release-pr.yml` - Creates automated release PRs
+- `.github/workflows/publish-crate.yml` - Publishes to crates.io when tags are pushed
 
 ## Examples
 
-### Typical Release Flow
+### Typical Release Flow (Automated)
+
+```bash
+# 1. Make changes and use conventional commits
+git commit -m "feat: add new file upload feature"
+
+# 2. Merge to main (via PR or direct push)
+git push origin main
+
+# 3. GitHub Actions automatically creates/updates a Release PR
+# Check: https://github.com/YOUR_ORG/jax-bucket/pulls
+
+# 4. Review the Release PR:
+#    - Verify version bumps are correct
+#    - Check CHANGELOG updates
+#    - Ensure tags are created
+
+# 5. Merge the Release PR
+#    → Tags pushed → crates.io publish triggered automatically
+```
+
+### Manual Release (Alternative)
 
 ```bash
 # 1. Check what's changed
@@ -177,7 +222,14 @@ cargo smart-release jax-bucket --execute --no-publish
 ```bash
 # Make your fix with a conventional commit
 git commit -m "fix: critical security issue in authentication"
+git push origin main
 
-# Release immediately
+# Option 1: Let automation handle it
+# → Release PR will be created/updated automatically
+
+# Option 2: Manually trigger via GitHub Actions
+# Go to Actions → "Create Release PR" → "Run workflow"
+
+# Option 3: Manual release (fastest)
 cargo smart-release jax-bucket --execute --no-publish --bump patch
 ```
