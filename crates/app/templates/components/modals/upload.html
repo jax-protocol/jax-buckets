@@ -116,9 +116,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     uploadForm.addEventListener('submit', async function(e) {
-        console.log('=== UPLOAD FORM SUBMITTED ===');
         e.preventDefault();
-        console.log('Form default prevented');
 
         const files = fileInput.files;
         if (files.length === 0) {
@@ -137,15 +135,8 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('bucket_id', window.JAX_BUCKET_ID);
         formData.append('mount_path', window.JAX_CURRENT_PATH);
 
-        console.log('Uploading', files.length, 'files to mount_path:', window.JAX_CURRENT_PATH);
         for (let i = 0; i < files.length; i++) {
-            console.log('  - Adding file:', files[i].name);
             formData.append('files', files[i]);
-        }
-
-        // Debug: log FormData contents
-        for (let pair of formData.entries()) {
-            console.log('FormData:', pair[0], '=', pair[1] instanceof File ? pair[1].name : pair[1]);
         }
 
         try {
@@ -159,11 +150,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (response.ok) {
                 const result = await response.json();
-                console.log('Upload response:', result);
-                console.log('  Total files:', result.total_files);
-                console.log('  Successful:', result.successful_files);
-                console.log('  Failed:', result.failed_files);
-                console.log('  File details:', result.files);
 
                 uploadProgressFill.style.width = '100%';
 
@@ -171,24 +157,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const successMsg = `Successfully uploaded ${result.successful_files} file(s)`;
                 const failMsg = result.failed_files > 0 ? `, ${result.failed_files} failed` : '';
                 showStatus(uploadStatus, successMsg + failMsg, result.failed_files > 0 ? 'warning' : 'success');
-
-                // Show detailed results if there were failures
-                if (result.failed_files > 0) {
-                    const failedFiles = result.files.filter(f => !f.success);
-                    console.error('=== FAILED UPLOADS ===');
-                    failedFiles.forEach(f => {
-                        console.error(`  ❌ ${f.mount_path}`);
-                        console.error(`     Error: ${f.error}`);
-                        console.error(`     Size: ${f.size} bytes`);
-                    });
-                }
-
-                // Show successful uploads
-                const successfulFiles = result.files.filter(f => f.success);
-                console.log('=== SUCCESSFUL UPLOADS ===');
-                successfulFiles.forEach(f => {
-                    console.log(`  ✓ ${f.mount_path} (${f.mime_type})`);
-                });
 
                 // Reload page on success after a brief delay
                 if (result.successful_files > 0) {

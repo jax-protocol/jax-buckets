@@ -13,6 +13,8 @@ use common::prelude::Manifest;
 use crate::daemon::http_server::Config;
 use crate::ServiceState;
 
+use super::file_explorer::{FileMetadata, PathSegment};
+
 #[derive(Debug, Clone)]
 pub struct ShareInfo {
     pub public_key: String,
@@ -65,8 +67,8 @@ pub struct PeersExplorerTemplate {
     pub api_url: String,
     pub read_only: bool,
     pub current_path: String,
-    pub file_metadata: Option<super::file_explorer::FileMetadata>,
-    pub path_segments: Vec<super::file_explorer::PathSegment>,
+    pub file_metadata: Option<FileMetadata>,
+    pub path_segments: Vec<PathSegment>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

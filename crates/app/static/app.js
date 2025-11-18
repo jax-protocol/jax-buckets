@@ -363,12 +363,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   BucketCreation.init(apiUrl);
   if (bucketId) {
-    // FileUpload.init(apiUrl, bucketId); // DISABLED - upload modal in index.html has its own handler
-    // BucketShare.init(apiUrl, bucketId); // REMOVED - now inline in share_modal.html
     FileRename.init(apiUrl, bucketId);
     FileDelete.init(apiUrl, bucketId);
     NewFile.init(apiUrl, bucketId, currentPath);
   }
-
-  // File editor removed - inline editing is now handled in file_viewer
 });

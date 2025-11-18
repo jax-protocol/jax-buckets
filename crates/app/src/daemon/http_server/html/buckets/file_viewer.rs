@@ -11,6 +11,8 @@ use common::linked_data::BlockEncoded;
 use crate::daemon::http_server::Config;
 use crate::ServiceState;
 
+use super::file_explorer::FileMetadata;
+
 #[derive(Debug, Clone)]
 pub struct FileContent {
     pub data: Vec<u8>,
@@ -47,7 +49,7 @@ pub struct FileViewerTemplate {
     pub manifest_previous_link: Option<String>,
     pub manifest_shares: Vec<ManifestShare>,
     pub file_path: String,
-    pub file_metadata: Option<super::file_explorer::FileMetadata>,
+    pub file_metadata: Option<FileMetadata>,
     pub path_segments: Vec<PathSegment>,
     pub is_editable: bool,
     pub content: String,
@@ -329,7 +331,7 @@ pub async fn handler(
         manifest_previous_link,
         manifest_shares,
         file_path: file_path.clone(),
-        file_metadata: Some(super::file_explorer::FileMetadata {
+        file_metadata: Some(FileMetadata {
             name: file_name,
             size_formatted: file_size_formatted,
             mime_type: file_content.mime_type.clone(),

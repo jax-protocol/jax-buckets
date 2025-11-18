@@ -10,7 +10,7 @@ use uuid::Uuid;
 use common::linked_data::BlockEncoded;
 use common::mount::Manifest;
 
-use crate::daemon::http_server::Config;
+use crate::daemon::http_server::{Config, MAX_UPLOAD_SIZE_BYTES};
 use crate::ServiceState;
 
 #[derive(Template)]
@@ -330,7 +330,7 @@ pub async fn handler(
         at_hash: query.at,
         return_url,
         api_url,
-        max_upload_size_mb: crate::daemon::http_server::MAX_UPLOAD_SIZE_BYTES / (1024 * 1024),
+        max_upload_size_mb: MAX_UPLOAD_SIZE_BYTES / (1024 * 1024),
         file_metadata: None,
     };
 
