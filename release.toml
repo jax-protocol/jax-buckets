@@ -28,8 +28,9 @@ changelog-format = "conventional"
 # Commit message template
 release-commit-message = "release"
 
-# Don't create individual tags for each crate, use workspace-level tags
-individual-tag-names = false
+# Create individual tags for each crate (jax-common-v*, jax-bucket-v*)
+# This allows releasing only the crates that changed
+individual-tag-names = true
 
 # Update dependencies between workspace crates
 update-dependencies = true
