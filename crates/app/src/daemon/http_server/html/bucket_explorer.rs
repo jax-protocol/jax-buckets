@@ -50,6 +50,7 @@ pub struct BucketExplorerTemplate {
     pub at_hash: Option<String>,
     pub return_url: String,
     pub api_url: String,
+    pub max_upload_size_mb: usize,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -321,6 +322,7 @@ pub async fn handler(
         at_hash: query.at,
         return_url,
         api_url,
+        max_upload_size_mb: crate::daemon::http_server::MAX_UPLOAD_SIZE_BYTES / (1024 * 1024),
     };
 
     template.into_response()

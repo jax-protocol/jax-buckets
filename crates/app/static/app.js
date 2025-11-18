@@ -79,14 +79,9 @@ const FileUpload = {
       const file = fileInput.files[0];
       const path = window.JAX_CURRENT_PATH || "/";
 
-      // Construct mount_path: join directory path with filename
-      const mountPath = path.endsWith("/")
-        ? path + file.name
-        : path + "/" + file.name;
-
       const formData = new FormData();
       formData.append("bucket_id", bucketId);
-      formData.append("mount_path", mountPath);
+      formData.append("mount_path", path);
       formData.append("file", file);
 
       this.showStatus(status, "Uploading...", "info");
@@ -103,7 +98,7 @@ const FileUpload = {
             "File uploaded successfully! Reloading...",
             "success",
           );
-          setTimeout(() => window.location.reload(), 1000);
+          // setTimeout(() => window.location.reload(), 1000);
         } else {
           const error = await response.text();
           this.showStatus(status, "Upload failed: " + error, "error");
@@ -440,7 +435,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   BucketCreation.init(apiUrl);
   if (bucketId) {
-    FileUpload.init(apiUrl, bucketId);
+    // FileUpload.init(apiUrl, bucketId); // DISABLED - upload modal in index.html has its own handler
     BucketShare.init(apiUrl, bucketId);
     FileRename.init(apiUrl, bucketId);
     FileDelete.init(apiUrl, bucketId);
