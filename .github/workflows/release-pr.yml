@@ -51,21 +51,7 @@ jobs:
       - name: Check if release is needed
         id: check
         run: |
-          # First check: do the current manifest versions already have tags?
-          COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
-          BUCKET_VERSION=$(grep "^version" crates/app/Cargo.toml | cut -d'"' -f2)
-
-          echo "Current versions: jax-common=$COMMON_VERSION, jax-bucket=$BUCKET_VERSION"
-
-          # Check if tags already exist for these versions
-          if git ls-remote --tags origin | grep -q "refs/tags/jax-common-v$COMMON_VERSION$" && \
-             git ls-remote --tags origin | grep -q "refs/tags/jax-bucket-v$BUCKET_VERSION$"; then
-            echo "✅ Current versions already have tags - no release needed"
-            echo "needs_release=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Second check: are there conventional commits since the last release?
+          # Get the latest release tag
           LATEST_TAG=$(git describe --tags --abbrev=0 --match "jax-bucket-v*" 2>/dev/null || echo "")
 
           if [ -z "$LATEST_TAG" ]; then
@@ -74,7 +60,12 @@ jobs:
             exit 0
           fi
 
-          # Count commits with conventional commit prefixes since last tag
+          echo "Latest release tag: $LATEST_TAG"
+
+          # Check if there are conventional commits since the last tag
+          # This handles both cases:
+          # 1. After merging release PR: no new commits → skip
+          # 2. After new feat/fix commits: new commits exist → create release
           COMMIT_COUNT=$(git log "$LATEST_TAG"..HEAD --oneline --grep="^feat\|^fix\|^feat!\|BREAKING CHANGE" | wc -l)
 
           if [ "$COMMIT_COUNT" -gt 0 ]; then
