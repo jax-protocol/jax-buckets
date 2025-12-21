@@ -155,7 +155,10 @@ impl BidirectionalHandler for Ping {
                 let peer_ids = match peer.blobs().get_cbor::<Manifest>(&our_link.hash()).await {
                     Ok(manifest) => manifest.get_peer_ids(),
                     Err(e) => {
-                        tracing::warn!("Failed to load manifest for peer list, using sender only: {}", e);
+                        tracing::warn!(
+                            "Failed to load manifest for peer list, using sender only: {}",
+                            e
+                        );
                         vec![*sender_node_id]
                     }
                 };
@@ -259,13 +262,19 @@ impl BidirectionalHandler for Ping {
                         match peer.blobs().get_cbor::<Manifest>(&our_link.hash()).await {
                             Ok(manifest) => manifest.get_peer_ids(),
                             Err(e) => {
-                                tracing::warn!("Failed to load manifest for peer list, using recipient only: {}", e);
+                                tracing::warn!(
+                                    "Failed to load manifest for peer list, using recipient only: {}",
+                                    e
+                                );
                                 vec![*recipient_node_id]
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to get head for peer list, using recipient only: {}", e);
+                        tracing::warn!(
+                            "Failed to get head for peer list, using recipient only: {}",
+                            e
+                        );
                         vec![*recipient_node_id]
                     }
                 };
