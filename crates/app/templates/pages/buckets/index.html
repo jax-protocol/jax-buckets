@@ -245,10 +245,16 @@
                 <input type="text" id="moveSourceDisplay" class="uk-input" disabled>
             </div>
             <div>
-                <label for="moveDestPath" class="block text-sm font-medium mb-2">Destination Path</label>
-                <input type="text" id="moveDestPath" name="dest_path" class="uk-input"
-                       placeholder="/path/to/destination" required>
-                <p class="text-xs text-muted-foreground mt-1">Enter the full destination path (e.g., /folder/newname.txt)</p>
+                <label for="moveDestDir" class="block text-sm font-medium mb-2">Destination Folder</label>
+                <select id="moveDestDir" class="uk-select" required>
+                    <option value="/">/ (root)</option>
+                </select>
+                <p class="text-xs text-muted-foreground mt-1">Select the folder to move to</p>
+            </div>
+            <div>
+                <label for="moveDestName" class="block text-sm font-medium mb-2">Name</label>
+                <input type="text" id="moveDestName" name="dest_name" class="uk-input" required>
+                <p class="text-xs text-muted-foreground mt-1">You can rename the item while moving</p>
             </div>
             <div id="moveStatus" class="hidden"></div>
             <div class="flex gap-4 justify-end mt-4">

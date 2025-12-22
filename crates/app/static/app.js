@@ -335,7 +335,14 @@ const FileDelete = {
 
 // File Move Module
 const FileMove = {
+  directories: [],
+  apiUrl: null,
+  bucketId: null,
+
   init(apiUrl, bucketId) {
+    this.apiUrl = apiUrl;
+    this.bucketId = bucketId;
+
     const form = document.getElementById("moveForm");
     if (!form) return;
 
@@ -343,22 +350,17 @@ const FileMove = {
       e.preventDefault();
 
       const sourcePath = document.getElementById("moveSourcePath").value;
-      const destPath = document.getElementById("moveDestPath").value.trim();
+      const destDir = document.getElementById("moveDestDir").value;
+      const destName = document.getElementById("moveDestName").value.trim();
       const status = document.getElementById("moveStatus");
 
-      if (!destPath) {
-        this.showStatus(status, "Please enter a destination path", "error");
+      if (!destName) {
+        this.showStatus(status, "Please enter a name", "error");
         return;
       }
 
-      if (!destPath.startsWith("/")) {
-        this.showStatus(
-          status,
-          "Destination path must be absolute (start with /)",
-          "error",
-        );
-        return;
-      }
+      // Build full destination path
+      const destPath = destDir === "/" ? "/" + destName : destDir + "/" + destName;
 
       this.showStatus(status, "Moving...", "info");
 
@@ -387,6 +389,52 @@ const FileMove = {
       } catch (error) {
         this.showStatus(status, "Move failed: " + error.message, "error");
       }
+    });
+  },
+
+  async fetchDirectories() {
+    if (!this.apiUrl || !this.bucketId) return;
+
+    try {
+      const response = await fetch(`${this.apiUrl}/api/v0/bucket/ls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bucket_id: this.bucketId,
+          path: "/",
+          deep: true,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Filter to only directories and sort
+        this.directories = data.items
+          .filter((item) => item.is_dir)
+          .map((item) => item.path)
+          .sort();
+      }
+    } catch (error) {
+      console.error("Failed to fetch directories:", error);
+    }
+  },
+
+  populateDirectoryDropdown(currentDir) {
+    const select = document.getElementById("moveDestDir");
+    if (!select) return;
+
+    // Clear existing options except root
+    select.innerHTML = '<option value="/">/ (root)</option>';
+
+    // Add directories
+    this.directories.forEach((dir) => {
+      const option = document.createElement("option");
+      option.value = dir;
+      option.textContent = dir;
+      if (dir === currentDir) {
+        option.selected = true;
+      }
+      select.appendChild(option);
     });
   },
 
@@ -424,13 +472,23 @@ function openDeleteModal(path, name, isDir) {
   UIkit.modal("#delete-modal").show();
 }
 
-function openMoveModal(path, name, isDir) {
+async function openMoveModal(path, name, isDir) {
   document.getElementById("moveSourcePath").value = path;
   document.getElementById("moveSourceDisplay").value = path;
-  document.getElementById("moveDestPath").value = path;
+  document.getElementById("moveDestName").value = name;
   document.getElementById("moveItemType").textContent = isDir
     ? "Directory"
     : "File";
+
+  // Get current directory from path
+  const pathParts = path.split("/");
+  pathParts.pop(); // Remove filename
+  const currentDir = pathParts.join("/") || "/";
+
+  // Fetch directories and populate dropdown
+  await FileMove.fetchDirectories();
+  FileMove.populateDirectoryDropdown(currentDir);
+
   UIkit.modal("#move-modal").show();
 }
 
