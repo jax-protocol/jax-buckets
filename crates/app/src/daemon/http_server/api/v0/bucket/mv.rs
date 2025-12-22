@@ -113,6 +113,15 @@ impl IntoResponse for MvError {
                 format!("Destination already exists: {}", path.display()),
             )
                 .into_response(),
+            MvError::Mount(MountError::MoveIntoSelf { from, to }) => (
+                http::StatusCode::BAD_REQUEST,
+                format!(
+                    "Cannot move '{}' into itself: destination '{}' is inside source",
+                    from.display(),
+                    to.display()
+                ),
+            )
+                .into_response(),
             MvError::Mount(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected error".to_string(),
