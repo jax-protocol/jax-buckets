@@ -246,9 +246,11 @@ impl Mount {
         let secret = share.recover(secret_key)?;
 
         let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
-        let entry =
-            Self::_get_node_from_blobs(&NodeLink::Dir(manifest.entry().clone(), secret.clone()), blobs)
-                .await?;
+        let entry = Self::_get_node_from_blobs(
+            &NodeLink::Dir(manifest.entry().clone(), secret.clone()),
+            blobs,
+        )
+        .await?;
 
         // Read height from the manifest
         let height = manifest.height();
@@ -342,7 +344,9 @@ impl Mount {
             }
 
             // Record the add operation in the ops log
-            inner.ops_log.record(OpType::Add, clean_path(path), Some(link), false);
+            inner
+                .ops_log
+                .record(OpType::Add, clean_path(path), Some(link), false);
         }
 
         Ok(())
@@ -385,9 +389,6 @@ impl Mount {
             // Track the new root node hash
             inner.pins.insert(link.hash());
             inner.entry = parent_node;
-
-            // Record the remove operation in the ops log
-            inner.ops_log.record(OpType::Remove, removed_path, None, is_dir);
         } else {
             // Save the modified parent node to blobs
             let secret = Secret::generate();
@@ -419,9 +420,14 @@ impl Mount {
             if let Some(new_entry) = new_entry {
                 inner.entry = new_entry;
             }
+        }
 
-            // Record the remove operation in the ops log
-            inner.ops_log.record(OpType::Remove, removed_path, None, is_dir);
+        // Record the remove operation in the ops log
+        {
+            let mut inner = self.0.lock().await;
+            inner
+                .ops_log
+                .record(OpType::Remove, removed_path, None, is_dir);
         }
 
         Ok(())
@@ -507,7 +513,9 @@ impl Mount {
             }
 
             // Record the mkdir operation in the ops log
-            inner.ops_log.record(OpType::Mkdir, path.to_path_buf(), None, true);
+            inner
+                .ops_log
+                .record(OpType::Mkdir, path.to_path_buf(), None, true);
         }
 
         Ok(())
@@ -684,184 +692,10 @@ impl Mount {
             // ============================================================
             // STEP 6: Record mv operation in the ops log
             // ============================================================
-            inner.ops_log.record(
-                OpType::Mv { from: from_path },
-                to_path,
-                None,
-                is_dir,
-            );
+            inner
+                .ops_log
+                .record(OpType::Mv { from: from_path }, to_path, None, is_dir);
         }
-
-        Ok(())
-    }
-
-    /// Move or rename a file or directory from one path to another.
-    ///
-    /// This operation:
-    /// 1. Validates that the move is legal (destination not inside source)
-    /// 2. Retrieves the node at the source path
-    /// 3. Removes it from the source location
-    /// 4. Inserts it at the destination location
-    ///
-    /// The node's content (files/subdirectories) is not re-encrypted during the move;
-    /// only the tree structure is updated. This makes moves efficient regardless of
-    /// the size of the subtree being moved.
-    ///
-    /// # Errors
-    ///
-    /// - `PathNotFound` - source path doesn't exist
-    /// - `PathAlreadyExists` - destination path already exists
-    /// - `MoveIntoSelf` - attempting to move a directory into itself (e.g., /foo -> /foo/bar)
-    /// - `Default` - attempting to move the root directory
-    pub async fn mv(&mut self, from: &Path, to: &Path) -> Result<(), MountError> {
-        // Convert absolute paths to relative paths for internal operations.
-        // The mount stores paths relative to root, so "/foo/bar" becomes "foo/bar".
-        let from_clean = clean_path(from);
-        let to_clean = clean_path(to);
-
-        // ============================================================
-        // VALIDATION: Prevent moving a directory into itself
-        // ============================================================
-        // This catches cases like:
-        //   - /foo -> /foo (same path, would delete then fail to insert)
-        //   - /foo -> /foo/bar (moving into subdirectory of itself)
-        //
-        // This is impossible in a filesystem sense - you can't put a box inside itself.
-        // We check this early to provide a clear error message and avoid corrupting
-        // the tree structure (the delete would succeed but the insert would fail).
-        if to.starts_with(from) {
-            return Err(MountError::MoveIntoSelf {
-                from: from.to_path_buf(),
-                to: to.to_path_buf(),
-            });
-        }
-
-        // ============================================================
-        // STEP 1: Retrieve the NodeLink at the source path
-        // ============================================================
-        // A NodeLink is a reference to either a file or directory. For directories,
-        // it contains the entire subtree. We'll reuse this same NodeLink at the
-        // destination, which means no re-encryption is needed for the content.
-        let node_link = self.get(from).await?;
-
-        // ============================================================
-        // STEP 2: Verify destination doesn't already exist
-        // ============================================================
-        // Unlike Unix mv which can overwrite, we require the destination to be empty.
-        // This prevents accidental data loss.
-        if self.get(to).await.is_ok() {
-            return Err(MountError::PathAlreadyExists(to.to_path_buf()));
-        }
-
-        // ============================================================
-        // STEP 3: Remove the node from its source location
-        // ============================================================
-        // We need to update the parent directory to remove the reference to this node.
-        // This involves:
-        //   a) Finding the parent directory
-        //   b) Removing the child entry from it
-        //   c) Re-encrypting and saving the modified parent
-        //   d) Propagating changes up to the root (updating all ancestor nodes)
-        {
-            // Get the parent path (e.g., "foo" for "foo/bar")
-            let parent_path = from_clean
-                .parent()
-                .ok_or_else(|| MountError::Default(anyhow::anyhow!("Cannot move root")))?;
-
-            // Get the current root entry node
-            let entry = {
-                let inner = self.0.lock().await;
-                inner.entry.clone()
-            };
-
-            // Load the parent node - either the root itself or a subdirectory
-            let mut parent_node = if parent_path == Path::new("") {
-                // Source is at root level (e.g., "/foo"), parent is root
-                entry.clone()
-            } else {
-                // Source is nested, need to traverse to find parent
-                Self::_get_node_at_path(&entry, parent_path, &self.1).await?
-            };
-
-            // Extract the filename component (e.g., "bar" from "foo/bar")
-            let file_name = from_clean
-                .file_name()
-                .expect(
-                    "from_clean has no filename - this should be impossible after parent() check",
-                )
-                .to_string_lossy()
-                .to_string();
-
-            // Remove the child from the parent's children map
-            if parent_node.del(&file_name).is_none() {
-                return Err(MountError::PathNotFound(from_clean.to_path_buf()));
-            }
-
-            // Now we need to persist the modified parent and update the tree
-            if parent_path == Path::new("") {
-                // Parent is root - just update root directly
-                let secret = Secret::generate();
-                let link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
-
-                let mut inner = self.0.lock().await;
-                inner.pins.insert(link.hash());
-                inner.entry = parent_node;
-            } else {
-                // Parent is a subdirectory - need to propagate changes up the tree.
-                // This creates a new encrypted blob for the parent and updates
-                // all ancestor nodes to point to the new parent.
-                let secret = Secret::generate();
-                let parent_link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
-                let new_node_link = NodeLink::new_dir(parent_link.clone(), secret);
-
-                // Update the tree from root down to this parent
-                let abs_parent_path = Path::new("/").join(parent_path);
-                let (updated_root_link, node_hashes) =
-                    Self::_set_node_link_at_path(entry, new_node_link, &abs_parent_path, &self.1)
-                        .await?;
-
-                // Load the new root entry from the updated link.
-                // The root should always be a directory; if it's not, something is
-                // seriously wrong with the mount structure.
-                let new_entry = Self::_get_node_from_blobs(&updated_root_link, &self.1).await?;
-
-                // Update the mount's internal state with the new tree
-                let mut inner = self.0.lock().await;
-                inner.pins.insert(parent_link.hash());
-                inner.pins.extend(node_hashes);
-                inner.entry = new_entry;
-            }
-        }
-
-        // ============================================================
-        // STEP 4: Insert the node at the destination path
-        // ============================================================
-        // We reuse the same NodeLink from step 1. This means the actual file/directory
-        // content doesn't need to be re-encrypted - only the tree structure changes.
-        // This makes moves O(depth) rather than O(size of subtree).
-        let entry = {
-            let inner = self.0.lock().await;
-            inner.entry.clone()
-        };
-
-        let (updated_root_link, node_hashes) =
-            Self::_set_node_link_at_path(entry, node_link, to, &self.1).await?;
-
-        // ============================================================
-        // STEP 5: Update internal state with the final tree
-        // ============================================================
-        {
-            // Load the new root entry and update the mount
-            let new_entry = Self::_get_node_from_blobs(&updated_root_link, &self.1).await?;
-
-            let mut inner = self.0.lock().await;
-            inner.pins.extend(node_hashes);
-            inner.entry = new_entry;
-        }
-
-        // Silence unused variable warning - to_clean is computed for symmetry with from_clean
-        // and may be useful for future debugging/logging
-        let _ = to_clean;
 
         Ok(())
     }
@@ -1255,11 +1089,17 @@ impl Mount {
         blobs: &BlobsStore,
     ) -> Result<PathOpLog, MountError> {
         let hash = link.hash();
-        tracing::debug!("_get_ops_log_from_blobs: Checking for ops log at hash {}", hash);
+        tracing::debug!(
+            "_get_ops_log_from_blobs: Checking for ops log at hash {}",
+            hash
+        );
 
         match blobs.stat(&hash).await {
             Ok(true) => {
-                tracing::debug!("_get_ops_log_from_blobs: Ops log hash {} exists in blobs", hash);
+                tracing::debug!(
+                    "_get_ops_log_from_blobs: Ops log hash {} exists in blobs",
+                    hash
+                );
             }
             Ok(false) => {
                 tracing::error!(
@@ -1858,7 +1698,10 @@ mod test {
             .unwrap();
         mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
         mount
-            .mv(&PathBuf::from("/file1.txt"), &PathBuf::from("/dir/file1.txt"))
+            .mv(
+                &PathBuf::from("/file1.txt"),
+                &PathBuf::from("/dir/file1.txt"),
+            )
             .await
             .unwrap();
         mount.rm(&PathBuf::from("/dir/file1.txt")).await.unwrap();
