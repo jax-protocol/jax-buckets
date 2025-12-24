@@ -16,7 +16,7 @@ use sqlx::Row;
 use tokio::sync::watch;
 use tracing::info;
 
-use super::bao_file::{BaoFileStorage, CompleteStorage, raw_outboard_size};
+use super::bao_file::{raw_outboard_size, BaoFileStorage, CompleteStorage};
 use super::entry_state::needs_outboard;
 use super::minio::BlobObjectStore;
 use crate::daemon::database::Database;

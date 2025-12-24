@@ -363,7 +363,9 @@ impl BlobObjectStore {
             .into_iter()
             .filter_map(|obj| {
                 // Extract hash from path like "data/abc123"
-                obj.path.strip_prefix(&format!("{}/", DATA_PREFIX)).map(|s| s.to_string())
+                obj.path
+                    .strip_prefix(&format!("{}/", DATA_PREFIX))
+                    .map(|s| s.to_string())
             })
             .collect();
 
@@ -429,7 +431,10 @@ mod tests {
         let hash = "def456";
         let outboard = Bytes::from(vec![0u8; 64]);
 
-        blob_store.put_outboard(hash, outboard.clone()).await.unwrap();
+        blob_store
+            .put_outboard(hash, outboard.clone())
+            .await
+            .unwrap();
         assert!(blob_store.has_outboard(hash).await);
 
         let retrieved = blob_store.get_outboard(hash).await.unwrap();
@@ -446,11 +451,20 @@ mod tests {
         let outboard = Bytes::from("partial outboard");
 
         // Store partial
-        blob_store.put_partial_data(hash, data.clone()).await.unwrap();
-        blob_store.put_partial_outboard(hash, outboard.clone()).await.unwrap();
+        blob_store
+            .put_partial_data(hash, data.clone())
+            .await
+            .unwrap();
+        blob_store
+            .put_partial_outboard(hash, outboard.clone())
+            .await
+            .unwrap();
 
         // Promote to complete
-        blob_store.promote_partial(hash, data.clone(), Some(outboard)).await.unwrap();
+        blob_store
+            .promote_partial(hash, data.clone(), Some(outboard))
+            .await
+            .unwrap();
 
         // Should now exist as complete
         assert!(blob_store.has_data(hash).await);

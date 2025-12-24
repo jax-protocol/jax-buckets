@@ -90,8 +90,7 @@ impl PartialStorage {
                         if self.outboard_buffer.len() < o0 + 64 {
                             self.outboard_buffer.resize(o0 + 64, 0);
                         }
-                        self.outboard_buffer[o0..o0 + 32]
-                            .copy_from_slice(parent.pair.0.as_bytes());
+                        self.outboard_buffer[o0..o0 + 32].copy_from_slice(parent.pair.0.as_bytes());
                         self.outboard_buffer[o0 + 32..o0 + 64]
                             .copy_from_slice(parent.pair.1.as_bytes());
                     }

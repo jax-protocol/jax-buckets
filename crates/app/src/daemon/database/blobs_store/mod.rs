@@ -38,7 +38,7 @@ mod minio;
 use thiserror::Error;
 
 use crate::daemon::database::Database;
-pub use actor::{BlobStoreApi, BlobStatus};
+pub use actor::{BlobStatus, BlobStoreApi};
 pub use minio::{BlobObjectStore, ObjectStoreConfig, ObjectStoreError};
 
 /// Configuration for the object store + SQLite blob store.
