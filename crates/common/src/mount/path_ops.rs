@@ -40,8 +40,8 @@ pub enum OpType {
 pub struct OpId {
     /// Lamport timestamp (logical clock)
     pub timestamp: u64,
-    /// Peer that created this operation (PublicKey bytes, for tie-breaking)
-    pub peer_id: [u8; 32],
+    /// Peer that created this operation (for tie-breaking)
+    pub peer_id: PublicKey,
 }
 
 impl PartialOrd for OpId {
@@ -91,7 +91,7 @@ pub struct PathOpLog {
 
     /// Local peer ID (not serialized, set when loading)
     #[serde(skip)]
-    local_peer_id: Option<[u8; 32]>,
+    local_peer_id: Option<PublicKey>,
 }
 
 impl BlockEncoded<DagCborCodec> for PathOpLog {}
@@ -105,13 +105,13 @@ impl PathOpLog {
     /// Create a new log with the local peer ID set
     pub fn with_peer_id(peer_id: PublicKey) -> Self {
         let mut log = Self::new();
-        log.local_peer_id = Some(peer_id.to_bytes());
+        log.local_peer_id = Some(peer_id);
         log
     }
 
     /// Set the local peer ID (needed after deserialization)
     pub fn set_peer_id(&mut self, peer_id: PublicKey) {
-        self.local_peer_id = Some(peer_id.to_bytes());
+        self.local_peer_id = Some(peer_id);
         // Update local clock to be greater than any seen operation
         self.local_clock = self
             .operations
@@ -249,30 +249,45 @@ impl PathOpLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::SecretKey;
 
-    fn make_peer_id(seed: u8) -> [u8; 32] {
-        [seed; 32]
+    fn make_peer_id(seed: u8) -> PublicKey {
+        // Generate a deterministic keypair from the seed
+        // We use the seed to create a reproducible secret key
+        let mut seed_bytes = [0u8; 32];
+        seed_bytes[0] = seed;
+        let secret = SecretKey::from(seed_bytes);
+        secret.public()
     }
 
     #[test]
     fn test_op_id_ordering() {
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
         let id1 = OpId {
             timestamp: 1,
-            peer_id: make_peer_id(1),
+            peer_id: peer1,
         };
         let id2 = OpId {
             timestamp: 2,
-            peer_id: make_peer_id(1),
+            peer_id: peer1,
         };
         let id3 = OpId {
             timestamp: 1,
-            peer_id: make_peer_id(2),
+            peer_id: peer2,
         };
 
         // Higher timestamp wins
         assert!(id2 > id1);
-        // Same timestamp, higher peer_id wins
-        assert!(id3 > id1);
+        // Same timestamp, different peer_ids have deterministic ordering
+        assert!(id3 != id1);
+        // Order is determined by peer_id comparison
+        if peer2 > peer1 {
+            assert!(id3 > id1);
+        } else {
+            assert!(id3 < id1);
+        }
     }
 
     #[test]
@@ -376,21 +391,31 @@ mod tests {
 
     #[test]
     fn test_concurrent_ops_different_peers() {
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
         let mut log1 = PathOpLog::new();
-        log1.local_peer_id = Some(make_peer_id(1));
+        log1.local_peer_id = Some(peer1);
         log1.record(OpType::Add, "file.txt".to_string(), None, false);
 
         let mut log2 = PathOpLog::new();
-        log2.local_peer_id = Some(make_peer_id(2));
+        log2.local_peer_id = Some(peer2);
         log2.record(OpType::Remove, "file.txt".to_string(), None, false);
 
         // Merge log2 into log1
         log1.merge(&log2);
 
-        // Both have timestamp=1, but peer_id 2 > peer_id 1, so Remove wins
+        // Both have timestamp=1, winner is determined by peer_id ordering
         let resolved = log1.resolve_path("file.txt");
         assert!(resolved.is_some());
-        assert!(matches!(resolved.unwrap().op_type, OpType::Remove));
+        let winning_op = resolved.unwrap();
+
+        // The peer with higher ID wins (deterministic tie-breaking)
+        if peer2 > peer1 {
+            assert!(matches!(winning_op.op_type, OpType::Remove));
+        } else {
+            assert!(matches!(winning_op.op_type, OpType::Add));
+        }
     }
 
     #[test]
