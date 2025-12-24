@@ -342,8 +342,7 @@ impl Mount {
             }
 
             // Record the add operation in the ops log
-            let path_str = clean_path(path).to_string_lossy().to_string();
-            inner.ops_log.record(OpType::Add, path_str, Some(link), false);
+            inner.ops_log.record(OpType::Add, clean_path(path), Some(link), false);
         }
 
         Ok(())
@@ -375,8 +374,8 @@ impl Mount {
         }
         let is_dir = removed_link.map(|l| l.is_dir()).unwrap_or(false);
 
-        // Store path string for ops log before we lose ownership
-        let path_str = path.to_string_lossy().to_string();
+        // Store path for ops log before we lose ownership
+        let removed_path = path.to_path_buf();
 
         if parent_path == Path::new("") {
             let secret = Secret::generate();
@@ -388,7 +387,7 @@ impl Mount {
             inner.entry = parent_node;
 
             // Record the remove operation in the ops log
-            inner.ops_log.record(OpType::Remove, path_str, None, is_dir);
+            inner.ops_log.record(OpType::Remove, removed_path, None, is_dir);
         } else {
             // Save the modified parent node to blobs
             let secret = Secret::generate();
@@ -422,7 +421,7 @@ impl Mount {
             }
 
             // Record the remove operation in the ops log
-            inner.ops_log.record(OpType::Remove, path_str, None, is_dir);
+            inner.ops_log.record(OpType::Remove, removed_path, None, is_dir);
         }
 
         Ok(())
@@ -508,8 +507,7 @@ impl Mount {
             }
 
             // Record the mkdir operation in the ops log
-            let path_str = path.to_string_lossy().to_string();
-            inner.ops_log.record(OpType::Mkdir, path_str, None, true);
+            inner.ops_log.record(OpType::Mkdir, path.to_path_buf(), None, true);
         }
 
         Ok(())
