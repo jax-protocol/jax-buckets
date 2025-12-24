@@ -11,8 +11,8 @@ use bao_tree::{io::fsm::BaoContentItem, BaoTree, ChunkRanges};
 use bytes::BytesMut;
 use iroh_blobs::api::blobs::Bitfield;
 
-use super::entry_state::needs_outboard;
-use super::minio::BlobObjectStore;
+use crate::entry_state::needs_outboard;
+use crate::object_store::BlobObjectStore;
 
 /// Block size used by iroh (16 KiB)
 pub const IROH_BLOCK_SIZE: bao_tree::BlockSize = bao_tree::BlockSize::from_chunk_log(4);

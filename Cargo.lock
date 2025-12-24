@@ -2724,6 +2724,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
+name = "jax-blobs-store"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bao-tree",
+ "bytes",
+ "chrono",
+ "futures",
+ "hex",
+ "iroh-blobs",
+ "object_store",
+ "serde",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "jax-bucket"
 version = "0.1.7"
 dependencies = [
@@ -2733,23 +2752,18 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "axum-extra",
- "bao-tree",
  "base64",
- "bytes",
  "chrono",
  "clap",
- "derive_more 1.0.0",
  "directories",
  "dirs",
  "flume",
  "futures",
- "hex",
  "http",
  "iroh",
  "iroh-blobs",
  "jax-common",
  "mime_guess",
- "object_store",
  "pulldown-cmark",
  "regex",
  "reqwest",

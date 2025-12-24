@@ -1,0 +1,37 @@
+[package]
+name = "jax-blobs-store"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Object store + SQLite blob store for iroh-blobs"
+keywords = ["blobs", "object-store", "s3", "minio", "iroh"]
+categories = ["database", "network-programming"]
+
+[dependencies]
+# iroh-blobs for Hash types and Bitfield
+iroh-blobs = { workspace = true }
+bao-tree = "0.15"
+
+# object storage (S3/MinIO/GCS/Azure/local)
+object_store = { version = "0.11", features = ["aws"] }
+
+# SQLite
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# async
+tokio = { workspace = true }
+futures = { workspace = true }
+
+# core
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+hex = "0.4"
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }

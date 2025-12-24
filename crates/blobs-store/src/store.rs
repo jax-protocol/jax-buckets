@@ -1,14 +1,12 @@
-//! Actor for handling blob store commands.
+//! Main blob store implementation.
 //!
-//! This actor processes commands from the iroh-blobs API and coordinates
-//! between SQLite (metadata) and object storage (data storage).
-//!
-//! NOTE: This is a work-in-progress implementation. The full iroh-blobs
-//! Command/ApiClient integration is complex. For now, we provide a simpler
-//! direct API that can be used alongside the store.
+//! Provides a high-level API for storing and retrieving blobs using
+//! object storage for data and SQLite for metadata.
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
 use iroh_blobs::{api::blobs::Bitfield, Hash, HashAndFormat};
@@ -16,14 +14,31 @@ use sqlx::Row;
 use tokio::sync::watch;
 use tracing::info;
 
-use super::bao_file::{raw_outboard_size, BaoFileStorage, CompleteStorage};
-use super::entry_state::needs_outboard;
-use super::minio::BlobObjectStore;
-use crate::daemon::database::Database;
+use crate::bao_file::{raw_outboard_size, BaoFileStorage, CompleteStorage};
+use crate::database::Database;
+use crate::entry_state::needs_outboard;
+use crate::object_store::{BlobObjectStore, ObjectStoreConfig, ObjectStoreError};
+use crate::RecoveryStats;
+
+/// Errors that can occur when using the blob store.
+#[derive(Debug, thiserror::Error)]
+pub enum StoreError {
+    #[error("object store error: {0}")]
+    ObjectStore(#[from] ObjectStoreError),
+
+    #[error("database error: {0}")]
+    Database(#[from] sqlx::Error),
+
+    #[error("database setup error: {0}")]
+    DatabaseSetup(#[from] crate::database::DatabaseError),
+
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+}
 
 /// State for a single blob entry.
 #[derive(Clone)]
-pub struct BaoFileHandle {
+struct BaoFileHandle {
     hash: Hash,
     state: Arc<watch::Sender<BaoFileStorage>>,
 }
@@ -49,13 +64,12 @@ impl BaoFileHandle {
         }
     }
 
-    /// Get the current bitfield.
-    pub fn bitfield(&self) -> Bitfield {
+    fn bitfield(&self) -> Bitfield {
         self.state.borrow().bitfield()
     }
 
-    /// Get the hash.
-    pub fn hash(&self) -> Hash {
+    #[allow(dead_code)]
+    fn hash(&self) -> Hash {
         self.hash
     }
 }
@@ -65,46 +79,77 @@ struct State {
     /// Map of hash -> handle for each blob
     data: HashMap<Hash, BaoFileHandle>,
     /// Tags mapping names to hashes
+    #[allow(dead_code)]
     tags: BTreeMap<String, HashAndFormat>,
     /// Handle for the empty hash (special case)
+    #[allow(dead_code)]
     empty_hash: BaoFileHandle,
 }
 
-/// Direct API for the blob store (simpler than full iroh-blobs Command interface).
-pub struct BlobStoreApi {
+/// A blob store backed by object storage and SQLite.
+///
+/// - **Object storage** (S3/MinIO/GCS/Azure/local) stores all blob data
+/// - **SQLite** stores metadata (hash, size, state, tags)
+///
+/// The SQLite database can be in-memory or file-based. If using in-memory,
+/// metadata can be recovered from object storage on restart.
+pub struct BlobStore {
     state: tokio::sync::RwLock<State>,
     db: Database,
-    store: Arc<BlobObjectStore>,
+    object_store: Arc<BlobObjectStore>,
 }
 
-impl std::fmt::Debug for BlobStoreApi {
+impl std::fmt::Debug for BlobStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BlobStoreApi").finish()
+        f.debug_struct("BlobStore").finish()
     }
 }
 
-impl BlobStoreApi {
-    /// Create a new blob store API.
+impl BlobStore {
+    /// Create a new blob store with a file-based SQLite database.
+    ///
+    /// # Arguments
+    /// * `db_path` - Path to the SQLite database file
+    /// * `object_store_config` - Configuration for the object store
     pub async fn new(
-        db: Database,
-        store: BlobObjectStore,
-    ) -> Result<Self, crate::daemon::database::blobs_store::StoreError> {
-        let store = Arc::new(store);
+        db_path: impl AsRef<Path>,
+        object_store_config: ObjectStoreConfig,
+    ) -> Result<Self, StoreError> {
+        let db = Database::new(db_path).await?;
+        let object_store = BlobObjectStore::new_s3(object_store_config)?;
+        Self::from_parts(db, object_store).await
+    }
 
-        let api = Self {
+    /// Create a new blob store with an in-memory SQLite database.
+    ///
+    /// Useful for testing or when metadata can be recovered from object storage.
+    pub async fn in_memory(object_store_config: ObjectStoreConfig) -> Result<Self, StoreError> {
+        let db = Database::in_memory().await?;
+        let object_store = BlobObjectStore::new_s3(object_store_config)?;
+        Self::from_parts(db, object_store).await
+    }
+
+    /// Create a blob store from existing database and object store.
+    ///
+    /// This is useful for testing with in-memory object stores.
+    pub async fn from_parts(
+        db: Database,
+        object_store: BlobObjectStore,
+    ) -> Result<Self, StoreError> {
+        let store = Self {
             state: tokio::sync::RwLock::new(State {
                 data: HashMap::new(),
                 tags: BTreeMap::new(),
                 empty_hash: BaoFileHandle::new_complete(Hash::EMPTY, 0),
             }),
             db,
-            store,
+            object_store: Arc::new(object_store),
         };
 
         // Load existing blobs from database
-        api.load_from_db().await?;
+        store.load_from_db().await?;
 
-        Ok(api)
+        Ok(store)
     }
 
     /// Load existing blobs from the database.
@@ -141,12 +186,10 @@ impl BlobStoreApi {
     }
 
     /// Store bytes in the blob store.
-    pub async fn put(
-        &self,
-        data: Bytes,
-    ) -> Result<Hash, crate::daemon::database::blobs_store::StoreError> {
+    ///
+    /// Returns the BLAKE3 hash of the stored data.
+    pub async fn put(&self, data: Bytes) -> Result<Hash, StoreError> {
         use bao_tree::blake3;
-        use std::time::{SystemTime, UNIX_EPOCH};
 
         let size = data.len() as u64;
 
@@ -156,7 +199,7 @@ impl BlobStoreApi {
         let hash_str = hash.to_hex().to_string();
 
         // Store data in object storage
-        self.store.put_data(&hash_str, data.clone()).await?;
+        self.object_store.put_data(&hash_str, data.clone()).await?;
 
         // Compute and store outboard if needed
         let has_outboard = if needs_outboard(size) {
@@ -164,7 +207,7 @@ impl BlobStoreApi {
             // TODO: Proper BAO outboard computation
             let outboard_size = raw_outboard_size(size);
             let outboard = vec![0u8; outboard_size as usize];
-            self.store
+            self.object_store
                 .put_outboard(&hash_str, Bytes::from(outboard))
                 .await?;
             true
@@ -209,10 +252,9 @@ impl BlobStoreApi {
     }
 
     /// Get bytes from the blob store.
-    pub async fn get(
-        &self,
-        hash: &Hash,
-    ) -> Result<Option<Bytes>, crate::daemon::database::blobs_store::StoreError> {
+    ///
+    /// Returns `None` if the blob doesn't exist.
+    pub async fn get(&self, hash: &Hash) -> Result<Option<Bytes>, StoreError> {
         let hash_str = hash.to_hex().to_string();
 
         // Check if we have it
@@ -224,13 +266,9 @@ impl BlobStoreApi {
         }
 
         // Fetch from object storage
-        match self.store.get_data(&hash_str).await {
+        match self.object_store.get_data(&hash_str).await {
             Ok(data) => Ok(Some(data)),
-            Err(super::minio::ObjectStoreError::Store(e))
-                if e.to_string().contains("not found") =>
-            {
-                Ok(None)
-            }
+            Err(ObjectStoreError::Store(e)) if e.to_string().contains("not found") => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
@@ -265,10 +303,9 @@ impl BlobStoreApi {
     }
 
     /// Delete a blob.
-    pub async fn delete(
-        &self,
-        hash: &Hash,
-    ) -> Result<bool, crate::daemon::database::blobs_store::StoreError> {
+    ///
+    /// Returns `true` if the blob was deleted, `false` if it didn't exist.
+    pub async fn delete(&self, hash: &Hash) -> Result<bool, StoreError> {
         let hash_str = hash.to_hex().to_string();
 
         // Remove from in-memory state
@@ -280,8 +317,8 @@ impl BlobStoreApi {
         }
 
         // Delete from object storage
-        let _ = self.store.delete_data(&hash_str).await;
-        let _ = self.store.delete_outboard(&hash_str).await;
+        let _ = self.object_store.delete_data(&hash_str).await;
+        let _ = self.object_store.delete_outboard(&hash_str).await;
 
         // Delete from SQLite
         sqlx::query("DELETE FROM blobs WHERE hash = ?")
@@ -292,17 +329,97 @@ impl BlobStoreApi {
         Ok(true)
     }
 
-    /// Get the object store client.
-    pub fn store(&self) -> &BlobObjectStore {
-        &self.store
+    /// Get the underlying object store client.
+    pub fn object_store(&self) -> &BlobObjectStore {
+        &self.object_store
+    }
+
+    /// Get the underlying database.
+    pub fn database(&self) -> &Database {
+        &self.db
+    }
+
+    /// Recover metadata from object storage.
+    ///
+    /// This scans all objects in storage and rebuilds the SQLite metadata.
+    /// Useful for disaster recovery or when using an in-memory database.
+    pub async fn recover_from_storage(&self) -> Result<RecoveryStats, StoreError> {
+        let mut stats = RecoveryStats::default();
+
+        // List all complete blob hashes
+        let hashes = self.object_store.list_data_hashes().await?;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        for hash_str in hashes {
+            // Check if outboard exists
+            let has_outboard = self.object_store.has_outboard(&hash_str).await;
+
+            // Get size from object metadata
+            let path = object_store::path::Path::from(format!("data/{}", hash_str));
+            let size = match self.object_store.head(&path).await {
+                Ok(info) => info.size as i64,
+                Err(_) => continue,
+            };
+
+            // Insert into database
+            let result = sqlx::query(
+                r#"
+                INSERT INTO blobs (hash, size, has_outboard, state, created_at, updated_at)
+                VALUES (?, ?, ?, 'complete', ?, ?)
+                ON CONFLICT(hash) DO NOTHING
+                "#,
+            )
+            .bind(&hash_str)
+            .bind(size)
+            .bind(has_outboard)
+            .bind(now)
+            .bind(now)
+            .execute(&*self.db)
+            .await;
+
+            if result.is_ok() {
+                // Also update in-memory state
+                let hash_bytes = hex::decode(&hash_str).unwrap_or_default();
+                if hash_bytes.len() == 32 {
+                    let mut hash_arr = [0u8; 32];
+                    hash_arr.copy_from_slice(&hash_bytes);
+                    let hash = Hash::from_bytes(hash_arr);
+
+                    let mut state = self.state.write().await;
+                    state
+                        .data
+                        .insert(hash, BaoFileHandle::new_complete(hash, size as u64));
+                }
+
+                stats.complete_blobs += 1;
+            }
+        }
+
+        info!(
+            "recovered {} blobs from object storage",
+            stats.complete_blobs
+        );
+        Ok(stats)
     }
 }
 
 /// Status of a blob.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlobStatus {
-    Complete { size: u64 },
-    Partial { size: Option<u64> },
+    /// Blob is complete and available.
+    Complete {
+        /// Size in bytes.
+        size: u64,
+    },
+    /// Blob is partially available.
+    Partial {
+        /// Size of validated data, if known.
+        size: Option<u64>,
+    },
 }
 
 #[cfg(test)]
