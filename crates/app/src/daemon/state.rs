@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
 use url::Url;
 
 use super::config::Config;
 use crate::daemon::database::{Database, DatabaseSetupError};
+use crate::state::{BlobStoreConfig, BLOBS_DIR_NAME};
 
 use common::crypto::SecretKey;
 use common::peer::{BlobsStore, Peer, PeerBuilder};
@@ -40,15 +43,9 @@ impl State {
             .clone()
             .unwrap_or_else(SecretKey::generate);
 
-        // 3. Setup blobs store
-        let blobs_store_path = config.node_blobs_store_path.clone().unwrap_or_else(|| {
-            let temp_dir = tempfile::tempdir().expect("failed to create temporary directory");
-            temp_dir.path().to_path_buf()
-        });
+        // 3. Setup blobs store based on configuration
         tracing::debug!("ServiceState::from_config - loading blobs store");
-        let blobs = BlobsStore::fs(&blobs_store_path)
-            .await
-            .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
+        let blobs = Self::setup_blobs_store(&config.blob_store, config.jax_dir.as_ref()).await?;
         tracing::debug!("ServiceState::from_config - blobs store loaded successfully");
 
         // 4. Build peer from the database as the log provider
@@ -83,6 +80,71 @@ impl State {
         });
 
         Ok(Self { database, peer })
+    }
+
+    /// Setup the blobs store based on configuration
+    async fn setup_blobs_store(
+        blob_store_config: &BlobStoreConfig,
+        jax_dir: Option<&PathBuf>,
+    ) -> Result<BlobsStore, StateSetupError> {
+        match blob_store_config {
+            BlobStoreConfig::Legacy => {
+                // Legacy mode: use iroh-blobs FsStore
+                let blobs_path = jax_dir
+                    .map(|dir| dir.join(BLOBS_DIR_NAME))
+                    .unwrap_or_else(|| {
+                        let temp_dir =
+                            tempfile::tempdir().expect("failed to create temporary directory");
+                        temp_dir.path().to_path_buf()
+                    });
+                tracing::info!("Using legacy FsStore at {:?}", blobs_path);
+                BlobsStore::fs(&blobs_path)
+                    .await
+                    .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))
+            }
+            BlobStoreConfig::Filesystem { path } => {
+                // Filesystem mode: use jax-blobs-store with local filesystem
+                // For now, fall back to legacy FsStore until full integration
+                let blobs_path = path.clone().unwrap_or_else(|| {
+                    jax_dir
+                        .map(|dir| dir.join(BLOBS_DIR_NAME))
+                        .unwrap_or_else(|| {
+                            let temp_dir =
+                                tempfile::tempdir().expect("failed to create temporary directory");
+                            temp_dir.path().to_path_buf()
+                        })
+                });
+                tracing::info!(
+                    "Filesystem blob store configured at {:?} (using legacy FsStore until full integration)",
+                    blobs_path
+                );
+                // TODO: Use blobs_store::BlobStore::new_local() once integrated with iroh-blobs protocol
+                BlobsStore::fs(&blobs_path)
+                    .await
+                    .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))
+            }
+            BlobStoreConfig::S3 {
+                endpoint,
+                access_key: _,
+                secret_key: _,
+                bucket,
+                region,
+                db_path: _,
+            } => {
+                // S3 mode: use jax-blobs-store with S3-compatible storage
+                // For now, fall back to in-memory store until full integration
+                tracing::warn!(
+                    "S3 blob store configured (endpoint={}, bucket={}, region={:?}) but not yet fully integrated - using in-memory store",
+                    endpoint,
+                    bucket,
+                    region
+                );
+                // TODO: Use blobs_store::BlobStore::new() with ObjectStoreConfig once integrated
+                BlobsStore::memory()
+                    .await
+                    .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))
+            }
+        }
     }
 
     pub fn peer(&self) -> &Peer<Database> {

@@ -5,6 +5,8 @@ use std::{
 
 use common::prelude::SecretKey;
 
+use crate::state::BlobStoreConfig;
+
 #[derive(Debug)]
 pub struct Config {
     // peer configuration
@@ -14,9 +16,10 @@ pub struct Config {
     /// on system file path to our secret,
     ///  if not set then a new secret will be generated
     pub node_secret: Option<SecretKey>,
-    /// the path to our blobs store, if not set then
-    ///  a temporary directory will be used
-    pub node_blobs_store_path: Option<PathBuf>,
+    /// Blob store configuration
+    pub blob_store: BlobStoreConfig,
+    /// Default jax directory for paths that need it (e.g., Filesystem defaults)
+    pub jax_dir: Option<PathBuf>,
 
     // http server configuration
     /// address for the HTML server to listen on.
@@ -46,7 +49,8 @@ impl Default for Config {
         Self {
             node_listen_addr: None,
             node_secret: None,
-            node_blobs_store_path: None,
+            blob_store: BlobStoreConfig::default(),
+            jax_dir: None,
             html_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080)),
             api_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 3000)),
             sqlite_path: None,

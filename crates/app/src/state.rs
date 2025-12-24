@@ -9,6 +9,44 @@ pub const DB_FILE_NAME: &str = "db.sqlite";
 pub const KEY_FILE_NAME: &str = "key.pem";
 pub const BLOBS_DIR_NAME: &str = "blobs";
 
+/// Configuration for the blob store backend.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BlobStoreConfig {
+    /// Legacy iroh-blobs FsStore (default for backwards compatibility)
+    #[default]
+    Legacy,
+
+    /// Local filesystem blob store using jax-blobs-store crate.
+    /// SQLite metadata + local file storage. No S3/MinIO required.
+    Filesystem {
+        /// Directory for blob data and SQLite metadata.
+        /// Defaults to {jax_dir}/blobs if not specified.
+        #[serde(default)]
+        path: Option<PathBuf>,
+    },
+
+    /// S3-compatible object storage using jax-blobs-store crate.
+    /// SQLite metadata + S3/MinIO for blob data.
+    S3 {
+        /// S3 endpoint URL (e.g., "http://localhost:9000" for MinIO)
+        endpoint: String,
+        /// Access key ID
+        access_key: String,
+        /// Secret access key
+        secret_key: String,
+        /// Bucket name
+        bucket: String,
+        /// AWS region (defaults to "us-east-1")
+        #[serde(default)]
+        region: Option<String>,
+        /// Path to SQLite metadata database.
+        /// Defaults to {jax_dir}/blobs.db if not specified.
+        #[serde(default)]
+        db_path: Option<PathBuf>,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     /// Listen address for the HTML server
@@ -18,6 +56,9 @@ pub struct AppConfig {
     /// Listen port for the peer (P2P) node (optional, defaults to ephemeral)
     #[serde(default)]
     pub peer_port: Option<u16>,
+    /// Blob store backend configuration
+    #[serde(default)]
+    pub blob_store: BlobStoreConfig,
 }
 
 impl Default for AppConfig {
@@ -26,6 +67,7 @@ impl Default for AppConfig {
             html_listen_addr: "0.0.0.0:8080".to_string(),
             api_listen_addr: "0.0.0.0:3000".to_string(),
             peer_port: None,
+            blob_store: BlobStoreConfig::default(),
         }
     }
 }

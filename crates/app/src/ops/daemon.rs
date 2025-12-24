@@ -47,7 +47,8 @@ impl crate::op::Op for Daemon {
         let config = ServiceConfig {
             node_listen_addr,
             node_secret: Some(secret_key),
-            node_blobs_store_path: Some(state.blobs_path),
+            blob_store: state.config.blob_store.clone(),
+            jax_dir: Some(state.jax_dir.clone()),
             html_listen_addr: state.config.html_listen_addr.parse().ok(),
             api_listen_addr: state.config.api_listen_addr.parse().ok(),
             sqlite_path: Some(state.db_path),

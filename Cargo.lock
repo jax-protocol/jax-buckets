@@ -2762,6 +2762,7 @@ dependencies = [
  "http",
  "iroh",
  "iroh-blobs",
+ "jax-blobs-store",
  "jax-common",
  "mime_guess",
  "pulldown-cmark",

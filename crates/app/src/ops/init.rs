@@ -33,6 +33,7 @@ impl crate::op::Op for Init {
             html_listen_addr: self.html_addr.clone(),
             api_listen_addr: self.api_addr.clone(),
             peer_port: self.peer_port,
+            blob_store: Default::default(),
         };
 
         let state = AppState::init(ctx.config_path.clone(), Some(config))?;
