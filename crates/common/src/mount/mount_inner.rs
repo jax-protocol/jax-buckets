@@ -246,9 +246,11 @@ impl Mount {
         let secret = share.recover(secret_key)?;
 
         let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
-        let entry =
-            Self::_get_node_from_blobs(&NodeLink::Dir(manifest.entry().clone(), secret.clone()), blobs)
-                .await?;
+        let entry = Self::_get_node_from_blobs(
+            &NodeLink::Dir(manifest.entry().clone(), secret.clone()),
+            blobs,
+        )
+        .await?;
 
         // Read height from the manifest
         let height = manifest.height();
@@ -342,7 +344,9 @@ impl Mount {
             }
 
             // Record the add operation in the ops log
-            inner.ops_log.record(OpType::Add, clean_path(path), Some(link), false);
+            inner
+                .ops_log
+                .record(OpType::Add, clean_path(path), Some(link), false);
         }
 
         Ok(())
@@ -387,7 +391,9 @@ impl Mount {
             inner.entry = parent_node;
 
             // Record the remove operation in the ops log
-            inner.ops_log.record(OpType::Remove, removed_path, None, is_dir);
+            inner
+                .ops_log
+                .record(OpType::Remove, removed_path, None, is_dir);
         } else {
             // Save the modified parent node to blobs
             let secret = Secret::generate();
@@ -421,7 +427,9 @@ impl Mount {
             }
 
             // Record the remove operation in the ops log
-            inner.ops_log.record(OpType::Remove, removed_path, None, is_dir);
+            inner
+                .ops_log
+                .record(OpType::Remove, removed_path, None, is_dir);
         }
 
         Ok(())
@@ -507,7 +515,9 @@ impl Mount {
             }
 
             // Record the mkdir operation in the ops log
-            inner.ops_log.record(OpType::Mkdir, path.to_path_buf(), None, true);
+            inner
+                .ops_log
+                .record(OpType::Mkdir, path.to_path_buf(), None, true);
         }
 
         Ok(())
@@ -684,12 +694,9 @@ impl Mount {
             // ============================================================
             // STEP 6: Record mv operation in the ops log
             // ============================================================
-            inner.ops_log.record(
-                OpType::Mv { from: from_path },
-                to_path,
-                None,
-                is_dir,
-            );
+            inner
+                .ops_log
+                .record(OpType::Mv { from: from_path }, to_path, None, is_dir);
         }
 
         Ok(())
@@ -1084,11 +1091,17 @@ impl Mount {
         blobs: &BlobsStore,
     ) -> Result<PathOpLog, MountError> {
         let hash = link.hash();
-        tracing::debug!("_get_ops_log_from_blobs: Checking for ops log at hash {}", hash);
+        tracing::debug!(
+            "_get_ops_log_from_blobs: Checking for ops log at hash {}",
+            hash
+        );
 
         match blobs.stat(&hash).await {
             Ok(true) => {
-                tracing::debug!("_get_ops_log_from_blobs: Ops log hash {} exists in blobs", hash);
+                tracing::debug!(
+                    "_get_ops_log_from_blobs: Ops log hash {} exists in blobs",
+                    hash
+                );
             }
             Ok(false) => {
                 tracing::error!(
@@ -1687,7 +1700,10 @@ mod test {
             .unwrap();
         mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
         mount
-            .mv(&PathBuf::from("/file1.txt"), &PathBuf::from("/dir/file1.txt"))
+            .mv(
+                &PathBuf::from("/file1.txt"),
+                &PathBuf::from("/dir/file1.txt"),
+            )
             .await
             .unwrap();
         mount.rm(&PathBuf::from("/dir/file1.txt")).await.unwrap();
