@@ -17,8 +17,8 @@ bao-tree = "0.15"
 # object storage (S3/MinIO/GCS/Azure/local)
 object_store = { version = "0.11", features = ["aws"] }
 
-# SQLite
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+# SQLite with migrations
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # async
 tokio = { workspace = true }

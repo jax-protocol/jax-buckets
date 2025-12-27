@@ -6,10 +6,14 @@
 
 use std::path::Path;
 
+use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use sqlx::Row;
 use thiserror::Error;
 use tracing::info;
+
+/// Compile migrations at build time from the ./migrations directory.
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// Database connection pool for blob store metadata.
 #[derive(Debug, Clone)]
@@ -32,7 +36,10 @@ pub enum DatabaseError {
     Sqlite(#[from] sqlx::Error),
 
     #[error("Migration error: {0}")]
-    Migration(String),
+    Migration(#[from] sqlx::migrate::MigrateError),
+
+    #[error("IO error: {0}")]
+    Io(String),
 }
 
 impl Database {
@@ -46,7 +53,7 @@ impl Database {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                DatabaseError::Migration(format!("Failed to create database directory: {}", e))
+                DatabaseError::Io(format!("Failed to create database directory: {}", e))
             })?;
         }
 
@@ -87,47 +94,9 @@ impl Database {
         Ok(db)
     }
 
-    /// Run database migrations.
+    /// Run database migrations using SQLx's native migration system.
     async fn run_migrations(&self) -> Result<(), DatabaseError> {
-        // Create blobs table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS blobs (
-                hash TEXT PRIMARY KEY,
-                size INTEGER NOT NULL,
-                has_outboard INTEGER NOT NULL,
-                state TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Create tags table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS tags (
-                name TEXT PRIMARY KEY,
-                hash TEXT NOT NULL,
-                format TEXT NOT NULL,
-                created_at INTEGER NOT NULL
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Create index on tags.hash
-        sqlx::query(
-            r#"
-            CREATE INDEX IF NOT EXISTS idx_tags_hash ON tags(hash)
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
+        MIGRATOR.run(&self.pool).await?;
         Ok(())
     }
 
