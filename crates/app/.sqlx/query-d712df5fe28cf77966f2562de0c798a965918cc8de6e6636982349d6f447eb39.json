@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                bucket_id as \"bucket_id!\",\n                link_from as \"link_from!: DCid\",\n                height_from as \"height_from!\",\n                link_onto as \"link_onto!: DCid\",\n                height_onto as \"height_onto!\",\n                result_link as \"result_link!: DCid\",\n                result_height as \"result_height!\",\n                ops_merged as \"ops_merged!\",\n                merged_at as \"merged_at!\"\n            FROM merge_log\n            WHERE bucket_id = ?1\n            ORDER BY merged_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "bucket_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "link_from!: DCid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "height_from!",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "link_onto!: DCid",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "height_onto!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "result_link!: DCid",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "result_height!",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "ops_merged!",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "merged_at!",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d712df5fe28cf77966f2562de0c798a965918cc8de6e6636982349d6f447eb39"
+}

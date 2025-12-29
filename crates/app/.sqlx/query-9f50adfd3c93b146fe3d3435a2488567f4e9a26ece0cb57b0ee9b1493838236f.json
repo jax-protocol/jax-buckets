@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT link_from as \"link_from!: DCid\"\n            FROM merge_log\n            WHERE bucket_id = ?1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "link_from!: DCid",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9f50adfd3c93b146fe3d3435a2488567f4e9a26ece0cb57b0ee9b1493838236f"
+}

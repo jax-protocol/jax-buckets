@@ -3,8 +3,16 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
-use super::provider::{BucketLogError, BucketLogProvider};
+use super::provider::{BucketLogEntry, BucketLogError, BucketLogProvider};
 use crate::linked_data::Link;
+
+/// Entry with full metadata for the memory provider
+#[derive(Debug, Clone)]
+struct MemoryLogEntry {
+    current_link: Link,
+    previous_link: Option<Link>,
+    height: u64,
+}
 
 /// In-memory bucket log provider using HashMaps
 #[derive(Debug, Clone)]
@@ -23,6 +31,8 @@ struct MemoryBucketLogProviderInner {
     link_index: HashMap<Uuid, HashMap<Link, Vec<u64>>>,
     /// Store bucket names (optional, for caching)
     names: HashMap<Uuid, String>,
+    /// Store full entry metadata for chain walking: bucket_id -> Vec<MemoryLogEntry>
+    full_entries: HashMap<Uuid, Vec<MemoryLogEntry>>,
 }
 
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
@@ -157,9 +167,20 @@ impl BucketLogProvider for MemoryBucketLogProvider {
             .link_index
             .entry(id)
             .or_insert_with(HashMap::new)
-            .entry(current)
+            .entry(current.clone())
             .or_insert_with(Vec::new)
             .push(height);
+
+        // Store full entry for chain walking
+        inner
+            .full_entries
+            .entry(id)
+            .or_insert_with(Vec::new)
+            .push(MemoryLogEntry {
+                current_link: current,
+                previous_link: previous,
+                height,
+            });
 
         Ok(())
     }
@@ -204,6 +225,33 @@ impl BucketLogProvider for MemoryBucketLogProvider {
         })?;
 
         Ok(inner.entries.keys().copied().collect())
+    }
+
+    async fn all_entries(
+        &self,
+        id: Uuid,
+    ) -> Result<Vec<BucketLogEntry>, BucketLogError<Self::Error>> {
+        let inner = self.inner.read().map_err(|e| {
+            BucketLogError::Provider(MemoryBucketLogProviderError::Internal(format!(
+                "failed to acquire read lock: {}",
+                e
+            )))
+        })?;
+
+        Ok(inner
+            .full_entries
+            .get(&id)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|e| BucketLogEntry {
+                        current_link: e.current_link.clone(),
+                        previous_link: e.previous_link.clone(),
+                        height: e.height,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
     }
 }
 

@@ -52,6 +52,9 @@ pub struct BucketExplorerTemplate {
     pub api_url: String,
     pub max_upload_size_mb: usize,
     pub file_metadata: Option<FileMetadata>,
+    // Fork detection fields
+    pub has_orphaned_branches: bool,
+    pub orphaned_count: usize,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -308,6 +311,22 @@ pub async fn handler(
 
     let return_url = format!("/buckets/{}", bucket_id);
 
+    // Check for orphaned branches (only when viewing current version)
+    let (has_orphaned_branches, orphaned_count) = if !viewing_history {
+        match state.peer().check_bucket_forks(bucket_id).await {
+            Ok(fork_info) => (
+                fork_info.has_orphaned_branches,
+                fork_info.orphaned_branches.len(),
+            ),
+            Err(e) => {
+                tracing::warn!("Failed to check for orphaned branches: {}", e);
+                (false, 0)
+            }
+        }
+    } else {
+        (false, 0)
+    };
+
     let template = BucketExplorerTemplate {
         bucket_id: bucket_id.to_string(),
         bucket_id_short,
@@ -332,6 +351,8 @@ pub async fn handler(
         api_url,
         max_upload_size_mb: MAX_UPLOAD_SIZE_BYTES / (1024 * 1024),
         file_metadata: None,
+        has_orphaned_branches,
+        orphaned_count,
     };
 
     template.into_response()

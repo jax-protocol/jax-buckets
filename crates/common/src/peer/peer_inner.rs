@@ -9,9 +9,50 @@ use uuid::Uuid;
 
 pub use super::blobs_store::BlobsStore;
 
-use crate::bucket_log::BucketLogProvider;
+use crate::bucket_log::{BucketLogProvider, OrphanedBranch};
 use crate::linked_data::Link;
 use crate::mount::{Mount, MountError};
+
+/// Information about fork state for a bucket
+#[derive(Debug, Clone)]
+pub struct BucketForkInfo {
+    /// Whether there are orphaned (non-canonical) branches
+    pub has_orphaned_branches: bool,
+    /// The canonical head link
+    pub canonical_link: Link,
+    /// The canonical head height
+    pub canonical_height: u64,
+    /// List of orphaned branches found
+    pub orphaned_branches: Vec<OrphanedBranch>,
+}
+
+/// Information about a single merged branch
+#[derive(Debug, Clone)]
+pub struct MergedBranchInfo {
+    /// The link of the orphaned branch that was merged
+    pub link_from: Link,
+    /// The height of the orphaned branch
+    pub height_from: u64,
+    /// Number of operations merged from this branch
+    pub ops_count: usize,
+}
+
+/// Result of a reconciliation operation
+#[derive(Debug, Clone)]
+pub struct ReconcileResult {
+    /// The new manifest link after reconciliation
+    pub new_link: Link,
+    /// The new height after reconciliation
+    pub new_height: u64,
+    /// Total number of operations merged from all orphaned branches
+    pub ops_merged: usize,
+    /// Details about each branch that was merged
+    pub merged_branches: Vec<MergedBranchInfo>,
+    /// The canonical link we merged onto (for merge log recording)
+    pub canonical_link: Link,
+    /// The canonical height we merged onto (for merge log recording)
+    pub canonical_height: u64,
+}
 
 use super::sync::{PingPeerJob, SyncJob, SyncProvider};
 
@@ -384,5 +425,150 @@ impl<L: BucketLogProvider> Peer<L> {
         );
 
         Ok(link)
+    }
+
+    // ========================================
+    // Fork Detection and Reconciliation
+    // ========================================
+
+    /// Check if a bucket has orphaned (non-canonical) branches
+    ///
+    /// Orphaned branches are manifest entries in the log that are not
+    /// ancestors of the canonical head. These typically occur when a peer
+    /// goes offline, makes changes, and comes back to find the canonical
+    /// chain has moved forward.
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_id` - The UUID of the bucket to check
+    ///
+    /// # Returns
+    ///
+    /// BucketForkInfo containing the canonical head and any orphaned branches
+    pub async fn check_bucket_forks(&self, bucket_id: Uuid) -> Result<BucketForkInfo, MountError> {
+        // Get canonical head
+        let (canonical_link, canonical_height) = self
+            .log_provider
+            .head(bucket_id, None)
+            .await
+            .map_err(|e| MountError::Default(anyhow!("Failed to get canonical head: {}", e)))?;
+
+        // Find orphaned branches
+        let orphaned_branches = self
+            .log_provider
+            .find_orphaned_branches(bucket_id)
+            .await
+            .map_err(|e| MountError::Default(anyhow!("Failed to find orphaned branches: {}", e)))?;
+
+        Ok(BucketForkInfo {
+            has_orphaned_branches: !orphaned_branches.is_empty(),
+            canonical_link,
+            canonical_height,
+            orphaned_branches,
+        })
+    }
+
+    /// Reconcile orphaned branches by merging their operations onto the canonical head
+    ///
+    /// This method:
+    /// 1. Loads the canonical mount
+    /// 2. For each orphaned branch, loads its mount and merges the ops_log
+    /// 3. Saves the merged mount as a new canonical head
+    ///
+    /// The PathOpLog CRDT ensures conflict-free merging of operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_id` - The UUID of the bucket to reconcile
+    ///
+    /// # Returns
+    ///
+    /// ReconcileResult with the new link and number of operations merged
+    pub async fn reconcile_bucket(&self, bucket_id: Uuid) -> Result<ReconcileResult, MountError>
+    where
+        L::Error: std::error::Error + Send + Sync + 'static,
+    {
+        // Get canonical head and all orphaned branches
+        let fork_info = self.check_bucket_forks(bucket_id).await?;
+
+        if fork_info.orphaned_branches.is_empty() {
+            return Err(MountError::Default(anyhow!(
+                "No orphaned branches to reconcile"
+            )));
+        }
+
+        tracing::info!(
+            "Reconciling {} orphaned branches for bucket {}",
+            fork_info.orphaned_branches.len(),
+            bucket_id
+        );
+
+        // Load canonical mount
+        let canonical_mount = Mount::load(
+            &fork_info.canonical_link,
+            &self.secret_key,
+            &self.blobs_store,
+        )
+        .await?;
+
+        // For each orphaned branch, load its manifest and merge ops_log
+        let mut total_merged = 0;
+        let mut merged_branches = Vec::new();
+
+        for branch in &fork_info.orphaned_branches {
+            tracing::debug!(
+                "Merging ops from orphaned branch at height {} (link: {:?})",
+                branch.height,
+                branch.link
+            );
+
+            match Mount::load(&branch.link, &self.secret_key, &self.blobs_store).await {
+                Ok(branch_mount) => {
+                    let branch_inner = branch_mount.inner().await;
+                    let merged = canonical_mount.merge_ops(branch_inner.ops_log()).await;
+                    total_merged += merged;
+
+                    // Track this branch merge for logging
+                    merged_branches.push(MergedBranchInfo {
+                        link_from: branch.link.clone(),
+                        height_from: branch.height,
+                        ops_count: merged,
+                    });
+
+                    tracing::debug!(
+                        "Merged {} ops from branch at height {}",
+                        merged,
+                        branch.height
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load orphaned branch at height {}: {}",
+                        branch.height,
+                        e
+                    );
+                    // Continue with other branches
+                }
+            }
+        }
+
+        // Save merged mount (creates new manifest on canonical chain)
+        let new_link = self.save_mount(&canonical_mount).await?;
+
+        tracing::info!(
+            "Reconciliation complete: merged {} ops from {} branches, new link: {:?}",
+            total_merged,
+            merged_branches.len(),
+            new_link
+        );
+
+        Ok(ReconcileResult {
+            new_link,
+            new_height: fork_info.canonical_height + 1,
+            ops_merged: total_merged,
+            merged_branches,
+            canonical_link: fork_info.canonical_link,
+            canonical_height: fork_info.canonical_height,
+        })
     }
 }

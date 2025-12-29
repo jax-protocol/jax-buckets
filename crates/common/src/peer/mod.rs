@@ -14,7 +14,7 @@ pub use sync::{SyncJob, SyncProvider, SyncTarget};
 pub use iroh::NodeAddr;
 
 pub use peer_builder::PeerBuilder;
-pub use peer_inner::Peer;
+pub use peer_inner::{BucketForkInfo, MergedBranchInfo, Peer, ReconcileResult};
 
 /// Spawn the peer with protocol router
 ///

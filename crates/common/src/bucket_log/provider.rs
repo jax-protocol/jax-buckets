@@ -1,9 +1,30 @@
+use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 
 use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::linked_data::Link;
+
+/// Entry representing a non-canonical (orphaned) branch in the bucket log.
+/// These are manifest entries that are not ancestors of the canonical head.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrphanedBranch {
+    /// The link to this orphaned manifest
+    pub link: Link,
+    /// The height at which this branch exists
+    pub height: u64,
+    /// The previous link this branch points to
+    pub previous: Option<Link>,
+}
+
+/// Entry in the bucket log used for orphan detection
+#[derive(Debug, Clone)]
+pub struct BucketLogEntry {
+    pub current_link: Link,
+    pub previous_link: Option<Link>,
+    pub height: u64,
+}
 
 // TODO (amiller68): it might be easier to design this to work
 //  with dependency injection over a generic type
@@ -120,4 +141,88 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
     /// * `Ok(Vec<Uuid>)` - The list of bucket IDs
     /// * `Err(BucketLogError)` - An error occurred while fetching bucket IDs
     async fn list_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>>;
+
+    /// Get all log entries for a bucket
+    ///
+    /// # Arguments
+    /// * `id` - The UUID of the bucket
+    ///
+    /// # Returns
+    /// * `Ok(Vec<BucketLogEntry>)` - All log entries for the bucket
+    /// * `Err(BucketLogError)` - An error occurred while fetching entries
+    async fn all_entries(
+        &self,
+        id: Uuid,
+    ) -> Result<Vec<BucketLogEntry>, BucketLogError<Self::Error>>;
+
+    /// Find all branches that are not ancestors of the canonical head.
+    ///
+    /// These are manifest entries in the log that diverged from the main chain
+    /// and contain potentially unmerged operations.
+    ///
+    /// # Arguments
+    /// * `id` - The UUID of the bucket
+    ///
+    /// # Returns
+    /// * `Ok(Vec<OrphanedBranch>)` - All orphaned branches found
+    /// * `Err(BucketLogError)` - An error occurred
+    async fn find_orphaned_branches(
+        &self,
+        id: Uuid,
+    ) -> Result<Vec<OrphanedBranch>, BucketLogError<Self::Error>> {
+        self.find_orphaned_branches_excluding(id, &HashSet::new())
+            .await
+    }
+
+    /// Find all branches that are not ancestors of the canonical head,
+    /// excluding branches that have already been merged.
+    ///
+    /// This is the main implementation of orphaned branch detection.
+    /// Use this when you have access to a merge log that tracks which
+    /// branches have already been reconciled.
+    ///
+    /// # Arguments
+    /// * `id` - The UUID of the bucket
+    /// * `already_merged` - Set of links that have already been merged and should be excluded
+    ///
+    /// # Returns
+    /// * `Ok(Vec<OrphanedBranch>)` - All orphaned branches found (excluding already merged)
+    /// * `Err(BucketLogError)` - An error occurred
+    async fn find_orphaned_branches_excluding(
+        &self,
+        id: Uuid,
+        already_merged: &HashSet<Link>,
+    ) -> Result<Vec<OrphanedBranch>, BucketLogError<Self::Error>> {
+        // 1. Get canonical head
+        let (canonical_link, _) = self.head(id, None).await?;
+
+        // 2. Get all entries for this bucket
+        let all_entries = self.all_entries(id).await?;
+
+        // 3. Build canonical chain by walking previous links
+        let mut canonical_chain: HashSet<Link> = HashSet::new();
+        let mut current = Some(canonical_link);
+        while let Some(link) = current {
+            canonical_chain.insert(link.clone());
+            // Find entry with this link and get its previous
+            current = all_entries
+                .iter()
+                .find(|e| e.current_link == link)
+                .and_then(|e| e.previous_link.clone());
+        }
+
+        // 4. Find entries NOT in canonical chain AND NOT already merged
+        Ok(all_entries
+            .into_iter()
+            .filter(|e| {
+                !canonical_chain.contains(&e.current_link)
+                    && !already_merged.contains(&e.current_link)
+            })
+            .map(|e| OrphanedBranch {
+                link: e.current_link,
+                height: e.height,
+                previous: e.previous_link,
+            })
+            .collect())
+    }
 }

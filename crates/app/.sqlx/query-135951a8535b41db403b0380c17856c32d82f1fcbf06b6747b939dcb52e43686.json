@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                current_link as \"current_link!: DCid\",\n                previous_link as \"previous_link: DCid\",\n                height as \"height!\"\n            FROM bucket_log\n            WHERE bucket_id = $1\n            ORDER BY height ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "current_link!: DCid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "previous_link: DCid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "height!",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "135951a8535b41db403b0380c17856c32d82f1fcbf06b6747b939dcb52e43686"
+}

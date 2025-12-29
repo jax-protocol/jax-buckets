@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use common::bucket_log::BucketLogProvider;
+use common::bucket_log::{BucketLogEntry, BucketLogProvider};
 use common::linked_data::Link;
 
 use crate::daemon::database::{types::DCid, Database};
@@ -201,6 +201,38 @@ impl BucketLogProvider for Database {
         Ok(rows
             .into_iter()
             .map(|r| Uuid::parse_str(&r.bucket_id).expect("invalid bucket_id UUID in database"))
+            .collect())
+    }
+
+    async fn all_entries(
+        &self,
+        id: Uuid,
+    ) -> Result<Vec<BucketLogEntry>, common::bucket_log::BucketLogError<Self::Error>> {
+        let id_str = id.to_string();
+
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                current_link as "current_link!: DCid",
+                previous_link as "previous_link: DCid",
+                height as "height!"
+            FROM bucket_log
+            WHERE bucket_id = $1
+            ORDER BY height ASC
+            "#,
+            id_str
+        )
+        .fetch_all(&**self)
+        .await
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| BucketLogEntry {
+                current_link: r.current_link.into(),
+                previous_link: r.previous_link.map(Into::into),
+                height: r.height as u64,
+            })
             .collect())
     }
 }

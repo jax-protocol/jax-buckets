@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO merge_log (\n                bucket_id,\n                link_from, height_from,\n                link_onto, height_onto,\n                result_link, result_height,\n                ops_merged\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "5fe5f6ed3903a6fcb3e43a022969b2417ca04f03364175ede5a7ff36f8d46396"
+}

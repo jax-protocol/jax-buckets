@@ -13,8 +13,10 @@ pub mod ls;
 pub mod mkdir;
 pub mod mv;
 pub mod ping;
+pub mod reconcile;
 pub mod rename;
 pub mod share;
+pub mod tree;
 pub mod update;
 
 // Re-export for convenience
@@ -37,5 +39,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/ping", post(ping::handler))
         .route("/share", post(share::handler))
         .route("/export", post(export::handler))
+        .route("/reconcile", post(reconcile::handler))
+        .route("/tree", post(tree::handler))
         .with_state(state)
 }

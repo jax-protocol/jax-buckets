@@ -1,0 +1,27 @@
+<!-- Non-Canonical Branch Banner Component -->
+<!-- Expects: has_orphaned_branches (bool), orphaned_count (usize), bucket_id (String), api_url (String) -->
+
+{% if has_orphaned_branches %}
+<div class="bg-orange-50 dark:bg-orange-900/20 border-2 border-orange-400 dark:border-orange-600 rounded-lg p-4 shadow-lg mb-4">
+    <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-code-branch text-orange-600 dark:text-orange-400 text-2xl"></i>
+            <div>
+                <h3 class="font-bold text-orange-900 dark:text-orange-100 text-lg">Orphaned Branches Detected</h3>
+                <p class="text-sm text-orange-800 dark:text-orange-200">
+                    You have {{ orphaned_count }} branch(es) with changes that diverged from the canonical chain.
+                </p>
+                <p class="text-xs text-orange-700 dark:text-orange-300 mt-1">
+                    These may contain work that needs to be merged back into the main timeline.
+                </p>
+            </div>
+        </div>
+        <button
+            onclick="reconcileBucket('{{ bucket_id }}')"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg"
+        >
+            <i class="fas fa-sync"></i> Reconcile
+        </button>
+    </div>
+</div>
+{% endif %}

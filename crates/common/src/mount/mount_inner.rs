@@ -107,6 +107,15 @@ impl Mount {
         inner.link.clone()
     }
 
+    /// Merge operations from another ops log into this mount's log
+    ///
+    /// Uses the PathOpLog CRDT merge, which is idempotent and conflict-free.
+    /// Returns the number of new operations merged.
+    pub async fn merge_ops(&self, other: &PathOpLog) -> usize {
+        let mut inner = self.0.lock().await;
+        inner.ops_log.merge(other)
+    }
+
     /// Save the current mount state to the blobs store
     pub async fn save(&self, blobs: &BlobsStore) -> Result<(Link, Link, u64), MountError> {
         // Clone data we need before any async operations

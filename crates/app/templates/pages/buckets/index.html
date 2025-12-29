@@ -13,6 +13,9 @@
     {% include "components/banners/historical.html" %}
     {% endif %}
 
+    <!-- Non-canonical branches banner -->
+    {% include "components/banners/non_canonical.html" %}
+
     <!-- Breadcrumb navigation -->
     {% if !path_segments.is_empty() %}
     <nav aria-label="Breadcrumb">
@@ -416,6 +419,51 @@ function closeActionMenu() {
         currentActionMenu = null;
     }
     document.removeEventListener('click', closeActionMenu);
+}
+
+// Reconcile bucket - merge orphaned branches onto canonical head
+async function reconcileBucket(bucketId) {
+    const button = event.target.closest('button');
+    const originalContent = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reconciling...';
+
+    try {
+        const response = await fetch('{{ api_url }}/api/v0/bucket/reconcile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bucket_id: bucketId })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            // Show success and reload
+            UIkit.notification({
+                message: `Reconciliation complete: merged ${result.ops_merged} operations`,
+                status: 'success',
+                pos: 'top-center'
+            });
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+            UIkit.notification({
+                message: `Reconciliation failed: ${error.message || 'Unknown error'}`,
+                status: 'danger',
+                pos: 'top-center'
+            });
+            button.disabled = false;
+            button.innerHTML = originalContent;
+        }
+    } catch (error) {
+        console.error('Reconciliation error:', error);
+        UIkit.notification({
+            message: `Failed to reconcile: ${error.message}`,
+            status: 'danger',
+            pos: 'top-center'
+        });
+        button.disabled = false;
+        button.innerHTML = originalContent;
+    }
 }
 </script>
 
