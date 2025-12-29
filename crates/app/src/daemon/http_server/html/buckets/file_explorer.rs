@@ -313,7 +313,18 @@ pub async fn handler(
 
     // Check for orphaned branches (only when viewing current version)
     let (has_orphaned_branches, orphaned_count) = if !viewing_history {
-        match state.peer().check_bucket_forks(bucket_id).await {
+        // Get already-merged links from merge_log to exclude them
+        let already_merged = state
+            .database()
+            .get_merged_links_from(&bucket_id)
+            .await
+            .unwrap_or_default();
+
+        match state
+            .peer()
+            .check_bucket_forks_excluding(bucket_id, &already_merged)
+            .await
+        {
             Ok(fork_info) => (
                 fork_info.has_orphaned_branches,
                 fork_info.orphaned_branches.len(),

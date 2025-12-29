@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -84,7 +86,10 @@ impl Database {
     ///
     /// Used to filter orphaned branches - if a branch's link appears here,
     /// it has already been merged and shouldn't be shown as orphaned.
-    pub async fn get_merged_links_from(&self, bucket_id: &Uuid) -> Result<Vec<Link>, sqlx::Error> {
+    pub async fn get_merged_links_from(
+        &self,
+        bucket_id: &Uuid,
+    ) -> Result<HashSet<Link>, sqlx::Error> {
         let bucket_id_str = bucket_id.to_string();
 
         let rows = sqlx::query!(

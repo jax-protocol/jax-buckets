@@ -1,5 +1,6 @@
 use crate::crypto::{PublicKey, SecretKey};
 
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -446,6 +447,29 @@ impl<L: BucketLogProvider> Peer<L> {
     ///
     /// BucketForkInfo containing the canonical head and any orphaned branches
     pub async fn check_bucket_forks(&self, bucket_id: Uuid) -> Result<BucketForkInfo, MountError> {
+        self.check_bucket_forks_excluding(bucket_id, &HashSet::new())
+            .await
+    }
+
+    /// Check if a bucket has orphaned branches, excluding already-merged ones
+    ///
+    /// Same as `check_bucket_forks` but allows passing a set of links that
+    /// have already been merged (from a merge_log table) to exclude them
+    /// from the orphaned branches list.
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_id` - The UUID of the bucket to check
+    /// * `already_merged` - Set of links that have already been merged
+    ///
+    /// # Returns
+    ///
+    /// BucketForkInfo containing the canonical head and any orphaned branches
+    pub async fn check_bucket_forks_excluding(
+        &self,
+        bucket_id: Uuid,
+        already_merged: &HashSet<Link>,
+    ) -> Result<BucketForkInfo, MountError> {
         // Get canonical head
         let (canonical_link, canonical_height) = self
             .log_provider
@@ -453,10 +477,10 @@ impl<L: BucketLogProvider> Peer<L> {
             .await
             .map_err(|e| MountError::Default(anyhow!("Failed to get canonical head: {}", e)))?;
 
-        // Find orphaned branches
+        // Find orphaned branches, excluding already merged ones
         let orphaned_branches = self
             .log_provider
-            .find_orphaned_branches(bucket_id)
+            .find_orphaned_branches_excluding(bucket_id, already_merged)
             .await
             .map_err(|e| MountError::Default(anyhow!("Failed to find orphaned branches: {}", e)))?;
 
