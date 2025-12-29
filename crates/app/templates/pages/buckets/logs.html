@@ -8,13 +8,18 @@
 
 {% block content %}
 <div class="px-8 py-6 space-y-6">
-    <div>
-        <h1 class="text-3xl font-bold">
-            <i class="fas fa-history mr-2"></i>{{ bucket_name }} - History
-        </h1>
-        <p class="text-sm text-muted-foreground mt-2">
-            Viewing {{ total_entries }} log entries
-        </p>
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold">
+                <i class="fas fa-history mr-2"></i>{{ bucket_name }} - History
+            </h1>
+            <p class="text-sm text-muted-foreground mt-2">
+                Viewing {{ total_entries }} log entries
+            </p>
+        </div>
+        <a href="/buckets/{{ bucket_id }}/tree" class="button">
+            <i class="fas fa-project-diagram"></i> Tree View
+        </a>
     </div>
 
     {% if entries.is_empty() %}

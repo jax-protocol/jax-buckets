@@ -30,6 +30,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
             get(buckets::file_editor::handler),
         )
         .route("/buckets/:bucket_id/logs", get(buckets::history::handler))
+        .route("/buckets/:bucket_id/tree", get(buckets::tree::handler))
         .route("/buckets/:bucket_id/peers", get(buckets::peers::handler))
         .route("/gw/:bucket_id/*file_path", get(gateway::handler))
         .with_state(state)

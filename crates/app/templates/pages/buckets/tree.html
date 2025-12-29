@@ -1,0 +1,507 @@
+{% extends "layouts/explorer.html" %}
+
+{% block title %}{{ bucket_name }} - Version Tree - Jax{% endblock %}
+
+{% block head %}
+<!-- D3.js -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+.tree-container {
+    width: 100%;
+    height: 600px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    overflow: hidden;
+    background: hsl(var(--card));
+}
+
+.tree-svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Node styles */
+.node circle {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.node:hover circle {
+    transform: scale(1.2);
+}
+
+.node text {
+    font-size: 11px;
+    font-weight: 600;
+    fill: white;
+    pointer-events: none;
+}
+
+/* Canonical chain - green */
+.node-canonical circle {
+    fill: #10b981;
+    stroke: #059669;
+    stroke-width: 2px;
+}
+
+/* Orphaned branch - orange */
+.node-orphaned circle {
+    fill: #f59e0b;
+    stroke: #d97706;
+    stroke-width: 2px;
+}
+
+/* Merged branch - purple */
+.node-merged circle {
+    fill: #8b5cf6;
+    stroke: #7c3aed;
+    stroke-width: 2px;
+}
+
+/* Current head - blue with glow */
+.node-head circle {
+    fill: #3b82f6;
+    stroke: #2563eb;
+    stroke-width: 3px;
+    filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.5));
+}
+
+/* Link styles */
+.link {
+    fill: none;
+    stroke-width: 2px;
+}
+
+.link-canonical {
+    stroke: #10b981;
+}
+
+.link-orphan {
+    stroke: #f59e0b;
+    stroke-dasharray: 5,5;
+}
+
+.link-merge {
+    stroke: #8b5cf6;
+    stroke-dasharray: 3,3;
+}
+
+/* Tooltip */
+.tree-tooltip {
+    position: absolute;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    pointer-events: none;
+    z-index: 1000;
+    max-width: 300px;
+}
+
+.tree-tooltip .tooltip-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: hsl(var(--foreground));
+}
+
+.tree-tooltip .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.tree-tooltip .tooltip-label {
+    color: hsl(var(--muted-foreground));
+}
+
+.tree-tooltip .tooltip-value {
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.tree-tooltip .tooltip-hint {
+    margin-top: 8px;
+    font-size: 10px;
+    color: hsl(var(--muted-foreground));
+    text-align: center;
+}
+
+/* Legend */
+.legend {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.legend-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+}
+
+.legend-dot.canonical { background: #10b981; border: 2px solid #059669; }
+.legend-dot.orphaned { background: #f59e0b; border: 2px solid #d97706; }
+.legend-dot.merged { background: #8b5cf6; border: 2px solid #7c3aed; }
+.legend-dot.head { background: #3b82f6; border: 2px solid #2563eb; box-shadow: 0 0 6px rgba(59, 130, 246, 0.5); }
+</style>
+{% endblock %}
+
+{% block sidebar %}
+    {% include "components/sidebars/bucket.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="px-8 py-6 space-y-6">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold">
+                <i class="fas fa-project-diagram mr-2"></i>{{ bucket_name }} - Version Tree
+            </h1>
+            <p class="text-sm text-muted-foreground mt-2">
+                Interactive visualization of bucket version history
+            </p>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="resetZoom()" class="button">
+                <i class="fas fa-compress-arrows-alt"></i> Reset View
+            </button>
+            <a href="/buckets/{{ bucket_id }}/logs" class="button">
+                <i class="fas fa-list"></i> Table View
+            </a>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="card">
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-dot head"></div>
+                <span>Current Head</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot canonical"></div>
+                <span>Canonical Chain</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot orphaned"></div>
+                <span>Orphaned Branch</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot merged"></div>
+                <span>Merged Branch</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tree visualization -->
+    <div class="card">
+        <div id="tree-container" class="tree-container">
+            <svg id="tree-svg" class="tree-svg"></svg>
+        </div>
+    </div>
+
+    <!-- Loading state -->
+    <div id="loading-state" class="card p-8 text-center" style="display: none;">
+        <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+        <p>Loading version tree...</p>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-state" class="card p-8 text-center" style="display: none;">
+        <i class="fas fa-exclamation-triangle text-4xl mb-4 text-red-500"></i>
+        <p id="error-message">Failed to load version tree</p>
+    </div>
+</div>
+
+<!-- Tooltip -->
+<div id="tree-tooltip" class="tree-tooltip" style="display: none;"></div>
+
+{% include "components/modals/share.html" %}
+{% include "components/modals/manifest.html" %}
+
+<script>
+window.JAX_API_URL = '{{ api_url }}';
+window.JAX_BUCKET_ID = '{{ bucket_id }}';
+
+let svg, g, zoom;
+
+async function loadTreeData() {
+    document.getElementById('loading-state').style.display = 'block';
+    document.getElementById('tree-container').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
+
+    try {
+        const response = await fetch(`${window.JAX_API_URL}/api/v0/bucket/tree`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bucket_id: window.JAX_BUCKET_ID })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to load tree data');
+        }
+
+        document.getElementById('loading-state').style.display = 'none';
+        document.getElementById('tree-container').style.display = 'block';
+
+        return await response.json();
+    } catch (error) {
+        console.error('Error loading tree:', error);
+        document.getElementById('loading-state').style.display = 'none';
+        document.getElementById('error-state').style.display = 'block';
+        document.getElementById('error-message').textContent = error.message;
+        return null;
+    }
+}
+
+function renderTree(data) {
+    const container = document.getElementById('tree-container');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    svg = d3.select('#tree-svg');
+    svg.selectAll('*').remove();
+
+    // Setup zoom
+    zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+
+    svg.call(zoom);
+
+    g = svg.append('g');
+
+    // Create node map
+    const nodeMap = new Map(data.nodes.map(n => [n.id, n]));
+
+    // Group nodes by height
+    const nodesByHeight = new Map();
+    data.nodes.forEach(n => {
+        if (!nodesByHeight.has(n.height)) {
+            nodesByHeight.set(n.height, []);
+        }
+        nodesByHeight.get(n.height).push(n);
+    });
+
+    // Layout parameters
+    const nodeRadius = 22;
+    const levelHeight = 100;
+    const nodeSpacing = 120;
+    const marginTop = 60;
+    const marginLeft = width / 2;
+
+    // Position nodes
+    const positions = new Map();
+    for (let h = 0; h <= data.max_height; h++) {
+        const nodesAtHeight = nodesByHeight.get(h) || [];
+        const totalWidth = (nodesAtHeight.length - 1) * nodeSpacing;
+        nodesAtHeight.forEach((node, i) => {
+            const x = marginLeft - totalWidth / 2 + i * nodeSpacing;
+            const y = marginTop + h * levelHeight;
+            positions.set(node.id, { x, y });
+        });
+    }
+
+    // Create merge lookup
+    const mergeByFrom = new Map(data.merges.map(m => [m.link_from, m]));
+
+    // Draw links first (so they're behind nodes)
+    const links = g.append('g').attr('class', 'links');
+
+    data.nodes.forEach(node => {
+        if (node.parent_id && positions.has(node.parent_id)) {
+            const source = positions.get(node.parent_id);
+            const target = positions.get(node.id);
+
+            // Determine link class
+            let linkClass = 'link link-canonical';
+            if (!node.is_canonical) {
+                linkClass = node.is_merged ? 'link link-merge' : 'link link-orphan';
+            }
+
+            // Draw curved path
+            links.append('path')
+                .attr('class', linkClass)
+                .attr('d', `M${source.x},${source.y} C${source.x},${(source.y + target.y) / 2} ${target.x},${(source.y + target.y) / 2} ${target.x},${target.y}`);
+        }
+    });
+
+    // Draw merge arrows
+    data.merges.forEach(merge => {
+        if (positions.has(merge.link_from) && positions.has(merge.result_link)) {
+            const source = positions.get(merge.link_from);
+            const target = positions.get(merge.result_link);
+
+            // Draw curved merge arrow
+            const midX = (source.x + target.x) / 2 + (source.x < target.x ? 40 : -40);
+            const midY = (source.y + target.y) / 2;
+
+            links.append('path')
+                .attr('class', 'link link-merge')
+                .attr('d', `M${source.x},${source.y} Q${midX},${midY} ${target.x},${target.y}`)
+                .attr('marker-end', 'url(#arrowhead)');
+        }
+    });
+
+    // Add arrowhead marker
+    svg.append('defs').append('marker')
+        .attr('id', 'arrowhead')
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 25)
+        .attr('refY', 0)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', '#8b5cf6');
+
+    // Draw nodes
+    const nodes = g.append('g').attr('class', 'nodes');
+
+    data.nodes.forEach(node => {
+        const pos = positions.get(node.id);
+
+        // Determine node class
+        let nodeClass = 'node node-canonical';
+        if (node.id === data.canonical_head) {
+            nodeClass = 'node node-head';
+        } else if (node.is_merged) {
+            nodeClass = 'node node-merged';
+        } else if (!node.is_canonical) {
+            nodeClass = 'node node-orphaned';
+        }
+
+        const nodeGroup = nodes.append('g')
+            .attr('class', nodeClass)
+            .attr('transform', `translate(${pos.x}, ${pos.y})`)
+            .on('click', () => {
+                window.location.href = `/buckets/${window.JAX_BUCKET_ID}?at=${node.id}`;
+            })
+            .on('mouseenter', (event) => showTooltip(event, node, mergeByFrom.get(node.id)))
+            .on('mouseleave', hideTooltip);
+
+        nodeGroup.append('circle')
+            .attr('r', nodeRadius);
+
+        nodeGroup.append('text')
+            .attr('dy', 4)
+            .attr('text-anchor', 'middle')
+            .text(`#${node.height}`);
+    });
+
+    // Initial zoom to fit
+    const bounds = g.node().getBBox();
+    const fullWidth = bounds.width + 100;
+    const fullHeight = bounds.height + 100;
+    const scale = Math.min(width / fullWidth, height / fullHeight, 1) * 0.9;
+    const translateX = width / 2 - (bounds.x + bounds.width / 2) * scale;
+    const translateY = 30;
+
+    svg.call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale));
+}
+
+function showTooltip(event, node, mergeInfo) {
+    const tooltip = document.getElementById('tree-tooltip');
+
+    let statusText = 'Canonical';
+    let statusClass = 'text-green-600';
+    if (node.is_merged) {
+        statusText = 'Merged';
+        statusClass = 'text-purple-600';
+    } else if (!node.is_canonical) {
+        statusText = 'Orphaned';
+        statusClass = 'text-orange-600';
+    }
+
+    let mergeHtml = '';
+    if (mergeInfo) {
+        mergeHtml = `
+            <div class="tooltip-row mt-2 pt-2 border-t border-gray-200">
+                <span class="tooltip-label">Merged onto:</span>
+                <span class="tooltip-value">#${mergeInfo.height_onto}</span>
+            </div>
+            <div class="tooltip-row">
+                <span class="tooltip-label">Ops merged:</span>
+                <span class="tooltip-value">${mergeInfo.ops_merged}</span>
+            </div>
+        `;
+    }
+
+    tooltip.innerHTML = `
+        <div class="tooltip-title">${node.name}</div>
+        <div class="tooltip-row">
+            <span class="tooltip-label">Height:</span>
+            <span class="tooltip-value">#${node.height}</span>
+        </div>
+        <div class="tooltip-row">
+            <span class="tooltip-label">Link:</span>
+            <span class="tooltip-value">${node.id.substring(0, 12)}...</span>
+        </div>
+        <div class="tooltip-row">
+            <span class="tooltip-label">Status:</span>
+            <span class="tooltip-value ${statusClass}">${statusText}</span>
+        </div>
+        <div class="tooltip-row">
+            <span class="tooltip-label">Created:</span>
+            <span class="tooltip-value">${new Date(node.created_at).toLocaleString()}</span>
+        </div>
+        ${mergeHtml}
+        <div class="tooltip-hint">Click to browse this version</div>
+    `;
+
+    tooltip.style.display = 'block';
+    tooltip.style.left = event.pageX + 15 + 'px';
+    tooltip.style.top = event.pageY + 15 + 'px';
+}
+
+function hideTooltip() {
+    document.getElementById('tree-tooltip').style.display = 'none';
+}
+
+function resetZoom() {
+    if (svg && zoom) {
+        const container = document.getElementById('tree-container');
+        const width = container.clientWidth;
+        svg.transition().duration(500).call(
+            zoom.transform,
+            d3.zoomIdentity.translate(width / 2, 30).scale(0.8)
+        );
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', async () => {
+    const data = await loadTreeData();
+    if (data) {
+        renderTree(data);
+    }
+});
+
+// Handle resize
+let resizeTimeout;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(async () => {
+        const data = await loadTreeData();
+        if (data) {
+            renderTree(data);
+        }
+    }, 250);
+});
+</script>
+{% endblock %}
