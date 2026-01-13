@@ -86,13 +86,9 @@ pub struct PathOpLog {
     /// All operations, keyed by OpId for efficient lookup and ordering
     operations: BTreeMap<OpId, PathOperation>,
 
-    /// Current Lamport clock for this peer (not serialized)
+    /// Current Lamport clock (not serialized, rebuilt from operations)
     #[serde(skip)]
     local_clock: u64,
-
-    /// Local peer ID (not serialized, set when loading)
-    #[serde(skip)]
-    local_peer_id: Option<PublicKey>,
 }
 
 impl BlockEncoded<DagCborCodec> for PathOpLog {}
@@ -103,17 +99,8 @@ impl PathOpLog {
         Self::default()
     }
 
-    /// Create a new log with the local peer ID set
-    pub fn with_peer_id(peer_id: PublicKey) -> Self {
-        let mut log = Self::new();
-        log.local_peer_id = Some(peer_id);
-        log
-    }
-
-    /// Set the local peer ID (needed after deserialization)
-    pub fn set_peer_id(&mut self, peer_id: PublicKey) {
-        self.local_peer_id = Some(peer_id);
-        // Update local clock to be greater than any seen operation
+    /// Rebuild local clock from operations (call after deserialization)
+    pub fn rebuild_clock(&mut self) {
         self.local_clock = self
             .operations
             .keys()
@@ -124,18 +111,17 @@ impl PathOpLog {
 
     /// Record a new local operation
     ///
-    /// Returns the OpId of the recorded operation
+    /// The peer_id identifies who is recording this operation.
+    /// Returns the OpId of the recorded operation.
     pub fn record(
         &mut self,
+        peer_id: PublicKey,
         op_type: OpType,
         path: impl Into<PathBuf>,
         content_link: Option<Link>,
         is_dir: bool,
     ) -> OpId {
         self.local_clock += 1;
-        let peer_id = self
-            .local_peer_id
-            .expect("peer_id must be set before recording operations");
 
         let id = OpId {
             timestamp: self.local_clock,
@@ -295,10 +281,10 @@ mod tests {
 
     #[test]
     fn test_record_operation() {
+        let peer1 = make_peer_id(1);
         let mut log = PathOpLog::new();
-        log.local_peer_id = Some(make_peer_id(1));
 
-        let id = log.record(OpType::Add, "file.txt", None, false);
+        let id = log.record(peer1, OpType::Add, "file.txt", None, false);
 
         assert_eq!(id.timestamp, 1);
         assert_eq!(log.len(), 1);
@@ -310,12 +296,12 @@ mod tests {
 
     #[test]
     fn test_record_multiple_operations() {
+        let peer1 = make_peer_id(1);
         let mut log = PathOpLog::new();
-        log.local_peer_id = Some(make_peer_id(1));
 
-        let id1 = log.record(OpType::Add, "file1.txt", None, false);
-        let id2 = log.record(OpType::Add, "file2.txt", None, false);
-        let id3 = log.record(OpType::Remove, "file1.txt", None, false);
+        let id1 = log.record(peer1, OpType::Add, "file1.txt", None, false);
+        let id2 = log.record(peer1, OpType::Add, "file2.txt", None, false);
+        let id3 = log.record(peer1, OpType::Remove, "file1.txt", None, false);
 
         assert_eq!(id1.timestamp, 1);
         assert_eq!(id2.timestamp, 2);
@@ -325,13 +311,14 @@ mod tests {
 
     #[test]
     fn test_merge_logs() {
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
         let mut log1 = PathOpLog::new();
-        log1.local_peer_id = Some(make_peer_id(1));
-        log1.record(OpType::Add, "file1.txt", None, false);
+        log1.record(peer1, OpType::Add, "file1.txt", None, false);
 
         let mut log2 = PathOpLog::new();
-        log2.local_peer_id = Some(make_peer_id(2));
-        log2.record(OpType::Add, "file2.txt", None, false);
+        log2.record(peer2, OpType::Add, "file2.txt", None, false);
 
         let added = log1.merge(&log2);
 
@@ -341,9 +328,9 @@ mod tests {
 
     #[test]
     fn test_merge_idempotent() {
+        let peer1 = make_peer_id(1);
         let mut log1 = PathOpLog::new();
-        log1.local_peer_id = Some(make_peer_id(1));
-        log1.record(OpType::Add, "file.txt", None, false);
+        log1.record(peer1, OpType::Add, "file.txt", None, false);
 
         let log1_clone = log1.clone();
         let added = log1.merge(&log1_clone);
@@ -354,9 +341,9 @@ mod tests {
 
     #[test]
     fn test_resolve_path_single_op() {
+        let peer1 = make_peer_id(1);
         let mut log = PathOpLog::new();
-        log.local_peer_id = Some(make_peer_id(1));
-        log.record(OpType::Add, "file.txt", None, false);
+        log.record(peer1, OpType::Add, "file.txt", None, false);
 
         let resolved = log.resolve_path("file.txt");
         assert!(resolved.is_some());
@@ -365,11 +352,11 @@ mod tests {
 
     #[test]
     fn test_resolve_path_latest_wins() {
+        let peer1 = make_peer_id(1);
         let mut log = PathOpLog::new();
-        log.local_peer_id = Some(make_peer_id(1));
 
-        log.record(OpType::Add, "file.txt", None, false);
-        log.record(OpType::Remove, "file.txt", None, false);
+        log.record(peer1, OpType::Add, "file.txt", None, false);
+        log.record(peer1, OpType::Remove, "file.txt", None, false);
 
         let resolved = log.resolve_path("file.txt");
         assert!(resolved.is_some());
@@ -378,12 +365,12 @@ mod tests {
 
     #[test]
     fn test_resolve_all_excludes_removed() {
+        let peer1 = make_peer_id(1);
         let mut log = PathOpLog::new();
-        log.local_peer_id = Some(make_peer_id(1));
 
-        log.record(OpType::Add, "file1.txt", None, false);
-        log.record(OpType::Add, "file2.txt", None, false);
-        log.record(OpType::Remove, "file1.txt", None, false);
+        log.record(peer1, OpType::Add, "file1.txt", None, false);
+        log.record(peer1, OpType::Add, "file2.txt", None, false);
+        log.record(peer1, OpType::Remove, "file1.txt", None, false);
 
         let resolved = log.resolve_all();
 
@@ -398,12 +385,10 @@ mod tests {
         let peer2 = make_peer_id(2);
 
         let mut log1 = PathOpLog::new();
-        log1.local_peer_id = Some(peer1);
-        log1.record(OpType::Add, "file.txt", None, false);
+        log1.record(peer1, OpType::Add, "file.txt", None, false);
 
         let mut log2 = PathOpLog::new();
-        log2.local_peer_id = Some(peer2);
-        log2.record(OpType::Remove, "file.txt", None, false);
+        log2.record(peer2, OpType::Remove, "file.txt", None, false);
 
         // Merge log2 into log1
         log1.merge(&log2);
@@ -423,11 +408,12 @@ mod tests {
 
     #[test]
     fn test_mv_operation() {
+        let peer1 = make_peer_id(1);
         let mut log = PathOpLog::new();
-        log.local_peer_id = Some(make_peer_id(1));
 
-        log.record(OpType::Add, "old.txt", None, false);
+        log.record(peer1, OpType::Add, "old.txt", None, false);
         log.record(
+            peer1,
             OpType::Mv {
                 from: PathBuf::from("old.txt"),
             },
@@ -448,12 +434,13 @@ mod tests {
     fn test_serialization_roundtrip() {
         use crate::linked_data::BlockEncoded;
 
+        let peer1 = make_peer_id(1);
         let mut log = PathOpLog::new();
-        log.local_peer_id = Some(make_peer_id(1));
 
-        log.record(OpType::Add, "file1.txt", None, false);
-        log.record(OpType::Mkdir, "dir", None, true);
+        log.record(peer1, OpType::Add, "file1.txt", None, false);
+        log.record(peer1, OpType::Mkdir, "dir", None, true);
         log.record(
+            peer1,
             OpType::Mv {
                 from: PathBuf::from("file1.txt"),
             },
@@ -465,7 +452,7 @@ mod tests {
         let encoded = log.encode().unwrap();
         let decoded = PathOpLog::decode(&encoded).unwrap();
 
-        // Operations should match (local_clock and local_peer_id are not serialized)
+        // Operations should match (local_clock is not serialized)
         assert_eq!(log.operations, decoded.operations);
     }
 }

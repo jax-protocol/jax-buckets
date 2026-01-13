@@ -39,6 +39,8 @@ pub struct MountInner {
     pub height: u64,
     // the path operations log (CRDT for conflict resolution)
     pub ops_log: PathOpLog,
+    // the local peer ID (for recording operations)
+    pub peer_id: PublicKey,
 }
 
 impl MountInner {
@@ -59,6 +61,9 @@ impl MountInner {
     }
     pub fn ops_log(&self) -> &PathOpLog {
         &self.ops_log
+    }
+    pub fn peer_id(&self) -> &PublicKey {
+        &self.peer_id
     }
 }
 
@@ -211,9 +216,6 @@ impl Mount {
         );
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
-        // Initialize the path operations log with the owner's peer ID
-        let ops_log = PathOpLog::with_peer_id(owner.public());
-
         // return the new mount
         Ok(Mount(
             Arc::new(Mutex::new(MountInner {
@@ -222,7 +224,8 @@ impl Mount {
                 entry,
                 pins,
                 height: 0,
-                ops_log,
+                ops_log: PathOpLog::new(),
+                peer_id: owner.public(),
             })),
             blobs.clone(),
         ))
@@ -258,11 +261,11 @@ impl Mount {
         // Load the ops log if it exists, otherwise create a new one
         let mut ops_log = if let Some(ops_link) = manifest.ops_log() {
             let mut log = Self::_get_ops_log_from_blobs(ops_link, &secret, blobs).await?;
-            // Set the peer ID after deserialization (not serialized)
-            log.set_peer_id(secret_key.public());
+            // Rebuild local clock from operations after deserialization
+            log.rebuild_clock();
             log
         } else {
-            PathOpLog::with_peer_id(secret_key.public())
+            PathOpLog::new()
         };
 
         Ok(Mount(
@@ -273,6 +276,7 @@ impl Mount {
                 pins,
                 height,
                 ops_log,
+                peer_id: secret_key.public(),
             })),
             blobs.clone(),
         ))
@@ -345,9 +349,10 @@ impl Mount {
             }
 
             // Record the add operation in the ops log
+            let peer_id = inner.peer_id;
             inner
                 .ops_log
-                .record(OpType::Add, clean_path(path), Some(link), false);
+                .record(peer_id, OpType::Add, clean_path(path), Some(link), false);
         }
 
         Ok(())
@@ -426,9 +431,10 @@ impl Mount {
         // Record the remove operation in the ops log
         {
             let mut inner = self.0.lock().await;
+            let peer_id = inner.peer_id;
             inner
                 .ops_log
-                .record(OpType::Remove, removed_path, None, is_dir);
+                .record(peer_id, OpType::Remove, removed_path, None, is_dir);
         }
 
         Ok(())
@@ -514,9 +520,10 @@ impl Mount {
             }
 
             // Record the mkdir operation in the ops log
+            let peer_id = inner.peer_id;
             inner
                 .ops_log
-                .record(OpType::Mkdir, path.to_path_buf(), None, true);
+                .record(peer_id, OpType::Mkdir, path.to_path_buf(), None, true);
         }
 
         Ok(())
@@ -693,9 +700,14 @@ impl Mount {
             // ============================================================
             // STEP 6: Record mv operation in the ops log
             // ============================================================
-            inner
-                .ops_log
-                .record(OpType::Mv { from: from_path }, to_path, None, is_dir);
+            let peer_id = inner.peer_id;
+            inner.ops_log.record(
+                peer_id,
+                OpType::Mv { from: from_path },
+                to_path,
+                None,
+                is_dir,
+            );
         }
 
         Ok(())
