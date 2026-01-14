@@ -259,7 +259,7 @@ impl Mount {
         let height = manifest.height();
 
         // Load the ops log if it exists, otherwise create a new one
-        let mut ops_log = if let Some(ops_link) = manifest.ops_log() {
+        let ops_log = if let Some(ops_link) = manifest.ops_log() {
             let mut log = Self::_get_ops_log_from_blobs(ops_link, &secret, blobs).await?;
             // Rebuild local clock from operations after deserialization
             log.rebuild_clock();
