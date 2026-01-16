@@ -174,11 +174,7 @@ async fn main() -> Result<()> {
     let _ = shutdown_rx.clone().changed().await;
 
     // Wait for all handles with timeout
-    let _ = tokio::time::timeout(
-        FINAL_SHUTDOWN_TIMEOUT,
-        futures::future::join_all(handles),
-    )
-    .await;
+    let _ = tokio::time::timeout(FINAL_SHUTDOWN_TIMEOUT, futures::future::join_all(handles)).await;
 
     tracing::info!("Local peer shutdown complete");
     Ok(())

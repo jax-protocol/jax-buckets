@@ -9,11 +9,11 @@
 pub mod config;
 pub mod database;
 pub mod http;
-pub mod sync_provider;
 pub mod state;
+pub mod sync_provider;
 
 // Re-export key types for convenience
 pub use config::Config;
 pub use database::{Database, DatabaseSetupError};
 pub use state::{State as ServiceState, StateSetupError};
-pub use sync_provider::{QueuedSyncConfig, QueuedSyncProvider, JobReceiver, run_worker};
+pub use sync_provider::{run_worker, JobReceiver, QueuedSyncConfig, QueuedSyncProvider};

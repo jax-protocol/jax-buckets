@@ -153,7 +153,10 @@ fn build_gateway_router(state: ServiceState) -> Router {
 
     Router::new()
         // Gateway route for serving bucket content
-        .route("/gw/:bucket_id/*file_path", get(service::http::html::gateway::handler))
+        .route(
+            "/gw/:bucket_id/*file_path",
+            get(service::http::html::gateway::handler),
+        )
         // Health check routes
         .nest("/_status", service::http::health::router(state.clone()))
         .with_state(state)

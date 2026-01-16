@@ -2,9 +2,9 @@ use reqwest::{header::HeaderMap, header::HeaderValue, Client};
 use url::Url;
 use uuid::Uuid;
 
+use super::super::v0::bucket::list::{ListRequest, ListResponse};
 use super::error::ApiError;
 use super::ApiRequest;
-use super::super::v0::bucket::list::{ListRequest, ListResponse};
 
 #[derive(Debug, Clone)]
 pub struct ApiClient {

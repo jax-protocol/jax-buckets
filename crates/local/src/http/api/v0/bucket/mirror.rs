@@ -100,10 +100,7 @@ pub async fn remove_handler(
     if !removed {
         return Err(MirrorError::MirrorNotFound(public_key_str.clone()));
     }
-    tracing::info!(
-        "MIRROR API: Removed mirror {} from bucket",
-        public_key_str
-    );
+    tracing::info!("MIRROR API: Removed mirror {} from bucket", public_key_str);
 
     // Save mount and update log
     let _new_link = state.peer().save_mount(&mount).await?;

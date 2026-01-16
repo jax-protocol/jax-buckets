@@ -46,7 +46,10 @@ pub async fn handler(
     // The actual secret will be updated during save()
     let secret = Secret::generate();
     mount.publish(&secret).await?;
-    tracing::info!("PUBLISH API: Marked mirrors as published for bucket {}", bucket_id);
+    tracing::info!(
+        "PUBLISH API: Marked mirrors as published for bucket {}",
+        bucket_id
+    );
 
     // Save mount to persist the changes
     let _new_link = state.peer().save_mount(&mount).await?;
