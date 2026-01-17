@@ -1,43 +1,44 @@
 //! Integration tests for Mount mirror and publish operations
 
+mod common;
+
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use common::crypto::SecretKey;
-use common::mount::{Mount, MountError};
-use common::peer::BlobsStore;
+use ::common::crypto::SecretKey;
+use ::common::mount::{Mount, MountError};
+use ::common::peer::BlobsStore;
 use tempfile::TempDir;
-use uuid::Uuid;
 
-#[tokio::test]
-async fn test_mirror_cannot_mount_unpublished_bucket() {
-    let temp_dir = TempDir::new().unwrap();
-    let blob_path = temp_dir.path().join("blobs");
-    let blobs = BlobsStore::fs(&blob_path).await.unwrap();
+const TEST_PATH: &str = "/file.txt";
 
-    // Owner creates a bucket
-    let owner_key = SecretKey::generate();
-    let mut mount = Mount::init(Uuid::new_v4(), "test".to_string(), &owner_key, &blobs)
-        .await
-        .unwrap();
+/// Set up a mount with content and a mirror for publish/mirror tests.
+async fn setup_mount_with_mirror(
+    content: &[u8],
+) -> (Mount, BlobsStore, SecretKey, SecretKey, TempDir) {
+    let (mut mount, blobs, owner_key, temp_dir) = common::setup_test_env().await;
 
-    // Add some content
+    // Add content
     mount
-        .add(
-            &PathBuf::from("/file.txt"),
-            Cursor::new(b"secret data".to_vec()),
-        )
+        .add(&PathBuf::from(TEST_PATH), Cursor::new(content.to_vec()))
         .await
         .unwrap();
 
-    // Add a mirror peer (without publishing)
+    // Add a mirror
     let mirror_key = SecretKey::generate();
     mount.add_mirror(mirror_key.public()).await;
 
-    // Save the mount (not published)
+    (mount, blobs, owner_key, mirror_key, temp_dir)
+}
+
+#[tokio::test]
+async fn test_mirror_cannot_mount_unpublished_bucket() {
+    let (mount, blobs, _, mirror_key, _temp) = setup_mount_with_mirror(b"secret data").await;
+
+    // Save without publishing
     let (link, _, _) = mount.save(&blobs, false).await.unwrap();
 
-    // Mirror tries to mount - should fail because bucket is not published
+    // Mirror should fail to mount unpublished bucket
     let result = Mount::load(&link, &mirror_key, &blobs).await;
     assert!(
         matches!(result, Err(MountError::MirrorCannotMount)),
@@ -47,75 +48,32 @@ async fn test_mirror_cannot_mount_unpublished_bucket() {
 
 #[tokio::test]
 async fn test_mirror_can_mount_published_bucket() {
-    let temp_dir = TempDir::new().unwrap();
-    let blob_path = temp_dir.path().join("blobs");
-    let blobs = BlobsStore::fs(&blob_path).await.unwrap();
+    let (mount, blobs, _, mirror_key, _temp) = setup_mount_with_mirror(b"published data").await;
 
-    // Owner creates a bucket
-    let owner_key = SecretKey::generate();
-    let mut mount = Mount::init(Uuid::new_v4(), "test".to_string(), &owner_key, &blobs)
-        .await
-        .unwrap();
-
-    // Add some content
-    mount
-        .add(
-            &PathBuf::from("/file.txt"),
-            Cursor::new(b"published data".to_vec()),
-        )
-        .await
-        .unwrap();
-
-    // Add a mirror peer
-    let mirror_key = SecretKey::generate();
-    mount.add_mirror(mirror_key.public()).await;
-
-    // Publish the bucket - this saves and grants decryption access to mirrors
+    // Publish grants decryption access to mirrors
     let (link, _, _) = mount.publish().await.unwrap();
 
-    // Mirror loads the mount - should succeed now that bucket is published
+    // Mirror can now mount
     let mirror_mount = Mount::load(&link, &mirror_key, &blobs)
         .await
         .expect("Mirror should be able to mount published bucket");
 
-    // Mirror can read the content
-    let data = mirror_mount.cat(&PathBuf::from("/file.txt")).await.unwrap();
+    let data = mirror_mount.cat(&PathBuf::from(TEST_PATH)).await.unwrap();
     assert_eq!(data, b"published data");
 }
 
 #[tokio::test]
 async fn test_owner_can_always_mount() {
-    let temp_dir = TempDir::new().unwrap();
-    let blob_path = temp_dir.path().join("blobs");
-    let blobs = BlobsStore::fs(&blob_path).await.unwrap();
+    let (mount, blobs, owner_key, _, _temp) = setup_mount_with_mirror(b"owner data").await;
 
-    // Owner creates a bucket
-    let owner_key = SecretKey::generate();
-    let mut mount = Mount::init(Uuid::new_v4(), "test".to_string(), &owner_key, &blobs)
-        .await
-        .unwrap();
-
-    // Add content
-    mount
-        .add(
-            &PathBuf::from("/file.txt"),
-            Cursor::new(b"owner data".to_vec()),
-        )
-        .await
-        .unwrap();
-
-    // Add a mirror (unpublished)
-    let mirror_key = SecretKey::generate();
-    mount.add_mirror(mirror_key.public()).await;
-
-    // Save (not published)
+    // Save without publishing
     let (link, _, _) = mount.save(&blobs, false).await.unwrap();
 
-    // Owner can still mount even though there's an unpublished mirror
+    // Owner can mount regardless of publish state
     let owner_mount = Mount::load(&link, &owner_key, &blobs)
         .await
         .expect("Owner should always be able to mount");
 
-    let data = owner_mount.cat(&PathBuf::from("/file.txt")).await.unwrap();
+    let data = owner_mount.cat(&PathBuf::from(TEST_PATH)).await.unwrap();
     assert_eq!(data, b"owner data");
 }
