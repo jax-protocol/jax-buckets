@@ -133,6 +133,10 @@ pub struct Manifest {
     id: Uuid,
     /// Human-readable name for display.
     name: String,
+    /// Height in the version chain (0 for initial, increments on each update).
+    height: u64,
+    /// Software version for compatibility checking.
+    version: Version,
     /// Map of principal public keys (hex) to their shares.
     shares: Shares,
     /// Link to the root [`Node`](super::Node) of the file tree.
@@ -141,17 +145,14 @@ pub struct Manifest {
     pins: Link,
     /// Link to the previous manifest version (forms history chain).
     previous: Option<Link>,
-    /// Height in the version chain (0 for initial, increments on each update).
-    height: u64,
-    /// Software version for compatibility checking.
-    version: Version,
     /// Optional link to the encrypted path operations log (CRDT).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ops_log: Option<Link>,
     /// Plaintext secret for public read access.
     ///
     /// When set, anyone with the manifest can decrypt bucket contents.
-    /// Once published, this cannot be revoked - the secret is exposed.
+    /// Once published, the publicity of a version of bucket cannot be revoked
+    /// - the secret is exposed within the version history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     published_secret: Option<Secret>,
 }
