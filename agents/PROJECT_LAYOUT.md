@@ -1,236 +1,60 @@
 # Project Layout
 
-Exhaustive tree of the jax-bucket workspace.
+Quick guide to finding your way around the jax-bucket workspace.
 
 ## Crates
 
-### app (`jax-bucket` binary)
+### `crates/app` - CLI & Daemon
 
-CLI and daemon for bucket operations, HTTP API, and web UI.
+The main binary (`jax-bucket`). Handles CLI commands, runs the HTTP daemon, and serves the web UI.
 
-### common (`jax-common` library)
+**Key areas:**
 
-Core library: crypto primitives, mount/manifest, peer protocol, blob storage.
+- `src/main.rs` - Entry point, CLI parsing
+- `src/daemon/` - HTTP server and database
+  - `http_server/api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
+  - `http_server/html/` - Web UI page handlers
+  - `database/` - SQLite storage and bucket log provider
+- `src/ops/` - CLI command implementations
 
----
+#### Askama Templating
 
-## Tree
+The web UI uses [Askama](https://github.com/djc/askama) for HTML templating.
 
-```
-jax-bucket/
-├── Cargo.toml                          # Workspace root
-├── Cargo.lock
-├── build.rs
-├── release.toml                        # cargo-smart-release config
-├── CLAUDE.md                           # Agent instructions
-├── README.md
-├── LICENSE
-│
-├── crates/
-│   ├── app/
-│   │   ├── Cargo.toml
-│   │   ├── README.md                   # Crate README (crates.io)
-│   │   ├── build.rs
-│   │   ├── agents/                     # App-specific agent docs
-│   │   │   ├── sqlite-sync-provider-example.md
-│   │   │   └── templating/
-│   │   │       ├── template-structure.md
-│   │   │       └── templating-ui-system.md
-│   │   ├── src/
-│   │   │   ├── main.rs
-│   │   │   ├── args.rs
-│   │   │   ├── op.rs
-│   │   │   ├── state.rs
-│   │   │   ├── daemon/
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── config.rs
-│   │   │   │   ├── state.rs
-│   │   │   │   ├── sync_provider.rs
-│   │   │   │   ├── database/
-│   │   │   │   │   ├── mod.rs
-│   │   │   │   │   ├── sqlite.rs
-│   │   │   │   │   ├── bucket_queries.rs
-│   │   │   │   │   ├── bucket_log_provider.rs
-│   │   │   │   │   └── types/
-│   │   │   │   │       ├── mod.rs
-│   │   │   │   │       └── dcid.rs
-│   │   │   │   ├── http_server/
-│   │   │   │   │   ├── mod.rs
-│   │   │   │   │   ├── config.rs
-│   │   │   │   │   ├── api/
-│   │   │   │   │   │   ├── mod.rs
-│   │   │   │   │   │   ├── v0/
-│   │   │   │   │   │   │   ├── mod.rs
-│   │   │   │   │   │   │   └── bucket/
-│   │   │   │   │   │   │       ├── mod.rs
-│   │   │   │   │   │   │       ├── add.rs
-│   │   │   │   │   │   │       ├── cat.rs
-│   │   │   │   │   │   │       ├── create.rs
-│   │   │   │   │   │   │       ├── delete.rs
-│   │   │   │   │   │   │       ├── export.rs
-│   │   │   │   │   │   │       ├── list.rs
-│   │   │   │   │   │   │       ├── ls.rs
-│   │   │   │   │   │   │       ├── mkdir.rs
-│   │   │   │   │   │   │       ├── mv.rs
-│   │   │   │   │   │   │       ├── ping.rs
-│   │   │   │   │   │   │       ├── publish.rs
-│   │   │   │   │   │   │       ├── rename.rs
-│   │   │   │   │   │   │       ├── share.rs
-│   │   │   │   │   │   │       └── update.rs
-│   │   │   │   │   │   └── client/
-│   │   │   │   │   │       ├── mod.rs
-│   │   │   │   │   │       ├── client.rs
-│   │   │   │   │   │       └── error.rs
-│   │   │   │   │   ├── handlers/
-│   │   │   │   │   │   ├── mod.rs
-│   │   │   │   │   │   └── not_found.rs
-│   │   │   │   │   ├── health/
-│   │   │   │   │   │   ├── mod.rs
-│   │   │   │   │   │   ├── data_source.rs
-│   │   │   │   │   │   ├── liveness.rs
-│   │   │   │   │   │   ├── readiness.rs
-│   │   │   │   │   │   └── version.rs
-│   │   │   │   │   └── html/
-│   │   │   │   │       ├── mod.rs
-│   │   │   │   │       ├── index.rs
-│   │   │   │   │       ├── buckets/
-│   │   │   │   │       │   ├── mod.rs
-│   │   │   │   │       │   ├── file_editor.rs
-│   │   │   │   │       │   ├── file_explorer.rs
-│   │   │   │   │       │   ├── file_viewer.rs
-│   │   │   │   │       │   ├── history.rs
-│   │   │   │   │       │   └── peers.rs
-│   │   │   │   │       └── gateway/
-│   │   │   │   │           └── mod.rs
-│   │   │   │   └── process/
-│   │   │   │       ├── mod.rs
-│   │   │   │       └── utils.rs
-│   │   │   └── ops/
-│   │   │       ├── mod.rs
-│   │   │       ├── daemon.rs
-│   │   │       ├── init.rs
-│   │   │       ├── version.rs
-│   │   │       └── bucket/
-│   │   │           ├── mod.rs
-│   │   │           ├── add.rs
-│   │   │           ├── cat.rs
-│   │   │           ├── clone.rs
-│   │   │           ├── clone_state.rs
-│   │   │           ├── create.rs
-│   │   │           ├── list.rs
-│   │   │           ├── ls.rs
-│   │   │           ├── share.rs
-│   │   │           └── sync.rs
-│   │   ├── templates/
-│   │   │   ├── layouts/
-│   │   │   │   ├── base.html
-│   │   │   │   └── explorer.html
-│   │   │   ├── pages/
-│   │   │   │   ├── index.html
-│   │   │   │   ├── not_found.html
-│   │   │   │   └── buckets/
-│   │   │   │       ├── index.html
-│   │   │   │       ├── editor.html
-│   │   │   │       ├── viewer.html
-│   │   │   │       ├── logs.html
-│   │   │   │       ├── peers.html
-│   │   │   │       ├── syncing.html
-│   │   │   │       └── not_found.html
-│   │   │   └── components/
-│   │   │       ├── banners/
-│   │   │       │   └── historical.html
-│   │   │       ├── cards/
-│   │   │       │   └── bucket.html
-│   │   │       ├── editors/
-│   │   │       │   └── inline.html
-│   │   │       ├── modals/
-│   │   │       │   ├── manifest.html
-│   │   │       │   ├── share.html
-│   │   │       │   └── upload.html
-│   │   │       └── sidebars/
-│   │   │           └── bucket.html
-│   │   └── static/                     # Static assets (CSS, JS)
-│   │
-│   └── common/
-│       ├── Cargo.toml
-│       ├── README.md                   # Crate README (crates.io)
-│       ├── build.rs
-│       ├── src/
-│       │   ├── lib.rs
-│       │   ├── version.rs
-│       │   ├── bucket_log/
-│       │   │   ├── mod.rs
-│       │   │   ├── memory.rs
-│       │   │   └── provider.rs
-│       │   ├── crypto/
-│       │   │   ├── mod.rs
-│       │   │   ├── keys.rs
-│       │   │   ├── secret.rs
-│       │   │   └── secret_share.rs
-│       │   ├── linked_data/
-│       │   │   ├── mod.rs
-│       │   │   ├── ipld.rs
-│       │   │   └── link.rs
-│       │   ├── mount/
-│       │   │   ├── mod.rs
-│       │   │   ├── manifest.rs
-│       │   │   ├── node.rs
-│       │   │   ├── mount_inner.rs
-│       │   │   ├── principal.rs
-│       │   │   ├── pins.rs
-│       │   │   ├── path_ops.rs
-│       │   │   └── maybe_mime.rs
-│       │   └── peer/
-│       │       ├── mod.rs
-│       │       ├── blobs_store.rs
-│       │       ├── jobs.rs
-│       │       ├── peer_builder.rs
-│       │       ├── peer_inner.rs
-│       │       ├── protocol/
-│       │       │   ├── mod.rs
-│       │       │   ├── bidirectional.rs
-│       │       │   └── messages/
-│       │       │       ├── mod.rs
-│       │       │       ├── macros.rs
-│       │       │       └── ping.rs
-│       │       └── sync/
-│       │           ├── mod.rs
-│       │           ├── download_pins.rs
-│       │           ├── ping_peer.rs
-│       │           └── sync_bucket.rs
-│       └── tests/
-│           ├── common/
-│           │   └── mod.rs
-│           ├── add.rs
-│           ├── ls.rs
-│           ├── mirror.rs
-│           ├── mkdir.rs
-│           ├── mv.rs
-│           ├── ops_log.rs
-│           ├── persistence.rs
-│           └── rm.rs
-│
-├── agents/                             # Agent documentation
-│   ├── INDEX.md
-│   ├── CONCEPTS.md
-│   ├── CONTRIBUTING.md
-│   ├── ISSUES.md
-│   ├── PROJECT_LAYOUT.md
-│   ├── RELEASE.md
-│   ├── RUST_PATTERNS.md
-│   └── SUCCESS_CRITERIA.md
-│
-├── issues/                             # Issue tracking
-│
-├── bin/                                # Build scripts
-│   ├── build.sh
-│   ├── check.sh
-│   ├── dev.sh
-│   └── test.sh
-│
-└── .github/
-    └── workflows/
-        ├── ci.yml
-        ├── release-pr.yml
-        └── publish-crate.yml
-```
+- `templates/layouts/` - Base layouts (`base.html`, `explorer.html`)
+- `templates/pages/` - Full page templates
+- `templates/components/` - Reusable UI components (cards, modals, sidebars)
+
+Templates are compiled at build time. Handler structs derive `Template` and reference template files.
+
+### `crates/common` - Core Library
+
+Shared library (`jax-common`) with crypto, storage, and peer protocol.
+
+**Key areas:**
+
+- `src/crypto/` - Keys, encryption, secret sharing
+  - `keys.rs` - Ed25519/X25519 keypairs
+  - `secret.rs` - ChaCha20-Poly1305 encryption
+  - `secret_share.rs` - X25519 key exchange for sharing
+- `src/mount/` - Virtual filesystem
+  - `manifest.rs` - Bucket metadata, shares, principals
+  - `mount_inner.rs` - File operations (add, rm, mkdir, mv)
+  - `node.rs` - File/directory tree nodes
+- `src/peer/` - P2P networking
+  - `peer_inner.rs` - Peer state and mount operations
+  - `blobs_store.rs` - Content-addressed blob storage (iroh-blobs)
+  - `protocol/` - Wire protocol messages
+  - `sync/` - Sync jobs (download, ping, sync bucket)
+- `src/bucket_log/` - Append-only log for bucket history
+
+#### Integration Tests
+
+- `tests/` - Integration tests for mount operations
+- `tests/common/mod.rs` - Shared test utilities (`setup_test_env()`)
+
+## Other Directories
+
+- `agents/` - Documentation for AI agents (you're reading one)
+- `bin/` - Shell scripts for build, check, dev, test
+- `.github/workflows/` - CI and release automation
