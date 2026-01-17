@@ -74,6 +74,8 @@ impl Share {
         }
     }
 
+    /* Getters */
+
     /// Get the principal (identity and role).
     pub fn principal(&self) -> &Principal {
         &self.principal
@@ -200,9 +202,125 @@ impl Manifest {
         }
     }
 
+    /* Getters */
+
+    /// Get the bucket's unique identifier.
+    pub fn id(&self) -> &Uuid {
+        &self.id
+    }
+
+    /// Get the bucket's display name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the software version.
+    pub fn version(&self) -> &Version {
+        &self.version
+    }
+
+    /// Get the entry node link.
+    pub fn entry(&self) -> &Link {
+        &self.entry
+    }
+
+    /// Get the pins link.
+    pub fn pins(&self) -> &Link {
+        &self.pins
+    }
+
+    /// Get the previous manifest link.
+    pub fn previous(&self) -> &Option<Link> {
+        &self.previous
+    }
+
+    /// Get the version chain height.
+    pub fn height(&self) -> u64 {
+        self.height
+    }
+
+    /// Get the operations log link.
+    pub fn ops_log(&self) -> Option<&Link> {
+        self.ops_log.as_ref()
+    }
+
+    /// Get all shares.
+    pub fn shares(&self) -> &BTreeMap<String, Share> {
+        &self.shares
+    }
+
+    /// Get mutable access to shares.
+    pub fn shares_mut(&mut self) -> &mut BTreeMap<String, Share> {
+        &mut self.shares
+    }
+
     /// Get a principal's share by their public key.
     pub fn get_share(&self, public_key: &PublicKey) -> Option<&Share> {
         self.shares.get(&public_key.to_hex())
+    }
+
+    /// Get all peer public keys from shares.
+    pub fn get_peer_ids(&self) -> Vec<PublicKey> {
+        self.shares
+            .iter()
+            .filter_map(|(key_hex, _)| PublicKey::from_hex(key_hex).ok())
+            .collect()
+    }
+
+    /// Get all owner shares.
+    pub fn get_owners(&self) -> Vec<&Share> {
+        self.shares
+            .values()
+            .filter(|s| *s.role() == PrincipalRole::Owner)
+            .collect()
+    }
+
+    /// Get all mirror shares.
+    pub fn get_mirrors(&self) -> Vec<&Share> {
+        self.shares
+            .values()
+            .filter(|s| *s.role() == PrincipalRole::Mirror)
+            .collect()
+    }
+
+    /// Check if the bucket is published.
+    ///
+    /// Published buckets have their secret stored in plaintext, allowing
+    /// anyone with the manifest to decrypt contents.
+    pub fn is_published(&self) -> bool {
+        self.published_secret.is_some()
+    }
+
+    /// Get the published secret if available.
+    pub fn published_secret(&self) -> Option<&Secret> {
+        self.published_secret.as_ref()
+    }
+
+    /* Setters */
+
+    /// Set the entry node link.
+    pub fn set_entry(&mut self, entry: Link) {
+        self.entry = entry;
+    }
+
+    /// Set the pins link.
+    pub fn set_pins(&mut self, pins_link: Link) {
+        self.pins = pins_link;
+    }
+
+    /// Set the previous manifest link.
+    pub fn set_previous(&mut self, previous: Link) {
+        self.previous = Some(previous);
+    }
+
+    /// Set the version chain height.
+    pub fn set_height(&mut self, height: u64) {
+        self.height = height;
+    }
+
+    /// Set the operations log link.
+    pub fn set_ops_log(&mut self, link: Link) {
+        self.ops_log = Some(link);
     }
 
     /// Add a share to the manifest.
@@ -218,121 +336,9 @@ impl Manifest {
         self.shares.clear();
     }
 
-    /// Get the bucket's unique identifier.
-    pub fn id(&self) -> &Uuid {
-        &self.id
-    }
-
-    /// Get the bucket's display name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Get all shares.
-    pub fn shares(&self) -> &BTreeMap<String, Share> {
-        &self.shares
-    }
-
-    /// Get the software version.
-    pub fn version(&self) -> &Version {
-        &self.version
-    }
-
-    /// Get the entry node link.
-    pub fn entry(&self) -> &Link {
-        &self.entry
-    }
-
-    /// Set the entry node link.
-    pub fn set_entry(&mut self, entry: Link) {
-        self.entry = entry;
-    }
-
-    /// Get the pins link.
-    pub fn pins(&self) -> &Link {
-        &self.pins
-    }
-
-    /// Set the pins link.
-    pub fn set_pins(&mut self, pins_link: Link) {
-        self.pins = pins_link;
-    }
-
-    /// Set the previous manifest link.
-    pub fn set_previous(&mut self, previous: Link) {
-        self.previous = Some(previous);
-    }
-
-    /// Get the previous manifest link.
-    pub fn previous(&self) -> &Option<Link> {
-        &self.previous
-    }
-
-    /// Get the version chain height.
-    pub fn height(&self) -> u64 {
-        self.height
-    }
-
-    /// Set the version chain height.
-    pub fn set_height(&mut self, height: u64) {
-        self.height = height;
-    }
-
-    /// Get all peer public keys from shares.
-    pub fn get_peer_ids(&self) -> Vec<PublicKey> {
-        self.shares
-            .iter()
-            .filter_map(|(key_hex, _)| PublicKey::from_hex(key_hex).ok())
-            .collect()
-    }
-
-    /// Get the operations log link.
-    pub fn ops_log(&self) -> Option<&Link> {
-        self.ops_log.as_ref()
-    }
-
-    /// Set the operations log link.
-    pub fn set_ops_log(&mut self, link: Link) {
-        self.ops_log = Some(link);
-    }
-
-    /// Get mutable access to shares.
-    pub fn shares_mut(&mut self) -> &mut BTreeMap<String, Share> {
-        &mut self.shares
-    }
-
     /// Remove a principal from the bucket.
     pub fn remove_principal(&mut self, public_key: &PublicKey) -> Option<Share> {
         self.shares.remove(&public_key.to_hex())
-    }
-
-    /// Get all mirror shares.
-    pub fn get_mirrors(&self) -> Vec<&Share> {
-        self.shares
-            .values()
-            .filter(|s| *s.role() == PrincipalRole::Mirror)
-            .collect()
-    }
-
-    /// Get all owner shares.
-    pub fn get_owners(&self) -> Vec<&Share> {
-        self.shares
-            .values()
-            .filter(|s| *s.role() == PrincipalRole::Owner)
-            .collect()
-    }
-
-    /// Check if the bucket is published.
-    ///
-    /// Published buckets have their secret stored in plaintext, allowing
-    /// anyone with the manifest to decrypt contents.
-    pub fn is_published(&self) -> bool {
-        self.published_secret.is_some()
-    }
-
-    /// Get the published secret if available.
-    pub fn published_secret(&self) -> Option<&Secret> {
-        self.published_secret.as_ref()
     }
 
     /// Publish the bucket by storing the secret in plaintext.
