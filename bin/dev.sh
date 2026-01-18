@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# Development script for running two JAX nodes in tmux with watch mode
-# This sets up a tmux session with two panes, each running a node with auto-reload
+# Development script for running JAX nodes in tmux with watch mode
+# This sets up a tmux session with three panes demonstrating different configurations:
+#   - Daemon only (full UI + API, no gateway)
+#   - Daemon + Gateway (full UI + API + gateway on separate port)
+#   - Gateway only (minimal content serving, no UI/API)
 
 set -e
 
@@ -37,9 +40,13 @@ init_node() {
     fi
 }
 
-# Initialize both nodes
-init_node "./data/node1" "Node1" 3000 8080 9000
-init_node "./data/node2" "Node2" 3001 8081 9005
+# Initialize all three nodes
+# Node1: Daemon only
+init_node "./data/node1" "Node1 (daemon)" 3000 8080 9000
+# Node2: Daemon + Gateway
+init_node "./data/node2" "Node2 (daemon+gw)" 3001 8081 9001
+# Node3: Gateway only
+init_node "./data/node3" "Node3 (gw-only)" 3002 8082 9002
 
 # Check if tmux session already exists
 if tmux has-session -t jax-dev 2>/dev/null; then
@@ -55,25 +62,63 @@ fi
 
 echo -e "${GREEN}Starting tmux session 'jax-dev'...${NC}"
 
-# Create new tmux session with first node
-tmux new-session -d -s jax-dev -n "jax-nodes"
+# Create new tmux session with nodes window
+tmux new-session -d -s jax-dev -n "nodes"
 
-# Split window horizontally for second node
+# Split into 3 panes (top-left, top-right, bottom)
 tmux split-window -h -t jax-dev:0
+tmux split-window -v -t jax-dev:0.0
 
-# Run node1 in left pane with cargo watch
-tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 daemon'" C-m
+# Pane 0.0 (top-left): Daemon only
+tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && echo '=== Node1: Daemon Only ===' && echo 'UI: http://localhost:8080 | API: http://localhost:3000' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 daemon'" C-m
 
-# Run node2 in right pane with cargo watch
-tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon'" C-m
+# Pane 0.1 (top-right): Daemon + Gateway
+tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && echo '=== Node2: Daemon + Gateway ===' && echo 'UI: http://localhost:8081 | API: http://localhost:3001 | GW: http://localhost:9081' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon --gateway-port 9081 --gateway-url http://localhost:9081'" C-m
+
+# Pane 0.2 (bottom): Gateway only
+tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ===' && echo 'GW: http://localhost:8082' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 gw --port 8082'" C-m
 
 # Create a new window for database inspection
 tmux new-window -t jax-dev:1 -n "db"
-tmux send-keys -t jax-dev:1 "cd $PROJECT_ROOT && echo 'Node1 DB: ./data/node1/db.sqlite' && echo 'Node2 DB: ./data/node2/db.sqlite' && echo '' && echo 'Use: ./bin/db.sh node1 or ./bin/db.sh node2'" C-m
+tmux send-keys -t jax-dev:1 "cd $PROJECT_ROOT && echo 'Node1 DB: ./data/node1/db.sqlite' && echo 'Node2 DB: ./data/node2/db.sqlite' && echo 'Node3 DB: ./data/node3/db.sqlite' && echo '' && echo 'Use: ./bin/db.sh node1 or ./bin/db.sh node2 or ./bin/db.sh node3'" C-m
 
 # Create a new window for API testing
-tmux new-window -t jax-dev:2 -n "api"
-tmux send-keys -t jax-dev:2 "cd $PROJECT_ROOT && echo 'Node1 API: http://localhost:3000' && echo 'Node2 API: http://localhost:3001' && echo 'Node1 UI: http://localhost:8080' && echo 'Node2 UI: http://localhost:8081'" C-m
+tmux new-window -t jax-dev:2 -n "info"
+tmux send-keys -t jax-dev:2 "cd $PROJECT_ROOT && cat << 'EOF'
+JAX Development Environment
+============================
+
+Node Configurations:
+--------------------
+Node1 - Daemon Only:
+  UI:  http://localhost:8080
+  API: http://localhost:3000
+  Gateway: (none)
+  Use case: Standard daemon without gateway
+
+Node2 - Daemon + Gateway:
+  UI:  http://localhost:8081
+  API: http://localhost:3001
+  Gateway: http://localhost:9081
+  Use case: Full daemon with integrated gateway on separate port
+  Share links in UI will point to http://localhost:9081
+
+Node3 - Gateway Only:
+  Gateway: http://localhost:8082
+  Use case: Minimal read-only content serving (no UI, no API)
+  Can mirror buckets from other nodes
+
+Testing:
+--------
+1. Create a bucket on Node1 or Node2 via UI
+2. Add files via the UI
+3. Test share links:
+   - Node1: No gateway (share links won't work for direct download)
+   - Node2: Share links use http://localhost:9081/gw/...
+4. Test gateway-only access on Node3:
+   - Mirror a bucket from Node1/Node2
+   - Access via http://localhost:8082/gw/{bucket_id}/path
+EOF" C-m
 
 # Go back to first window
 tmux select-window -t jax-dev:0
@@ -81,17 +126,18 @@ tmux select-window -t jax-dev:0
 echo -e "${GREEN}Tmux session 'jax-dev' started!${NC}"
 echo ""
 echo "Usage:"
-echo "  tmux attach -t jax-dev    # Attach to the session"
-echo "  tmux kill-session -t jax-dev    # Kill the session"
+echo "  tmux attach -t jax-dev         # Attach to the session"
+echo "  tmux kill-session -t jax-dev   # Kill the session"
 echo ""
 echo "Windows:"
-echo "  0: jax-nodes  - Node1 (left) and Node2 (right) running with auto-reload"
-echo "  1: db         - Database inspection window"
-echo "  2: api        - API testing window"
+echo "  0: nodes - Three node configurations"
+echo "  1: db    - Database inspection"
+echo "  2: info  - Configuration info and testing guide"
 echo ""
-echo "Ports:"
-echo "  Node1: API=3000, UI=8080, PEER=9000"
-echo "  Node2: API=3001, UI=8081, PEER=9005"
+echo "Node Configurations:"
+echo "  Node1 (daemon):      UI=8080, API=3000"
+echo "  Node2 (daemon+gw):   UI=8081, API=3001, GW=9081"
+echo "  Node3 (gw-only):     GW=8082"
 echo ""
 echo -e "${BLUE}Attaching to session...${NC}"
 
