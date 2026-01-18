@@ -1,4 +1,4 @@
-# Key Concepts
+# Overview
 
 High-level architecture and concepts for understanding jax-bucket.
 

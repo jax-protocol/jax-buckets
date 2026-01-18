@@ -112,7 +112,7 @@ Usage: jax [OPTIONS] <COMMAND>
 Commands:
   bucket
   init
-  service
+  daemon
   version
   help     Print this message or the help of the given subcommand(s)
 ```
@@ -136,14 +136,14 @@ jax init
 
 This creates:
 - `~/.config/jax/` - Configuration directory (or custom path if specified with `--config-path`)
-- `config.toml` - Service configuration
+- `config.toml` - Daemon configuration
 - `secret.pem` - Your Ed25519 identity keypair (keep this secure!)
 - `jax.db` - SQLite database for bucket metadata
 - `blobs/` - Directory for encrypted blob storage
 
 **Security Note:** The `secret.pem` file contains your private key. Keep it secure and back it up safely. Anyone with access to this file can decrypt your buckets and impersonate you.
 
-### 2. Configure Service (Optional)
+### 2. Configure Daemon (Optional)
 
 The default configuration works out of the box, but you can customize settings by editing the generated `config.toml`:
 
@@ -170,13 +170,13 @@ api_addr = "127.0.0.1:3000"
 html_addr = "127.0.0.1:8080"
 ```
 
-### 3. Start the Service
+### 3. Start the Daemon
 
 ```bash
-jax service
+jax daemon
 ```
 
-The service will:
+The daemon will:
 - Start the HTTP API server on `http://localhost:3000`
 - Start the Web UI server on `http://localhost:8080`
 - Initialize the Iroh P2P node
@@ -202,12 +202,12 @@ Create a systemd service file at `~/.config/systemd/user/jaxbucket.service`:
 
 ```ini
 [Unit]
-Description=JaxBucket P2P Storage Service
+Description=JaxBucket P2P Storage Daemon
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.cargo/bin/jax service
+ExecStart=%h/.cargo/bin/jax daemon
 Restart=on-failure
 RestartSec=5s
 
@@ -229,7 +229,7 @@ journalctl --user -u jaxbucket -f
 
 ### macOS (launchd)
 
-Create a launch agent at `~/Library/LaunchAgents/com.jaxbucket.service.plist`:
+Create a launch agent at `~/Library/LaunchAgents/com.jaxbucket.daemon.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -237,11 +237,11 @@ Create a launch agent at `~/Library/LaunchAgents/com.jaxbucket.service.plist`:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.jaxbucket.service</string>
+    <string>com.jaxbucket.daemon</string>
     <key>ProgramArguments</key>
     <array>
         <string>/Users/YOUR_USERNAME/.cargo/bin/jax</string>
-        <string>service</string>
+        <string>daemon</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -255,9 +255,9 @@ Create a launch agent at `~/Library/LaunchAgents/com.jaxbucket.service.plist`:
 </plist>
 ```
 
-Load the service:
+Load the daemon:
 ```bash
-launchctl load ~/Library/LaunchAgents/com.jaxbucket.service.plist
+launchctl load ~/Library/LaunchAgents/com.jaxbucket.daemon.plist
 
 # Check status
 launchctl list | grep jaxbucket
@@ -284,7 +284,7 @@ chmod 600 ~/.config/jax/secret.pem
 
 ### "Database is locked"
 
-Only one instance of `jax service` can run at a time. Stop any existing instances:
+Only one instance of `jax daemon` can run at a time. Stop any existing instances:
 ```bash
 pkill -f "jax daemon"
 ```
@@ -306,9 +306,8 @@ jax init
 
 ## Next Steps
 
-- See [USAGE.md](USAGE.md) for how to use JaxBucket
-- Read [PROTOCOL.md](PROTOCOL.md) to understand how JaxBucket works internally
-- Check [DEVELOPMENT.md](DEVELOPMENT.md) for development and contribution guidelines
+- Read [concepts/](./concepts/) to understand how JaxBucket works internally
+- Check [DEVELOPMENT.md](./DEVELOPMENT.md) for development and contribution guidelines
 
 ## Getting Help
 
