@@ -5,7 +5,7 @@ use http::Method;
 use tower_http::cors::{Any, CorsLayer};
 
 mod buckets;
-mod gateway;
+pub mod gateway;
 mod index;
 
 use crate::ServiceState;

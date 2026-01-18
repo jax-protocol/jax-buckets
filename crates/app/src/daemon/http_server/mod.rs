@@ -137,6 +137,57 @@ pub async fn run_api(
     Ok(())
 }
 
+/// Run a minimal gateway-only HTTP server.
+/// Only serves /gw/:bucket_id/*file_path and health endpoints.
+/// No Askama UI routes, no REST API routes.
+pub async fn run_gateway(
+    config: Config,
+    state: ServiceState,
+    mut shutdown_rx: watch::Receiver<()>,
+) -> Result<(), HttpServerError> {
+    use axum::routing::get;
+    use http::header::{ACCEPT, ORIGIN};
+    use http::Method;
+    use tower_http::cors::{Any, CorsLayer};
+
+    let listen_addr = config.listen_addr;
+    let log_level = config.log_level;
+    let trace_layer = TraceLayer::new_for_http()
+        .on_response(
+            DefaultOnResponse::new()
+                .include_headers(false)
+                .level(log_level)
+                .latency_unit(LatencyUnit::Micros),
+        )
+        .on_failure(DefaultOnFailure::new().latency_unit(LatencyUnit::Micros));
+
+    let cors_layer = CorsLayer::new()
+        .allow_methods(vec![Method::GET])
+        .allow_headers(vec![ACCEPT, ORIGIN])
+        .allow_origin(Any)
+        .allow_credentials(false);
+
+    // Minimal router: only gateway route and health endpoints
+    let gateway_router = Router::new()
+        .route("/gw/:bucket_id/*file_path", get(html::gateway::handler))
+        .nest(STATUS_PREFIX, health::router(state.clone()))
+        .fallback(handlers::not_found_handler)
+        .with_state(state)
+        .layer(cors_layer)
+        .layer(trace_layer);
+
+    tracing::info!(addr = ?listen_addr, "Gateway server listening");
+    let listener = tokio::net::TcpListener::bind(listen_addr).await?;
+
+    axum::serve(listener, gateway_router)
+        .with_graceful_shutdown(async move {
+            let _ = shutdown_rx.changed().await;
+        })
+        .await?;
+
+    Ok(())
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum HttpServerError {
     #[error("an error occurred running the HTTP server: {0}")]

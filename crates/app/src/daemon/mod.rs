@@ -1,7 +1,8 @@
 mod config;
 mod database;
+pub mod gateway_process;
 pub mod http_server;
-mod process;
+pub mod process;
 mod state;
 mod sync_provider;
 
