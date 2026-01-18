@@ -113,6 +113,7 @@ Commands:
   bucket
   init
   daemon
+  gw
   version
   help     Print this message or the help of the given subcommand(s)
 ```
@@ -184,6 +185,21 @@ The daemon will:
 - Display your Node ID (public key)
 
 Keep this running in a terminal, or run it as a background service (see below).
+
+### Alternative: Gateway-Only Mode
+
+For lightweight deployments that only need to serve published bucket content (no UI, no API):
+
+```bash
+jax gw --port 8080
+```
+
+The gateway mode provides:
+- P2P peer syncing (mirror role)
+- `/gw/:bucket_id/*path` endpoint for serving content
+- `/_status/*` health endpoints
+
+Use this when you need a minimal content server without the full daemon features.
 
 ### 4. Access the Web UI
 

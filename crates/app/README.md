@@ -57,6 +57,25 @@ Start the background service with HTTP API, P2P networking, and web UI.
 jax daemon
 ```
 
+### gw
+
+Start a minimal gateway service for content serving only (no UI, no API).
+
+```bash
+jax gw [--port <PORT>]
+
+# Examples
+jax gw                 # Starts on port 8080
+jax gw --port 9000     # Starts on custom port
+```
+
+The gateway provides:
+- P2P peer syncing (mirror role)
+- `/gw/:bucket_id/*path` for serving published bucket content
+- `/_status/livez`, `/_status/readyz` health endpoints
+
+Use this for lightweight deployments when you only need content serving without the full daemon features.
+
 ### version
 
 Display version information.
@@ -156,13 +175,18 @@ The daemon serves a web interface with file explorer, viewer, editor, history, a
 
 ## Gateway
 
-Serves bucket content over HTTP:
+Serves published bucket content over HTTP at `/gw/:bucket_id/*path`.
 
-```
-GET /gateway/<bucket-id>/<path>
+**Via daemon:** Available alongside UI and API at `http://localhost:8080/gw/...`
+
+**Via gw command:** Standalone gateway at `http://localhost:8080/gw/...` (no UI/API)
+
+```bash
+# Access content
+curl http://localhost:8080/gw/<bucket-id>/index.html
 ```
 
-Features URL rewriting and index file support.
+Features URL rewriting for relative links and automatic index file serving.
 
 ## Configuration
 
