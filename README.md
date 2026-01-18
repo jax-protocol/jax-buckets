@@ -50,7 +50,9 @@ jax bucket ls <bucket-id>
 
 - [CLI Usage](crates/app/README.md) - Commands and API reference
 - [Library API](crates/common/README.md) - Core data structures
-- [Architecture](agents/CONCEPTS.md) - System design and concepts
+- [Architecture](agents/concepts/) - System design and concepts
+- [Installation](agents/INSTALL.md) - Installation and setup guide
+- [Development](agents/DEVELOPMENT.md) - Development environment setup
 
 ## Contributing
 

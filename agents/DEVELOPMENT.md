@@ -34,7 +34,7 @@ sudo dnf install tmux
 
 ### System Libraries
 
-See [INSTALL.md](INSTALL.md) for required system libraries (OpenSSL, SQLite, etc.).
+See [INSTALL.md](./INSTALL.md) for required system libraries (OpenSSL, SQLite, etc.).
 
 ## Development Setup
 
@@ -209,25 +209,18 @@ jax-bucket/
 │   │   │   └── peer/          # Peer, BlobsStore, JAX Protocol
 │   │   ├── Cargo.toml
 │   │   └── CHANGELOG.md
-│   ├── service/               # Server-side logic
-│   │   ├── src/
-│   │   │   ├── database/      # SQLite models and queries
-│   │   │   ├── http_server/   # API and Web UI
-│   │   │   ├── mount_ops/     # Bucket operations
-│   │   │   └── sync_manager/  # P2P sync logic
-│   │   ├── Cargo.toml
-│   │   └── CHANGELOG.md
 │   └── app/                   # CLI binary
 │       ├── src/
 │       │   ├── main.rs        # Entry point
 │       │   └── ops/           # CLI commands
 │       ├── Cargo.toml
 │       └── CHANGELOG.md
-├── README.md                  # Project overview
-├── INSTALL.md                 # Installation guide
-├── PROTOCOL.md                # Protocol specification
-├── DEVELOPMENT.md             # This file
-└── CONTRIBUTING.md            # Contribution guidelines
+├── agents/                    # Agent documentation
+│   ├── concepts/              # Architecture concepts
+│   ├── INSTALL.md             # Installation guide
+│   ├── DEVELOPMENT.md         # This file
+│   └── CONTRIBUTING.md        # Contribution guidelines
+└── README.md                  # Project overview
 ```
 
 ### Key Crates
@@ -253,22 +246,13 @@ Platform-agnostic data structures and cryptography:
 
 - **`peer/`**: P2P networking
   - `mod.rs` - Peer and BlobsStore
-  - `jax_protocol/` - Custom sync protocol
-
-#### `service` - HTTP Server & Sync
-
-Server-side components:
-
-- **`database/`**: SQLite persistence
-- **`http_server/`**: REST API and Web UI
-- **`mount_ops/`**: Bucket CRUD operations
-- **`sync_manager/`**: Background P2P sync
+  - `protocol/` - Custom sync protocol
 
 #### `app` - CLI Binary
 
 Command-line interface:
 
-- **`ops/`**: CLI commands (init, service, bucket)
+- **`ops/`**: CLI commands (init, daemon, bucket)
 - **`main.rs`**: Argument parsing and dispatch
 
 ## Testing
@@ -282,8 +266,7 @@ cargo test
 ### Run Tests for a Specific Crate
 
 ```bash
-cargo test -p common
-cargo test -p service
+cargo test -p jax-common
 cargo test -p jax-bucket
 ```
 
@@ -373,7 +356,7 @@ pub fn create_bucket(name: String, secret: Secret) -> anyhow::Result<Manifest> {
 ### Enable Debug Logging
 
 ```bash
-RUST_LOG=debug cargo run --bin jax -- service
+RUST_LOG=debug cargo run --bin jax -- daemon
 ```
 
 ### Logging Levels
@@ -387,11 +370,11 @@ RUST_LOG=debug cargo run --bin jax -- service
 ### Filter by Module
 
 ```bash
-# Only show logs from sync_manager
-RUST_LOG=service::sync_manager=debug cargo run --bin jax -- service
+# Only show logs from sync_provider
+RUST_LOG=jax_bucket::daemon::sync_provider=debug cargo run --bin jax -- daemon
 
 # Multiple modules
-RUST_LOG=service::sync_manager=debug,common::peer=trace cargo run --bin jax -- service
+RUST_LOG=jax_bucket::daemon::sync_provider=debug,jax_common::peer=trace cargo run --bin jax -- daemon
 ```
 
 ### Inspect Database
@@ -427,16 +410,16 @@ hexdump -C ~/.config/jax/blobs/HASH
 
 ### Add a New API Endpoint
 
-1. Add route in `crates/service/src/http_server/mod.rs`
+1. Add route in `crates/app/src/daemon/http_server/mod.rs`
 2. Implement handler function
 3. Update API documentation
 4. Add integration test
 
 ### Add a New Sync Message Type
 
-1. Update `crates/common/src/peer/jax_protocol/messages.rs`
+1. Update `crates/common/src/peer/protocol/messages/`
 2. Implement serialization/deserialization
-3. Add handler in `crates/service/src/sync_manager/mod.rs`
+3. Add handler in `crates/app/src/daemon/sync_provider.rs`
 4. Update protocol documentation
 
 ### Modify the Data Model
@@ -460,4 +443,4 @@ hexdump -C ~/.config/jax/blobs/HASH
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on contributing to JaxBucket.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on contributing to JaxBucket.

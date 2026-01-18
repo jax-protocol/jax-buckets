@@ -14,7 +14,9 @@ This directory contains documentation designed for AI agents (and human develope
 
 | Document | Purpose | When to Read |
 |----------|---------|--------------|
-| [CONCEPTS.md](./CONCEPTS.md) | High-level architecture and key concepts | Understanding the system |
+| [concepts/](./concepts/) | Architecture and design concepts | Understanding the system |
+| [INSTALL.md](./INSTALL.md) | Installation and setup guide | Setting up JaxBucket |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | Development environment setup | Contributing code |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | How to contribute (agents & humans) | First time contributing |
 | [PROJECT_LAYOUT.md](./PROJECT_LAYOUT.md) | Crate structure and packages | Understanding the codebase |
 | [RUST_PATTERNS.md](./RUST_PATTERNS.md) | Rust architecture patterns | Writing Rust code |
@@ -26,12 +28,27 @@ This directory contains documentation designed for AI agents (and human develope
 
 ## Document Summaries
 
-### [CONCEPTS.md](./CONCEPTS.md)
-High-level architecture concepts:
-- Principals and roles (Owner vs Mirror)
-- Shares and secret management
-- Manifest structure and publishing
-- Storage and encryption
+### [concepts/](./concepts/)
+Detailed architecture documentation:
+- [overview.md](./concepts/overview.md) - High-level architecture and core concepts
+- [data-model.md](./concepts/data-model.md) - Buckets, Manifests, Nodes, Pins, Bucket Log
+- [cryptography.md](./concepts/cryptography.md) - Identity, key sharing, content encryption
+- [synchronization.md](./concepts/synchronization.md) - Peer structure and sync protocol
+- [security.md](./concepts/security.md) - Threat model, best practices, implementation
+
+### [INSTALL.md](./INSTALL.md)
+Installation and setup:
+- System requirements (OS, libraries, hardware)
+- Installation methods (crates.io, git, source)
+- Initial configuration and daemon setup
+- Running as a background service
+
+### [DEVELOPMENT.md](./DEVELOPMENT.md)
+Development environment:
+- Prerequisites and tool installation
+- Two-node P2P development setup with tmux
+- Testing and debugging techniques
+- Common development tasks
 
 ### [CONTRIBUTING.md](./CONTRIBUTING.md)
 How to contribute to the project:
