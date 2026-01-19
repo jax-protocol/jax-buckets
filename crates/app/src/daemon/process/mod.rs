@@ -103,7 +103,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
         let app_state = state.as_ref().clone();
         let app_config = http_server::Config::new(
             app_listen_addr,
-            service_config.api_hostname.clone(),
+            service_config.api_url.clone(),
             service_config.gateway_url.clone(),
         );
         let app_rx = shutdown_rx.clone();

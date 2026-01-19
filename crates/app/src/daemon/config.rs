@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use common::prelude::SecretKey;
@@ -7,7 +8,7 @@ pub struct Config {
     // peer configuration
     /// address for our jax peer to listen on,
     ///  if not set then an ephemeral port will be used
-    pub node_listen_addr: Option<std::net::SocketAddr>,
+    pub node_listen_addr: Option<SocketAddr>,
     /// on system file path to our secret,
     ///  if not set then a new secret will be generated
     pub node_secret: Option<SecretKey>,
@@ -31,12 +32,10 @@ pub struct Config {
     // misc
     pub log_level: tracing::Level,
 
-    // ui configuration
-    /// API hostname to use for HTML UI (for JS to call API endpoints)
+    // url configuration
+    /// API URL for HTML UI (for JS to call API endpoints)
     /// If not set, defaults to same origin as the UI
-    pub api_hostname: Option<String>,
-
-    // gateway configuration
+    pub api_url: Option<String>,
     /// External gateway URL (e.g., "https://gateway.example.com")
     /// Used for generating share/download links
     pub gateway_url: Option<String>,
@@ -52,7 +51,7 @@ impl Default for Config {
             gateway_port: None,   // No gateway by default
             sqlite_path: None,
             log_level: tracing::Level::INFO,
-            api_hostname: None,
+            api_url: None,
             gateway_url: None,
         }
     }

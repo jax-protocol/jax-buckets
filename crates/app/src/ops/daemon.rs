@@ -9,9 +9,9 @@ pub struct Daemon {
     #[arg(long)]
     pub gateway: bool,
 
-    /// API hostname to use for HTML UI (default: same origin)
+    /// API URL for HTML UI (default: same origin)
     #[arg(long)]
-    pub api_hostname: Option<String>,
+    pub api_url: Option<String>,
 
     /// Override gateway port (implies gateway is enabled)
     #[arg(long)]
@@ -76,7 +76,7 @@ impl crate::op::Op for Daemon {
             gateway_port,
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::DEBUG,
-            api_hostname: self.api_hostname.clone(),
+            api_url: self.api_url.clone(),
             gateway_url: self.gateway_url.clone(),
         };
 
