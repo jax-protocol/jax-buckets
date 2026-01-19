@@ -23,7 +23,6 @@ This approach:
 
 | File | Description |
 |------|-------------|
-| `crates/app/src/daemon/gateway_process.rs` | Gateway-only process (peer + gateway server) |
 | `crates/app/templates/pages/gateway/index.html` | Gateway identity/root page |
 | `crates/app/templates/pages/gateway/explorer.html` | Read-only directory browser |
 | `crates/app/templates/pages/gateway/viewer.html` | Read-only file viewer |
@@ -33,7 +32,7 @@ This approach:
 | File | Changes |
 |------|---------|
 | `crates/app/src/ops/daemon.rs` | Add `--gateway-only`, `--gateway`, `--gateway-url` flags |
-| `crates/app/src/daemon/mod.rs` | Add gateway_process module |
+| `crates/app/src/daemon/process/mod.rs` | Add `spawn_gateway_service` function |
 | `crates/app/src/daemon/http_server/html/gateway/mod.rs` | Add HTML templates and content negotiation |
 
 ## Acceptance Criteria

@@ -1,8 +1,6 @@
 use clap::Args;
 
-use crate::daemon::gateway_process::spawn_gateway_service;
-use crate::daemon::spawn_service;
-use crate::daemon::ServiceConfig;
+use crate::daemon::{spawn_gateway_service, spawn_service, ServiceConfig};
 use crate::state::AppState;
 
 #[derive(Args, Debug, Clone)]
