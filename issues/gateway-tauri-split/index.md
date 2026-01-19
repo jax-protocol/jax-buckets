@@ -41,7 +41,7 @@ jax daemon --gateway (gateway-only mode)
 ## Execution Order
 
 **Stage 1 (Foundation):**
-- Ticket 0: Gateway subcommand (`jax daemon --gateway-only`) - **Done**
+- Ticket 0: Gateway subcommand (`jax daemon --gateway`) - **Done**
 
 **Stage 2 (Parallel Tracks):**
 

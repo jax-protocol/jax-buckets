@@ -4,6 +4,10 @@
 **Track:** Gateway
 **Branch:** `alex/gateway-subcommand`
 
+## Completion Notes
+
+We did not make this a subcommand, and instead implemented this as a new flag.
+
 ## Objective
 
 Add gateway-only mode to the daemon that runs a minimal gateway service: P2P peer (mirror role) + gateway content serving.
