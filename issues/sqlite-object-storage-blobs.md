@@ -26,16 +26,13 @@ A standalone crate (`jax-blobs-store`) providing:
 crates/blobs-store/
 ├── Cargo.toml
 ├── migrations/
-│   ├── 20251223000000_create_blobs_store.up.sql
-│   └── 20251223000000_create_blobs_store.down.sql
+│   └── 20251223000000_create_blobs_store.sql
 └── src/
     ├── lib.rs           # Public exports
     ├── store.rs         # Main BlobStore API
     ├── database.rs      # SQLite pool + migrations
     ├── object_store.rs  # Object storage wrapper
-    ├── bao_file.rs      # BAO tree reconstruction
-    ├── entry_state.rs   # Blob state tracking
-    └── import.rs        # Blob import with BLAKE3
+    └── error.rs         # Error types
 ```
 
 ### App Config Integration
@@ -53,8 +50,8 @@ pub enum BlobStoreConfig {
 
 ### Dev Tooling
 
-- `bin/minio.sh` - MinIO container management (start/stop/status)
-- `bin/utils` - Shared bash utilities
+- `bin/dev.sh minio` - Start MinIO container for S3 testing
+- `bin/dev.sh blob-stores` - Run gateways with different blob store backends
 
 ## Design Decisions
 
@@ -112,11 +109,13 @@ Flat structure with hash-based keys enables:
 - [x] SQLite migrations via `sqlx::migrate!()` macro
 - [x] Config parsing with backward compatibility
 - [x] Legacy mode uses existing iroh-blobs FsStore
+- [x] CLI flags for blob store selection (`--blob-store`, `--s3-*`)
 - [x] Multiple constructors:
   - `BlobStore::new()` - file-based SQLite + S3
   - `BlobStore::in_memory()` - in-memory SQLite + S3
   - `BlobStore::new_local()` - SQLite + local filesystem
   - `BlobStore::new_ephemeral()` - fully in-memory for tests
+- [x] Unit tests (10 tests + 1 doctest passing)
 
 ### Not Yet Integrated
 
@@ -158,9 +157,6 @@ Handle interrupted uploads/downloads:
 | File | Description |
 |------|-------------|
 | `crates/blobs-store/*` | Entire new crate |
-| `bin/minio.sh` | MinIO dev script |
-| `bin/utils` | Bash utilities |
-| `bin/config` | Project config |
 
 ### Modified Files
 
@@ -171,8 +167,8 @@ Handle interrupted uploads/downloads:
 | `crates/app/src/state.rs` | Added `BlobStoreConfig` enum |
 | `crates/app/src/daemon/config.rs` | Replaced `node_blobs_store_path` with `blob_store` + `jax_dir` |
 | `crates/app/src/daemon/state.rs` | Added `setup_blobs_store()` helper |
-| `crates/app/src/ops/daemon.rs` | Pass blob_store config |
-| `crates/app/src/ops/init.rs` | Include blob_store in AppConfig |
+| `crates/app/src/ops/daemon.rs` | Added CLI flags and `build_blob_store_config()` |
+| `bin/dev.sh` | Added `minio` and `blob-stores` commands |
 
 ## Example Configuration
 
@@ -217,22 +213,26 @@ Scans object storage, verifies blob integrity, and repopulates SQLite. Tags woul
 - [ ] S3 config uses new BlobStore (not fallback)
 - [ ] BAO verified streaming works
 - [ ] Partial blob support implemented
-- [ ] `cargo test` passes with new backends
-- [ ] `cargo clippy` has no warnings
-- [ ] Backward compatibility maintained (legacy config works)
+- [x] `cargo test` passes with new backends
+- [x] `cargo clippy` has no warnings
+- [x] Backward compatibility maintained (legacy config works)
 
 ## Verification
 
 ```bash
 # Start MinIO for S3 testing
-./bin/minio.sh start
+./bin/dev.sh minio
 
 # Run tests
 cargo test -p jax-blobs-store
 
 # Test with S3 config
-cargo run -- daemon  # with s3 blob_store config
+cargo run -- daemon --gateway --blob-store s3 \
+  --s3-endpoint http://localhost:9000 \
+  --s3-bucket jax-blobs \
+  --s3-access-key minioadmin \
+  --s3-secret-key minioadmin
 
-# Stop MinIO
-./bin/minio.sh stop
+# Or run multiple gateways with different backends
+./bin/dev.sh blob-stores
 ```
