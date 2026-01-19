@@ -14,7 +14,11 @@ pub struct Daemon {
     #[arg(long)]
     pub api_hostname: Option<String>,
 
-    /// Enable gateway server on a separate port (serves /gw/:bucket_id/*path)
+    /// Enable gateway server (uses port from config, default 9090)
+    #[arg(long)]
+    pub gateway: bool,
+
+    /// Override gateway port (implies --gateway)
     #[arg(long)]
     pub gateway_port: Option<u16>,
 
@@ -51,6 +55,15 @@ impl crate::op::Op for Daemon {
                 .expect("Failed to parse peer listen address")
         });
 
+        // Determine gateway port: --gateway-port overrides, --gateway uses config
+        let gateway_port = if let Some(port) = self.gateway_port {
+            Some(port)
+        } else if self.gateway {
+            Some(state.config.gateway_port)
+        } else {
+            None
+        };
+
         // Build daemon config with persistent paths
         let config = ServiceConfig {
             node_listen_addr,
@@ -62,7 +75,7 @@ impl crate::op::Op for Daemon {
             log_level: tracing::Level::DEBUG,
             ui_read_only: self.ui_read_only,
             api_hostname: self.api_hostname.clone(),
-            gateway_port: self.gateway_port,
+            gateway_port,
             gateway_url: self.gateway_url.clone(),
         };
 

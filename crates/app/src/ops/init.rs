@@ -15,6 +15,10 @@ pub struct Init {
     /// Peer (P2P) node listen port (optional, defaults to ephemeral port if not specified)
     #[arg(long)]
     pub peer_port: Option<u16>,
+
+    /// Gateway server listen port (default: 9090)
+    #[arg(long, default_value = "9090")]
+    pub gateway_port: u16,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -33,6 +37,7 @@ impl crate::op::Op for Init {
             html_listen_addr: self.html_addr.clone(),
             api_listen_addr: self.api_addr.clone(),
             peer_port: self.peer_port,
+            gateway_port: self.gateway_port,
         };
 
         let state = AppState::init(ctx.config_path.clone(), Some(config))?;
@@ -50,7 +55,8 @@ impl crate::op::Op for Init {
              - Config: {}\n\
              - HTML listen address: {}\n\
              - API listen address: {}\n\
-             - Peer port: {}",
+             - Peer port: {}\n\
+             - Gateway port: {}",
             state.jax_dir.display(),
             state.db_path.display(),
             state.key_path.display(),
@@ -58,7 +64,8 @@ impl crate::op::Op for Init {
             state.config_path.display(),
             state.config.html_listen_addr,
             state.config.api_listen_addr,
-            peer_port_str
+            peer_port_str,
+            state.config.gateway_port
         );
 
         Ok(output)

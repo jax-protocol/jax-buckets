@@ -30,23 +30,28 @@ init_node() {
     local api_port=$3
     local html_port=$4
     local peer_port=$5
+    local gateway_port=$6
 
     if [ ! -d "$node_dir" ]; then
         echo -e "${YELLOW}Initializing $node_name (first run)...${NC}"
-        cargo run --bin jax -- --config-path "$node_dir" init --api-addr "0.0.0.0:$api_port" --html-addr "0.0.0.0:$html_port" --peer-port "$peer_port"
-        echo -e "${GREEN}$node_name initialized with API:$api_port HTML:$html_port PEER:$peer_port${NC}"
+        cargo run --bin jax -- --config-path "$node_dir" init \
+            --api-addr "0.0.0.0:$api_port" \
+            --html-addr "0.0.0.0:$html_port" \
+            --peer-port "$peer_port" \
+            --gateway-port "$gateway_port"
+        echo -e "${GREEN}$node_name initialized with API:$api_port HTML:$html_port PEER:$peer_port GW:$gateway_port${NC}"
     else
         echo -e "${GREEN}$node_name already initialized${NC}"
     fi
 }
 
-# Initialize all three nodes
-# Node1: Daemon only
-init_node "./data/node1" "Node1 (daemon)" 3000 8080 9000
+# Initialize all three nodes with distinct ports
+# Node1: Daemon only (gateway port configured but not used)
+init_node "./data/node1" "Node1 (daemon)" 3000 8080 9000 9090
 # Node2: Daemon + Gateway
-init_node "./data/node2" "Node2 (daemon+gw)" 3001 8081 9001
+init_node "./data/node2" "Node2 (daemon+gw)" 3001 8081 9001 9091
 # Node3: Gateway only
-init_node "./data/node3" "Node3 (gw-only)" 3002 8082 9002
+init_node "./data/node3" "Node3 (gw-only)" 3002 8082 9002 9092
 
 # Check if tmux session already exists
 if tmux has-session -t jax-dev 2>/dev/null; then
@@ -72,11 +77,11 @@ tmux split-window -v -t jax-dev:0.0
 # Pane 0.0 (top-left): Daemon only
 tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && echo '=== Node1: Daemon Only ===' && echo 'UI: http://localhost:8080 | API: http://localhost:3000' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 daemon'" C-m
 
-# Pane 0.1 (top-right): Daemon + Gateway
-tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && echo '=== Node2: Daemon + Gateway ===' && echo 'UI: http://localhost:8081 | API: http://localhost:3001 | GW: http://localhost:9081' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon --gateway-port 9081 --gateway-url http://localhost:9081'" C-m
+# Pane 0.1 (top-right): Daemon + Gateway (uses gateway_port from config: 9091)
+tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && echo '=== Node2: Daemon + Gateway ===' && echo 'UI: http://localhost:8081 | API: http://localhost:3001 | GW: http://localhost:9091' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon --gateway --gateway-url http://localhost:9091'" C-m
 
-# Pane 0.2 (bottom): Gateway only
-tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ===' && echo 'GW: http://localhost:8082' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 gw --port 8082'" C-m
+# Pane 0.2 (bottom): Gateway only (uses gateway_port from config: 9092)
+tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ===' && echo 'GW: http://localhost:9092' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 gw'" C-m
 
 # Create a new window for database inspection
 tmux new-window -t jax-dev:1 -n "db"
@@ -93,18 +98,18 @@ Node Configurations:
 Node1 - Daemon Only:
   UI:  http://localhost:8080
   API: http://localhost:3000
-  Gateway: (none)
+  Gateway: (not enabled)
   Use case: Standard daemon without gateway
 
 Node2 - Daemon + Gateway:
   UI:  http://localhost:8081
   API: http://localhost:3001
-  Gateway: http://localhost:9081
+  Gateway: http://localhost:9091
   Use case: Full daemon with integrated gateway on separate port
-  Share links in UI will point to http://localhost:9081
+  Share links in UI will point to http://localhost:9091
 
 Node3 - Gateway Only:
-  Gateway: http://localhost:8082
+  Gateway: http://localhost:9092
   Use case: Minimal read-only content serving (no UI, no API)
   Can mirror buckets from other nodes
 
@@ -114,10 +119,14 @@ Testing:
 2. Add files via the UI
 3. Test share links:
    - Node1: No gateway (share links won't work for direct download)
-   - Node2: Share links use http://localhost:9081/gw/...
+   - Node2: Share links use http://localhost:9091/gw/...
 4. Test gateway-only access on Node3:
+   - Visit http://localhost:9092 to see identity page
    - Mirror a bucket from Node1/Node2
-   - Access via http://localhost:8082/gw/{bucket_id}/path
+   - Access via http://localhost:9092/gw/{bucket_id}/path
+5. Check identity endpoints:
+   - curl http://localhost:9091/_status/identity
+   - curl http://localhost:9092/_status/identity
 EOF" C-m
 
 # Go back to first window
@@ -136,8 +145,8 @@ echo "  2: info  - Configuration info and testing guide"
 echo ""
 echo "Node Configurations:"
 echo "  Node1 (daemon):      UI=8080, API=3000"
-echo "  Node2 (daemon+gw):   UI=8081, API=3001, GW=9081"
-echo "  Node3 (gw-only):     GW=8082"
+echo "  Node2 (daemon+gw):   UI=8081, API=3001, GW=9091"
+echo "  Node3 (gw-only):     GW=9092"
 echo ""
 echo -e "${BLUE}Attaching to session...${NC}"
 

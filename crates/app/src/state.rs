@@ -18,6 +18,13 @@ pub struct AppConfig {
     /// Listen port for the peer (P2P) node (optional, defaults to ephemeral)
     #[serde(default)]
     pub peer_port: Option<u16>,
+    /// Listen port for the gateway server (optional)
+    #[serde(default = "default_gateway_port")]
+    pub gateway_port: u16,
+}
+
+fn default_gateway_port() -> u16 {
+    9090
 }
 
 impl Default for AppConfig {
@@ -26,6 +33,7 @@ impl Default for AppConfig {
             html_listen_addr: "0.0.0.0:8080".to_string(),
             api_listen_addr: "0.0.0.0:3000".to_string(),
             peer_port: None,
+            gateway_port: default_gateway_port(),
         }
     }
 }

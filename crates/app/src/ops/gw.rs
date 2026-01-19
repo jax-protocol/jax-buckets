@@ -6,9 +6,9 @@ use crate::state::AppState;
 
 #[derive(Args, Debug, Clone)]
 pub struct Gw {
-    /// Port for gateway HTTP server (default: 8080)
-    #[arg(long, default_value = "8080")]
-    pub port: u16,
+    /// Port for gateway HTTP server (default: uses gateway_port from config)
+    #[arg(long)]
+    pub port: Option<u16>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -39,6 +39,9 @@ impl crate::op::Op for Gw {
                 .expect("Failed to parse peer listen address")
         });
 
+        // Use --port if specified, otherwise use config gateway_port
+        let gateway_port = self.port.unwrap_or(state.config.gateway_port);
+
         // Build gateway config - only gateway port matters, no HTML/API servers
         let config = ServiceConfig {
             node_listen_addr,
@@ -46,7 +49,7 @@ impl crate::op::Op for Gw {
             node_blobs_store_path: Some(state.blobs_path),
             // Gateway listens on specified port
             html_listen_addr: Some(
-                format!("0.0.0.0:{}", self.port)
+                format!("0.0.0.0:{}", gateway_port)
                     .parse()
                     .expect("Failed to parse gateway listen address"),
             ),
