@@ -36,7 +36,6 @@ pub struct DirectoryListing {
 pub struct DirectoryEntry {
     pub name: String,
     pub path: String,
-    pub is_dir: bool,
     pub mime_type: String,
 }
 
@@ -264,161 +263,169 @@ pub async fn handler(
 
     let path_buf = std::path::PathBuf::from(&absolute_path);
 
+    // Handle root path specially - it's always a directory
+    let is_root = absolute_path == "/";
+
     // Try to get the node to determine if it's a file or directory
-    let node_link = match mount.get(&path_buf).await {
-        Ok(node) => node,
-        Err(e) => {
-            tracing::error!("Failed to get path {}: {}", absolute_path, e);
-            return not_found_response(&format!("Path not found: {}", absolute_path));
+    // Root path doesn't need mount.get() - it's implicitly a directory
+    let node_link = if is_root {
+        None // Will be treated as directory below
+    } else {
+        match mount.get(&path_buf).await {
+            Ok(node) => Some(node),
+            Err(e) => {
+                tracing::error!("Failed to get path {}: {}", absolute_path, e);
+                return not_found_response(&format!("Path not found: {}", absolute_path));
+            }
         }
     };
 
-    // Check if it's a directory
-    match node_link {
-        NodeLink::Dir(_, _) => {
-            // Try to find an index file
-            if let Some((index_path, index_mime_type)) = find_index_file(&mount, &path_buf).await {
-                // Serve the index file instead of directory listing
-                let file_data = match mount.cat(&index_path).await {
-                    Ok(data) => data,
-                    Err(e) => {
-                        tracing::error!("Failed to read index file: {}", e);
-                        return error_response("Failed to read index file");
-                    }
-                };
+    // Check if it's a directory (None means root, which is always a directory)
+    let is_directory = match &node_link {
+        None => true, // Root is always a directory
+        Some(NodeLink::Dir(_, _)) => true,
+        Some(NodeLink::Data(_, _, _)) => false,
+    };
 
-                // Convert the index_path to string for URL rewriting
-                let index_path_str = index_path.to_str().unwrap_or(&absolute_path);
-
-                // Handle different mime types
-                let (final_content, final_mime_type) = if index_mime_type == "text/markdown" {
-                    // Convert markdown to HTML
-                    let content_str = String::from_utf8_lossy(&file_data);
-                    let html = markdown_to_html(&content_str);
-                    // Apply URL rewriting to the generated HTML
-                    let rewritten = rewrite_relative_urls(&html, index_path_str, &bucket_id, &host);
-                    (rewritten.into_bytes(), "text/html; charset=utf-8")
-                } else if index_mime_type == "text/html" {
-                    // Apply URL rewriting to HTML
-                    let content_str = String::from_utf8_lossy(&file_data);
-                    let rewritten =
-                        rewrite_relative_urls(&content_str, index_path_str, &bucket_id, &host);
-                    (rewritten.into_bytes(), "text/html; charset=utf-8")
-                } else {
-                    // Serve text/plain as-is
-                    (file_data, "text/plain; charset=utf-8")
-                };
-
-                return (
-                    axum::http::StatusCode::OK,
-                    [(axum::http::header::CONTENT_TYPE, final_mime_type)],
-                    final_content,
-                )
-                    .into_response();
-            }
-
-            // No index file found, return directory listing as JSON
-            let items_map = match mount.ls(&path_buf).await {
-                Ok(items) => items,
-                Err(e) => {
-                    tracing::error!("Failed to list directory: {}", e);
-                    return error_response("Failed to list directory");
-                }
-            };
-
-            let entries: Vec<DirectoryEntry> = items_map
-                .into_iter()
-                .map(|(path, node_link)| {
-                    let name = path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let is_dir = matches!(node_link, NodeLink::Dir(_, _));
-
-                    let mime_type = if is_dir {
-                        "inode/directory".to_string()
-                    } else {
-                        match &node_link {
-                            NodeLink::Data(_, _, data) => data
-                                .mime()
-                                .map(|m| m.to_string())
-                                .unwrap_or_else(|| "application/octet-stream".to_string()),
-                            NodeLink::Dir(_, _) => "inode/directory".to_string(),
-                        }
-                    };
-
-                    DirectoryEntry {
-                        name,
-                        path: format!("/{}", path.display()),
-                        is_dir,
-                        mime_type,
-                    }
-                })
-                .collect();
-
-            let listing = DirectoryListing {
-                path: absolute_path,
-                entries,
-            };
-
-            (
-                axum::http::StatusCode::OK,
-                [(axum::http::header::CONTENT_TYPE, "application/json")],
-                serde_json::to_string_pretty(&listing).unwrap(),
-            )
-                .into_response()
-        }
-        NodeLink::Data(_, _, file_metadata) => {
-            // Serve file content
-            let file_data = match mount.cat(&path_buf).await {
+    if is_directory {
+        // Try to find an index file
+        if let Some((index_path, index_mime_type)) = find_index_file(&mount, &path_buf).await {
+            // Serve the index file instead of directory listing
+            let file_data = match mount.cat(&index_path).await {
                 Ok(data) => data,
                 Err(e) => {
-                    tracing::error!("Failed to read file: {}", e);
-                    return error_response("Failed to read file");
+                    tracing::error!("Failed to read index file: {}", e);
+                    return error_response("Failed to read index file");
                 }
             };
 
-            let mime_type = file_metadata
-                .mime()
-                .map(|m| m.to_string())
-                .unwrap_or_else(|| "application/octet-stream".to_string());
+            // Convert the index_path to string for URL rewriting
+            let index_path_str = index_path.to_str().unwrap_or(&absolute_path);
 
-            // Get filename for Content-Disposition
-            let filename = path_buf
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("file");
-
-            // Apply URL rewriting for text/html and text/markdown files
-            let (final_content, final_mime_type) = if mime_type == "text/html" {
-                let content_str = String::from_utf8_lossy(&file_data);
-                let rewritten =
-                    rewrite_relative_urls(&content_str, &absolute_path, &bucket_id, &host);
-                (rewritten.into_bytes(), "text/html; charset=utf-8")
-            } else if mime_type == "text/markdown" {
-                // Convert markdown to HTML and apply URL rewriting
+            // Handle different mime types
+            let (final_content, final_mime_type) = if index_mime_type == "text/markdown" {
+                // Convert markdown to HTML
                 let content_str = String::from_utf8_lossy(&file_data);
                 let html = markdown_to_html(&content_str);
-                let rewritten = rewrite_relative_urls(&html, &absolute_path, &bucket_id, &host);
+                // Apply URL rewriting to the generated HTML
+                let rewritten = rewrite_relative_urls(&html, index_path_str, &bucket_id, &host);
+                (rewritten.into_bytes(), "text/html; charset=utf-8")
+            } else if index_mime_type == "text/html" {
+                // Apply URL rewriting to HTML
+                let content_str = String::from_utf8_lossy(&file_data);
+                let rewritten =
+                    rewrite_relative_urls(&content_str, index_path_str, &bucket_id, &host);
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
             } else {
-                (file_data, mime_type.as_str())
+                // Serve text/plain as-is
+                (file_data, "text/plain; charset=utf-8")
             };
 
-            (
+            return (
                 axum::http::StatusCode::OK,
-                [
-                    (axum::http::header::CONTENT_TYPE, final_mime_type),
-                    (
-                        axum::http::header::CONTENT_DISPOSITION,
-                        &format!("inline; filename=\"{}\"", filename),
-                    ),
-                ],
+                [(axum::http::header::CONTENT_TYPE, final_mime_type)],
                 final_content,
             )
-                .into_response()
+                .into_response();
         }
+
+        // No index file found, return directory listing as JSON
+        let items_map = match mount.ls(&path_buf).await {
+            Ok(items) => items,
+            Err(e) => {
+                tracing::error!("Failed to list directory: {}", e);
+                return error_response("Failed to list directory");
+            }
+        };
+
+        let entries: Vec<DirectoryEntry> = items_map
+            .into_iter()
+            .map(|(path, node_link)| {
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let mime_type = match &node_link {
+                    NodeLink::Dir(_, _) => "inode/directory".to_string(),
+                    NodeLink::Data(_, _, data) => data
+                        .mime()
+                        .map(|m| m.to_string())
+                        .unwrap_or_else(|| "application/octet-stream".to_string()),
+                };
+
+                DirectoryEntry {
+                    name,
+                    path: format!("/{}", path.display()),
+                    mime_type,
+                }
+            })
+            .collect();
+
+        let listing = DirectoryListing {
+            path: absolute_path,
+            entries,
+        };
+
+        (
+            axum::http::StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            serde_json::to_string_pretty(&listing).unwrap(),
+        )
+            .into_response()
+    } else {
+        // Serve file content - extract file_metadata from the node_link
+        let file_metadata = match node_link {
+            Some(NodeLink::Data(_, _, metadata)) => metadata,
+            _ => unreachable!("Already checked is_directory"),
+        };
+        let file_data = match mount.cat(&path_buf).await {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::error!("Failed to read file: {}", e);
+                return error_response("Failed to read file");
+            }
+        };
+
+        let mime_type = file_metadata
+            .mime()
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+
+        // Get filename for Content-Disposition
+        let filename = path_buf
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file");
+
+        // Apply URL rewriting for text/html and text/markdown files
+        let (final_content, final_mime_type) = if mime_type == "text/html" {
+            let content_str = String::from_utf8_lossy(&file_data);
+            let rewritten = rewrite_relative_urls(&content_str, &absolute_path, &bucket_id, &host);
+            (rewritten.into_bytes(), "text/html; charset=utf-8")
+        } else if mime_type == "text/markdown" {
+            // Convert markdown to HTML and apply URL rewriting
+            let content_str = String::from_utf8_lossy(&file_data);
+            let html = markdown_to_html(&content_str);
+            let rewritten = rewrite_relative_urls(&html, &absolute_path, &bucket_id, &host);
+            (rewritten.into_bytes(), "text/html; charset=utf-8")
+        } else {
+            (file_data, mime_type.as_str())
+        };
+
+        (
+            axum::http::StatusCode::OK,
+            [
+                (axum::http::header::CONTENT_TYPE, final_mime_type),
+                (
+                    axum::http::header::CONTENT_DISPOSITION,
+                    &format!("inline; filename=\"{}\"", filename),
+                ),
+            ],
+            final_content,
+        )
+            .into_response()
     }
 }
 
