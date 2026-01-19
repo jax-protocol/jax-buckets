@@ -20,6 +20,9 @@ pub struct GatewayQuery {
     /// If true, show the file in viewer UI even if it's HTML/Markdown
     #[serde(default)]
     pub view: Option<bool>,
+    /// If true, recursively list all files under the path (deep listing)
+    #[serde(default)]
+    pub deep: Option<bool>,
 }
 
 /// Path segment for breadcrumb navigation
@@ -519,12 +522,23 @@ pub async fn handler(
             }
         }
 
-        // List directory contents
-        let items_map = match mount.ls(&path_buf).await {
-            Ok(items) => items,
-            Err(e) => {
-                tracing::error!("Failed to list directory: {}", e);
-                return error_response("Failed to list directory");
+        // List directory contents (deep or shallow based on query param)
+        let wants_deep = query.deep.unwrap_or(false);
+        let items_map = if wants_deep {
+            match mount.ls_deep(&path_buf).await {
+                Ok(items) => items,
+                Err(e) => {
+                    tracing::error!("Failed to deep list directory: {}", e);
+                    return error_response("Failed to list directory");
+                }
+            }
+        } else {
+            match mount.ls(&path_buf).await {
+                Ok(items) => items,
+                Err(e) => {
+                    tracing::error!("Failed to list directory: {}", e);
+                    return error_response("Failed to list directory");
+                }
             }
         };
 
