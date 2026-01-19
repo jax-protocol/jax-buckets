@@ -113,7 +113,6 @@ Commands:
   bucket
   init
   daemon
-  gw
   version
   help     Print this message or the help of the given subcommand(s)
 ```
@@ -191,13 +190,15 @@ Keep this running in a terminal, or run it as a background service (see below).
 For lightweight deployments that only need to serve published bucket content (no UI, no API):
 
 ```bash
-jax gw --port 8080
+jax daemon --gateway-only
 ```
 
 The gateway mode provides:
 - P2P peer syncing (mirror role)
-- `/gw/:bucket_id/*path` endpoint for serving content
+- `/gw/:bucket_id/*path` endpoint for serving content with HTML file explorer
 - `/_status/*` health endpoints
+- Content negotiation (`Accept: application/json` for JSON responses)
+- `?download=true` query param for raw file downloads
 
 Use this when you need a minimal content server without the full daemon features.
 
