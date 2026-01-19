@@ -81,7 +81,7 @@ tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && echo '=== Node1: Daemon Only 
 tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && echo '=== Node2: Daemon + Gateway ===' && echo 'UI: http://localhost:8081 | API: http://localhost:3001 | GW: http://localhost:9091' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon --gateway --gateway-url http://localhost:9091'" C-m
 
 # Pane 0.2 (bottom): Gateway only (uses gateway_port from config: 9092)
-tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ===' && echo 'GW: http://localhost:9092' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 gw'" C-m
+tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ===' && echo 'GW: http://localhost:9092' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 daemon --gateway-only'" C-m
 
 # Create a new window for database inspection
 tmux new-window -t jax-dev:1 -n "db"

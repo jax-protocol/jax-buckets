@@ -13,12 +13,11 @@ pub use daemon::ServiceState;
 use args::Args;
 use clap::{Parser, Subcommand};
 use op::Op;
-use ops::{Bucket, Daemon, Gw, Init, Version};
+use ops::{Bucket, Daemon, Init, Version};
 
 command_enum! {
     (Bucket, Bucket),
     (Daemon, Daemon),
-    (Gw, Gw),
     (Init, Init),
     (Version, Version),
 }

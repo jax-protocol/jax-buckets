@@ -75,7 +75,6 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     let html_config = http_server::Config::new(
         html_listen_addr,
         Some(api_url),
-        service_config.ui_read_only,
         service_config.gateway_url.clone(),
     );
     let html_rx = shutdown_rx.clone();
@@ -89,7 +88,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
 
     // Start API server
     let api_state = state.as_ref().clone();
-    let api_config = http_server::Config::new(api_listen_addr, None, false, None);
+    let api_config = http_server::Config::new(api_listen_addr, None, None);
     let api_rx = shutdown_rx.clone();
     let api_handle = tokio::spawn(async move {
         tracing::info!("Starting API server on {}", api_listen_addr);
@@ -104,7 +103,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
         let gateway_listen_addr = SocketAddr::from_str(&format!("0.0.0.0:{}", gateway_port))
             .expect("Failed to parse gateway listen address");
         let gateway_state = state.as_ref().clone();
-        let gateway_config = http_server::Config::new(gateway_listen_addr, None, false, None);
+        let gateway_config = http_server::Config::new(gateway_listen_addr, None, None);
         let gateway_rx = shutdown_rx.clone();
         let gateway_handle = tokio::spawn(async move {
             tracing::info!("Starting Gateway server on {}", gateway_listen_addr);

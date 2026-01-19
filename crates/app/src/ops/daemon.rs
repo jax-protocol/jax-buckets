@@ -1,14 +1,15 @@
 use clap::Args;
 
+use crate::daemon::gateway_process::spawn_gateway_service;
 use crate::daemon::spawn_service;
 use crate::daemon::ServiceConfig;
 use crate::state::AppState;
 
 #[derive(Args, Debug, Clone)]
 pub struct Daemon {
-    /// Run the HTML UI in read-only mode (hides write operations)
+    /// Run only the gateway server (no HTML UI, no API server)
     #[arg(long)]
-    pub ui_read_only: bool,
+    pub gateway_only: bool,
 
     /// API hostname to use for HTML UI (default: http://localhost:<api_port>)
     #[arg(long)]
@@ -55,6 +56,31 @@ impl crate::op::Op for Daemon {
                 .expect("Failed to parse peer listen address")
         });
 
+        // Gateway-only mode: run just the gateway server
+        if self.gateway_only {
+            let gateway_port = self.gateway_port.unwrap_or(state.config.gateway_port);
+
+            let config = ServiceConfig {
+                node_listen_addr,
+                node_secret: Some(secret_key),
+                node_blobs_store_path: Some(state.blobs_path),
+                html_listen_addr: Some(
+                    format!("0.0.0.0:{}", gateway_port)
+                        .parse()
+                        .expect("Failed to parse gateway listen address"),
+                ),
+                api_listen_addr: None,
+                sqlite_path: Some(state.db_path),
+                log_level: tracing::Level::DEBUG,
+                api_hostname: None,
+                gateway_port: None,
+                gateway_url: None,
+            };
+
+            spawn_gateway_service(&config).await;
+            return Ok("gateway ended".to_string());
+        }
+
         // Determine gateway port: --gateway-port overrides, --gateway uses config
         let gateway_port = if let Some(port) = self.gateway_port {
             Some(port)
@@ -73,7 +99,6 @@ impl crate::op::Op for Daemon {
             api_listen_addr: state.config.api_listen_addr.parse().ok(),
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::DEBUG,
-            ui_read_only: self.ui_read_only,
             api_hostname: self.api_hostname.clone(),
             gateway_port,
             gateway_url: self.gateway_url.clone(),

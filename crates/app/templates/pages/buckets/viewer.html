@@ -23,7 +23,7 @@
         <button id="downloadBtn" class="button" title="Download file">
             <i class="fas fa-download"></i>
         </button>
-        {% if is_editable && at_hash.is_none() && !read_only %} {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
+        {% if is_editable && at_hash.is_none() %} {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
         <a
             href="/buckets/{{ bucket_id }}/edit?path={{ file_path }}&from=view"
             class="button button-primary"
@@ -196,7 +196,7 @@
 
 {% block head %}
 <!-- CodeMirror 6 CSS (only loaded if file is editable) -->
-{% if is_editable && at_hash.is_none() && !read_only %}
+{% if is_editable && at_hash.is_none() %}
 <style>
     .cm-editor {
         height: 70vh;
@@ -674,7 +674,7 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"></script>
 
 <!-- Initialize inline editor module -->
-{% if is_editable && at_hash.is_none() && !read_only %}
+{% if is_editable && at_hash.is_none() %}
 <script type="module">
     import {
         initInlineEditor,

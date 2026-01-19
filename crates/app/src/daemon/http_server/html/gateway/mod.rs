@@ -1,3 +1,4 @@
+use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use regex::Regex;
@@ -13,6 +14,58 @@ use crate::ServiceState;
 pub struct GatewayQuery {
     #[serde(default)]
     pub at: Option<String>,
+    /// If true, serve the raw file with Content-Disposition: attachment
+    #[serde(default)]
+    pub download: Option<bool>,
+    /// If true, show the file in viewer UI even if it's HTML/Markdown
+    #[serde(default)]
+    pub view: Option<bool>,
+}
+
+/// Path segment for breadcrumb navigation
+#[derive(Debug, Clone)]
+pub struct PathSegment {
+    pub name: String,
+    pub path: String,
+}
+
+/// File display info for directory listings
+#[derive(Debug, Clone)]
+pub struct FileDisplayInfo {
+    pub name: String,
+    pub path: String,
+    pub mime_type: String,
+    pub is_dir: bool,
+}
+
+/// Template for directory explorer
+#[derive(Template)]
+#[template(path = "pages/gateway/explorer.html")]
+pub struct GatewayExplorerTemplate {
+    pub bucket_id: String,
+    pub bucket_id_short: String,
+    pub bucket_name: String,
+    pub bucket_link: String,
+    pub bucket_link_short: String,
+    pub path_segments: Vec<PathSegment>,
+    pub items: Vec<FileDisplayInfo>,
+}
+
+/// Template for file viewer
+#[derive(Template)]
+#[template(path = "pages/gateway/viewer.html")]
+pub struct GatewayViewerTemplate {
+    pub bucket_id: String,
+    pub bucket_id_short: String,
+    pub bucket_name: String,
+    pub bucket_link: String,
+    pub bucket_link_short: String,
+    pub file_path: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub size_formatted: String,
+    pub content: String,
+    pub back_url: String,
 }
 
 /// Handler for bucket root requests (no file path)
@@ -196,6 +249,124 @@ async fn find_index_file(
     None
 }
 
+/// Check if the Accept header indicates JSON is preferred
+fn wants_json(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|h| h.to_str().ok())
+        .map(|accept| {
+            // Check if application/json is present and has higher priority than text/html
+            // Simple heuristic: if application/json appears before text/html or text/html is absent
+            let json_pos = accept.find("application/json");
+            let html_pos = accept.find("text/html");
+            match (json_pos, html_pos) {
+                (Some(j), Some(h)) => j < h,
+                (Some(_), None) => true,
+                _ => false,
+            }
+        })
+        .unwrap_or(false)
+}
+
+/// Build path segments for breadcrumb navigation
+fn build_path_segments(path: &str) -> Vec<PathSegment> {
+    if path == "/" {
+        return vec![];
+    }
+
+    let mut segments = Vec::new();
+    let mut current_path = String::new();
+
+    for part in path.trim_start_matches('/').split('/') {
+        if !part.is_empty() {
+            current_path = format!("{}/{}", current_path, part);
+            segments.push(PathSegment {
+                name: part.to_string(),
+                path: current_path.clone(),
+            });
+        }
+    }
+
+    segments
+}
+
+/// Get parent path for "Up" navigation
+fn get_parent_path(path: &str) -> String {
+    if path == "/" {
+        return "/".to_string();
+    }
+
+    let trimmed = path.trim_end_matches('/');
+    match trimmed.rfind('/') {
+        Some(0) => "/".to_string(),
+        Some(pos) => trimmed[..pos].to_string(),
+        None => "/".to_string(),
+    }
+}
+
+/// Format file size for display
+fn format_size(size: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if size >= GB {
+        format!("{:.2} GB", size as f64 / GB as f64)
+    } else if size >= MB {
+        format!("{:.2} MB", size as f64 / MB as f64)
+    } else if size >= KB {
+        format!("{:.2} KB", size as f64 / KB as f64)
+    } else {
+        format!("{} B", size)
+    }
+}
+
+/// Convert bytes to hex dump for binary files
+fn to_hex_dump(data: &[u8], max_bytes: usize) -> String {
+    let bytes_to_show = data.len().min(max_bytes);
+    let mut result = String::new();
+
+    for (i, chunk) in data[..bytes_to_show].chunks(16).enumerate() {
+        // Address
+        result.push_str(&format!("{:08x}  ", i * 16));
+
+        // Hex values
+        for (j, byte) in chunk.iter().enumerate() {
+            result.push_str(&format!("{:02x} ", byte));
+            if j == 7 {
+                result.push(' ');
+            }
+        }
+
+        // Padding for incomplete lines
+        for j in chunk.len()..16 {
+            result.push_str("   ");
+            if j == 7 {
+                result.push(' ');
+            }
+        }
+
+        result.push(' ');
+
+        // ASCII representation
+        for byte in chunk {
+            if *byte >= 32 && *byte < 127 {
+                result.push(*byte as char);
+            } else {
+                result.push('.');
+            }
+        }
+
+        result.push('\n');
+    }
+
+    if data.len() > max_bytes {
+        result.push_str(&format!("\n... ({} more bytes)\n", data.len() - max_bytes));
+    }
+
+    result
+}
+
 pub async fn handler(
     State(state): State<ServiceState>,
     Path((bucket_id, file_path)): Path<(Uuid, String)>,
@@ -220,6 +391,7 @@ pub async fn handler(
             }
         })
         .unwrap_or_else(|| "http://localhost".to_string());
+
     // Ensure path is absolute
     let absolute_path = if file_path.starts_with('/') {
         file_path
@@ -287,49 +459,67 @@ pub async fn handler(
         Some(NodeLink::Data(_, _, _)) => false,
     };
 
+    // Get bucket metadata from mount
+    let inner = mount.inner().await;
+    let bucket_name = inner.manifest().name().to_string();
+    let bucket_id_str = bucket_id.to_string();
+    let bucket_id_short = format!(
+        "{}...{}",
+        &bucket_id_str[..8],
+        &bucket_id_str[bucket_id_str.len() - 4..]
+    );
+    let bucket_link = inner.link().hash().to_string();
+    let bucket_link_short = format!(
+        "{}...{}",
+        &bucket_link[..8],
+        &bucket_link[bucket_link.len() - 8..]
+    );
+
     if is_directory {
-        // Try to find an index file
-        if let Some((index_path, index_mime_type)) = find_index_file(&mount, &path_buf).await {
-            // Serve the index file instead of directory listing
-            let file_data = match mount.cat(&index_path).await {
-                Ok(data) => data,
-                Err(e) => {
-                    tracing::error!("Failed to read index file: {}", e);
-                    return error_response("Failed to read index file");
-                }
-            };
+        // Check for index file first (unless JSON is explicitly requested)
+        if !wants_json(&headers) {
+            if let Some((index_path, index_mime_type)) = find_index_file(&mount, &path_buf).await {
+                // Serve the index file instead of directory listing
+                let file_data = match mount.cat(&index_path).await {
+                    Ok(data) => data,
+                    Err(e) => {
+                        tracing::error!("Failed to read index file: {}", e);
+                        return error_response("Failed to read index file");
+                    }
+                };
 
-            // Convert the index_path to string for URL rewriting
-            let index_path_str = index_path.to_str().unwrap_or(&absolute_path);
+                // Convert the index_path to string for URL rewriting
+                let index_path_str = index_path.to_str().unwrap_or(&absolute_path);
 
-            // Handle different mime types
-            let (final_content, final_mime_type) = if index_mime_type == "text/markdown" {
-                // Convert markdown to HTML
-                let content_str = String::from_utf8_lossy(&file_data);
-                let html = markdown_to_html(&content_str);
-                // Apply URL rewriting to the generated HTML
-                let rewritten = rewrite_relative_urls(&html, index_path_str, &bucket_id, &host);
-                (rewritten.into_bytes(), "text/html; charset=utf-8")
-            } else if index_mime_type == "text/html" {
-                // Apply URL rewriting to HTML
-                let content_str = String::from_utf8_lossy(&file_data);
-                let rewritten =
-                    rewrite_relative_urls(&content_str, index_path_str, &bucket_id, &host);
-                (rewritten.into_bytes(), "text/html; charset=utf-8")
-            } else {
-                // Serve text/plain as-is
-                (file_data, "text/plain; charset=utf-8")
-            };
+                // Handle different mime types
+                let (final_content, final_mime_type) = if index_mime_type == "text/markdown" {
+                    // Convert markdown to HTML
+                    let content_str = String::from_utf8_lossy(&file_data);
+                    let html = markdown_to_html(&content_str);
+                    // Apply URL rewriting to the generated HTML
+                    let rewritten = rewrite_relative_urls(&html, index_path_str, &bucket_id, &host);
+                    (rewritten.into_bytes(), "text/html; charset=utf-8")
+                } else if index_mime_type == "text/html" {
+                    // Apply URL rewriting to HTML
+                    let content_str = String::from_utf8_lossy(&file_data);
+                    let rewritten =
+                        rewrite_relative_urls(&content_str, index_path_str, &bucket_id, &host);
+                    (rewritten.into_bytes(), "text/html; charset=utf-8")
+                } else {
+                    // Serve text/plain as-is
+                    (file_data, "text/plain; charset=utf-8")
+                };
 
-            return (
-                axum::http::StatusCode::OK,
-                [(axum::http::header::CONTENT_TYPE, final_mime_type)],
-                final_content,
-            )
-                .into_response();
+                return (
+                    axum::http::StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, final_mime_type)],
+                    final_content,
+                )
+                    .into_response();
+            }
         }
 
-        // No index file found, return directory listing as JSON
+        // List directory contents
         let items_map = match mount.ls(&path_buf).await {
             Ok(items) => items,
             Err(e) => {
@@ -338,7 +528,48 @@ pub async fn handler(
             }
         };
 
-        let entries: Vec<DirectoryEntry> = items_map
+        // Check if JSON is requested
+        if wants_json(&headers) {
+            let entries: Vec<DirectoryEntry> = items_map
+                .into_iter()
+                .map(|(path, node_link)| {
+                    let name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    let mime_type = match &node_link {
+                        NodeLink::Dir(_, _) => "inode/directory".to_string(),
+                        NodeLink::Data(_, _, data) => data
+                            .mime()
+                            .map(|m| m.to_string())
+                            .unwrap_or_else(|| "application/octet-stream".to_string()),
+                    };
+
+                    DirectoryEntry {
+                        name,
+                        path: format!("/{}", path.display()),
+                        mime_type,
+                    }
+                })
+                .collect();
+
+            let listing = DirectoryListing {
+                path: absolute_path,
+                entries,
+            };
+
+            return (
+                axum::http::StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                serde_json::to_string_pretty(&listing).unwrap(),
+            )
+                .into_response();
+        }
+
+        // Render HTML explorer
+        let items: Vec<FileDisplayInfo> = items_map
             .into_iter()
             .map(|(path, node_link)| {
                 let name = path
@@ -347,39 +578,71 @@ pub async fn handler(
                     .unwrap_or("")
                     .to_string();
 
-                let mime_type = match &node_link {
-                    NodeLink::Dir(_, _) => "inode/directory".to_string(),
-                    NodeLink::Data(_, _, data) => data
-                        .mime()
-                        .map(|m| m.to_string())
-                        .unwrap_or_else(|| "application/octet-stream".to_string()),
+                let (mime_type, is_dir) = match &node_link {
+                    NodeLink::Dir(_, _) => ("inode/directory".to_string(), true),
+                    NodeLink::Data(_, _, data) => (
+                        data.mime()
+                            .map(|m| m.to_string())
+                            .unwrap_or_else(|| "application/octet-stream".to_string()),
+                        false,
+                    ),
                 };
 
-                DirectoryEntry {
+                FileDisplayInfo {
                     name,
                     path: format!("/{}", path.display()),
                     mime_type,
+                    is_dir,
                 }
             })
             .collect();
 
-        let listing = DirectoryListing {
-            path: absolute_path,
-            entries,
+        let template = GatewayExplorerTemplate {
+            bucket_id: bucket_id_str.clone(),
+            bucket_id_short: bucket_id_short.clone(),
+            bucket_name: bucket_name.clone(),
+            bucket_link: bucket_link.clone(),
+            bucket_link_short: bucket_link_short.clone(),
+            path_segments: build_path_segments(&absolute_path),
+            items,
         };
 
-        (
-            axum::http::StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            serde_json::to_string_pretty(&listing).unwrap(),
-        )
-            .into_response()
+        match template.render() {
+            Ok(html) => (
+                axum::http::StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                html,
+            )
+                .into_response(),
+            Err(e) => {
+                tracing::error!("Failed to render explorer template: {}", e);
+                error_response("Failed to render page")
+            }
+        }
     } else {
-        // Serve file content - extract file_metadata from the node_link
-        let file_metadata = match node_link {
-            Some(NodeLink::Data(_, _, metadata)) => metadata,
+        // Handle file - extract metadata from the node_link
+        let file_metadata_data = match &node_link {
+            Some(NodeLink::Data(_, _, metadata)) => metadata.clone(),
             _ => unreachable!("Already checked is_directory"),
         };
+
+        let mime_type = file_metadata_data
+            .mime()
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+
+        // Get filename
+        let filename = path_buf
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file")
+            .to_string();
+
+        // Check if raw download is requested
+        let wants_download = query.download.unwrap_or(false);
+        let wants_view = query.view.unwrap_or(false);
+
+        // Read file data
         let file_data = match mount.cat(&path_buf).await {
             Ok(data) => data,
             Err(e) => {
@@ -388,44 +651,117 @@ pub async fn handler(
             }
         };
 
-        let mime_type = file_metadata
-            .mime()
-            .map(|m| m.to_string())
-            .unwrap_or_else(|| "application/octet-stream".to_string());
+        // Calculate size from actual data
+        let file_size = file_data.len() as u64;
+        let size_formatted = format_size(file_size);
 
-        // Get filename for Content-Disposition
-        let filename = path_buf
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
+        // If download is requested, serve raw file
+        if wants_download {
+            return (
+                axum::http::StatusCode::OK,
+                [
+                    (axum::http::header::CONTENT_TYPE, mime_type.as_str()),
+                    (
+                        axum::http::header::CONTENT_DISPOSITION,
+                        &format!("attachment; filename=\"{}\"", filename),
+                    ),
+                ],
+                file_data,
+            )
+                .into_response();
+        }
 
-        // Apply URL rewriting for text/html and text/markdown files
-        let (final_content, final_mime_type) = if mime_type == "text/html" {
-            let content_str = String::from_utf8_lossy(&file_data);
-            let rewritten = rewrite_relative_urls(&content_str, &absolute_path, &bucket_id, &host);
-            (rewritten.into_bytes(), "text/html; charset=utf-8")
-        } else if mime_type == "text/markdown" {
-            // Convert markdown to HTML and apply URL rewriting
-            let content_str = String::from_utf8_lossy(&file_data);
-            let html = markdown_to_html(&content_str);
-            let rewritten = rewrite_relative_urls(&html, &absolute_path, &bucket_id, &host);
-            (rewritten.into_bytes(), "text/html; charset=utf-8")
+        // If JSON is requested, return file metadata as JSON
+        if wants_json(&headers) {
+            let metadata = serde_json::json!({
+                "path": absolute_path,
+                "name": filename,
+                "mime_type": mime_type,
+                "size": file_size,
+                "size_formatted": size_formatted,
+            });
+
+            return (
+                axum::http::StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                serde_json::to_string_pretty(&metadata).unwrap(),
+            )
+                .into_response();
+        }
+
+        // For HTML and Markdown files, render directly (unless ?view=true)
+        let is_html = mime_type == "text/html";
+        let is_markdown = mime_type == "text/markdown";
+
+        if (is_html || is_markdown) && !wants_view {
+            // Render the file directly
+            let (final_content, final_mime_type) = if is_markdown {
+                let content_str = String::from_utf8_lossy(&file_data);
+                let html = markdown_to_html(&content_str);
+                let rewritten = rewrite_relative_urls(&html, &absolute_path, &bucket_id, &host);
+                (rewritten.into_bytes(), "text/html; charset=utf-8")
+            } else {
+                let content_str = String::from_utf8_lossy(&file_data);
+                let rewritten =
+                    rewrite_relative_urls(&content_str, &absolute_path, &bucket_id, &host);
+                (rewritten.into_bytes(), "text/html; charset=utf-8")
+            };
+
+            return (
+                axum::http::StatusCode::OK,
+                [
+                    (axum::http::header::CONTENT_TYPE, final_mime_type),
+                    (
+                        axum::http::header::CONTENT_DISPOSITION,
+                        &format!("inline; filename=\"{}\"", filename),
+                    ),
+                ],
+                final_content,
+            )
+                .into_response();
+        }
+
+        // Render file viewer UI
+        let content = if mime_type.starts_with("text/")
+            || mime_type == "application/json"
+            || mime_type == "application/xml"
+            || mime_type == "application/javascript"
+        {
+            // Text content - show as text
+            String::from_utf8_lossy(&file_data).to_string()
         } else {
-            (file_data, mime_type.as_str())
+            // Binary content - show hex dump
+            to_hex_dump(&file_data, 1024)
         };
 
-        (
-            axum::http::StatusCode::OK,
-            [
-                (axum::http::header::CONTENT_TYPE, final_mime_type),
-                (
-                    axum::http::header::CONTENT_DISPOSITION,
-                    &format!("inline; filename=\"{}\"", filename),
-                ),
-            ],
-            final_content,
-        )
-            .into_response()
+        let back_url = format!("/gw/{}{}", bucket_id, get_parent_path(&absolute_path));
+
+        let template = GatewayViewerTemplate {
+            bucket_id: bucket_id_str,
+            bucket_id_short,
+            bucket_name,
+            bucket_link,
+            bucket_link_short,
+            file_path: absolute_path,
+            file_name: filename,
+            mime_type,
+            size_formatted,
+            content,
+            back_url,
+        };
+
+        match template.render() {
+            Ok(html) => (
+                axum::http::StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                html,
+            )
+                .into_response(),
+            Err(e) => {
+                tracing::error!("Failed to render viewer template: {}", e);
+                error_response("Failed to render page")
+            }
+        }
     }
 }
 
