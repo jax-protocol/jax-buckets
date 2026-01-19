@@ -1,7 +1,12 @@
 # Gateway Subcommand
 
-**Status:** Planned
+**Status:** Done
 **Track:** Gateway
+
+## Completion Notes
+
+We did not make this a subcommand, and instead implemented
+ this as a new flag
 
 ## Objective
 
