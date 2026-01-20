@@ -14,7 +14,7 @@ When using the dev environment (`./bin/dev`):
 
 | Node | App Server | Gateway |
 |------|------------|---------|
-| node0 | http://localhost:8080 | http://localhost:9080 |
+| node0 | http://localhost:8080 | http://localhost:9090 |
 | node1 | http://localhost:8081 | - |
 | node2 | - | http://localhost:9082 |
 
@@ -334,10 +334,10 @@ Serves files from a bucket. The bucket_id can be either:
 
 ```bash
 # Access root
-curl http://localhost:9080/gw/550e8400-.../
+curl http://localhost:9090/gw/550e8400-.../
 
 # Access specific file
-curl http://localhost:9080/gw/550e8400-.../path/to/file.txt
+curl http://localhost:9090/gw/550e8400-.../path/to/file.txt
 ```
 
 ## Helper Scripts

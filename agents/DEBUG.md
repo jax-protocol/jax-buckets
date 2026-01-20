@@ -24,7 +24,7 @@ The `./bin/dev` script reads node configuration from `./bin/dev_/nodes.toml`:
 
 | Node | Nick | Type | Ports | Blob Store |
 |------|------|------|-------|------------|
-| node0 | full | Full (App + Gateway) | 8080, 9080 | legacy |
+| node0 | full | Full (App + Gateway) | 8080, 9090 | legacy |
 | node1 | app | App only | 8081 | filesystem |
 | node2 | gw | Gateway only | 9082 | s3 (MinIO) |
 
