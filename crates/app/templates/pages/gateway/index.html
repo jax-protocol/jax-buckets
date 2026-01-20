@@ -11,6 +11,39 @@
             <p class="text-muted-foreground">Content-addressed storage gateway</p>
         </div>
 
+        <!-- Available Buckets -->
+        <div class="card p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4">
+                <i class="fas fa-bucket mr-2"></i>Available Buckets
+            </h3>
+            {% if buckets.is_empty() %}
+            <p class="text-muted-foreground text-sm">No buckets available yet.</p>
+            {% else %}
+            <div class="space-y-2">
+                {% for bucket in buckets %}
+                <a href="/gw/{{ bucket.id }}" class="bucket-row">
+                    <div class="bucket-info">
+                        <span class="bucket-name">{{ bucket.name }}</span>
+                        <code class="bucket-id">{{ bucket.id_short }}</code>
+                    </div>
+                    <div class="bucket-status">
+                        {% if bucket.is_published %}
+                        <span class="status-badge status-published">
+                            <i class="fas fa-globe"></i> Published
+                        </span>
+                        {% else %}
+                        <span class="status-badge status-private">
+                            <i class="fas fa-lock"></i> Private
+                        </span>
+                        {% endif %}
+                        <i class="fas fa-chevron-right bucket-arrow"></i>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
         <!-- Identity Card -->
         <div class="card p-6 mb-6">
             <div class="peer-id-card-inner">
@@ -24,7 +57,7 @@
 
         <!-- Endpoints -->
         <div class="card p-6">
-            <h3 class="text-lg font-semibold mb-4">Available Endpoints</h3>
+            <h3 class="text-lg font-semibold mb-4">API Endpoints</h3>
             <div class="space-y-3">
                 <div class="endpoint-row">
                     <code class="endpoint-path">/gw/:bucket_id/*path</code>
@@ -38,14 +71,6 @@
                     <code class="endpoint-path">/_status/livez</code>
                     <span class="endpoint-desc">Liveness check</span>
                 </div>
-                <div class="endpoint-row">
-                    <code class="endpoint-path">/_status/readyz</code>
-                    <span class="endpoint-desc">Readiness check</span>
-                </div>
-                <div class="endpoint-row">
-                    <code class="endpoint-path">/_status/version</code>
-                    <span class="endpoint-desc">Version info</span>
-                </div>
             </div>
         </div>
     </div>
@@ -54,6 +79,78 @@
 
 {% block head %}
 <style>
+.bucket-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.875rem 1rem;
+    background: hsl(var(--muted) / 0.2);
+    border-radius: 8px;
+    border: 1px solid hsl(var(--border));
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+}
+
+.bucket-row:hover {
+    background: hsl(var(--muted) / 0.4);
+    border-color: hsl(var(--primary) / 0.5);
+}
+
+.bucket-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.bucket-name {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.bucket-id {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.bucket-status {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-published {
+    background: hsl(142 76% 36% / 0.15);
+    color: hsl(142 76% 36%);
+}
+
+.status-private {
+    background: hsl(var(--muted) / 0.5);
+    color: hsl(var(--muted-foreground));
+}
+
+.bucket-arrow {
+    color: hsl(var(--muted-foreground));
+    opacity: 0.5;
+    transition: all 0.2s;
+}
+
+.bucket-row:hover .bucket-arrow {
+    opacity: 1;
+    transform: translateX(2px);
+}
+
 .peer-id-card-inner {
     display: flex;
     flex-direction: column;
