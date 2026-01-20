@@ -15,6 +15,7 @@ The main binary (`jax-bucket`). Handles CLI commands, runs the HTTP daemon, and 
   - `http_server/api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
   - `http_server/html/` - Web UI page handlers
   - `database/` - SQLite storage and bucket log provider
+  - `blobs/` - Blob store setup and configuration
 - `src/ops/` - CLI command implementations
 
 #### Askama Templating
@@ -71,4 +72,6 @@ SQLite + object storage backend for blob data (`jax-blobs-store`).
 
 - `agents/` - Documentation for AI agents (you're reading one)
 - `bin/` - Shell scripts for build, check, dev, test
+  - `minio.sh` - MinIO local server for S3-compatible blob storage testing
+  - `utils/` - Utility scripts for demos and development
 - `.github/workflows/` - CI and release automation
