@@ -72,9 +72,9 @@ cargo run --bin jax -- --help
 
 JaxBucket includes a convenient development script that sets up a **two-node P2P network** in tmux with auto-reload.
 
-### Using `bin/dev.sh`
+### Using `bin/dev`
 
-The `dev.sh` script creates a tmux session with:
+The `dev` script creates a tmux session with:
 - **Two JaxBucket nodes** running in parallel (Node1 and Node2)
 - **Auto-reload** on code changes (via cargo-watch)
 - **Separate windows** for database inspection and API testing
@@ -82,7 +82,7 @@ The `dev.sh` script creates a tmux session with:
 **Start the development environment:**
 
 ```bash
-./bin/dev.sh
+./bin/dev
 ```
 
 This will:
@@ -112,10 +112,10 @@ Provides database inspection information:
 - Node1 DB: `./data/node1/db.sqlite`
 - Node2 DB: `./data/node2/db.sqlite`
 
-Use the `./bin/db.sh` script to inspect databases:
+Use the `./bin/db` script to inspect databases:
 ```bash
-./bin/db.sh node1  # Open Node1 database
-./bin/db.sh node2  # Open Node2 database
+./bin/db node1  # Open Node1 database
+./bin/db node2  # Open Node2 database
 ```
 
 #### Window 2: `api`
@@ -198,8 +198,8 @@ With both nodes running:
 jax-bucket/
 ├── Cargo.toml                 # Workspace configuration
 ├── bin/
-│   ├── dev.sh                 # Development environment script
-│   └── db.sh                  # Database inspection script
+│   ├── dev                 # Development environment script
+│   └── db                  # Database inspection script
 ├── crates/
 │   ├── common/                # Core library (platform-agnostic)
 │   │   ├── src/
@@ -384,7 +384,7 @@ RUST_LOG=jax_bucket::daemon::sync_provider=debug,jax_common::peer=trace cargo ru
 sqlite3 ~/.config/jax/jax.db
 
 # Or use the dev script
-./bin/db.sh node1
+./bin/db node1
 ```
 
 ### Inspect Blobs

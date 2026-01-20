@@ -72,6 +72,6 @@ SQLite + object storage backend for blob data (`jax-blobs-store`).
 
 - `agents/` - Documentation for AI agents (you're reading one)
 - `bin/` - Shell scripts for build, check, dev, test
-  - `minio.sh` - MinIO local server for S3-compatible blob storage testing
+  - `minio` - MinIO local server for S3-compatible blob storage testing
   - `utils/` - Utility scripts for demos and development
 - `.github/workflows/` - CI and release automation

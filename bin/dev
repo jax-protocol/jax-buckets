@@ -3,8 +3,8 @@
 # Development script - sets up 3 nodes with different blob store backends
 #
 # Usage:
-#   ./bin/dev.sh          # Start all nodes
-#   ./bin/dev.sh clean    # Remove all dev data
+#   ./bin/dev          # Start all nodes
+#   ./bin/dev clean    # Remove all dev data
 
 set -e
 
@@ -36,7 +36,7 @@ run() {
 
     # Start MinIO for node2
     echo -e "${BLUE}Starting MinIO...${NC}"
-    "$SCRIPT_DIR/minio.sh" up || true
+    "$SCRIPT_DIR/minio" up || true
 
     # Initialize nodes if needed
     if [ ! -d "./data/node0" ]; then

@@ -17,7 +17,7 @@ help: ## Show this help message
 
 .PHONY: dev
 dev: ## Start development environment with two nodes in tmux
-	./bin/dev.sh
+	./bin/dev
 
 .PHONY: check
 check: ## Check all Rust code

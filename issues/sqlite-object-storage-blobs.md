@@ -50,8 +50,8 @@ pub enum BlobStoreConfig {
 
 ### Dev Tooling
 
-- `bin/dev.sh minio` - Start MinIO container for S3 testing
-- `bin/dev.sh blob-stores` - Run gateways with different blob store backends
+- `bin/dev minio` - Start MinIO container for S3 testing
+- `bin/dev blob-stores` - Run gateways with different blob store backends
 
 ## Design Decisions
 
@@ -168,7 +168,7 @@ Handle interrupted uploads/downloads:
 | `crates/app/src/daemon/config.rs` | Replaced `node_blobs_store_path` with `blob_store` + `jax_dir` |
 | `crates/app/src/daemon/state.rs` | Added `setup_blobs_store()` helper |
 | `crates/app/src/ops/daemon.rs` | Added CLI flags and `build_blob_store_config()` |
-| `bin/dev.sh` | Added `minio` and `blob-stores` commands |
+| `bin/dev` | Added `minio` and `blob-stores` commands |
 
 ## Example Configuration
 
@@ -221,7 +221,7 @@ Scans object storage, verifies blob integrity, and repopulates SQLite. Tags woul
 
 ```bash
 # Start MinIO for S3 testing
-./bin/dev.sh minio
+./bin/dev minio
 
 # Run tests
 cargo test -p jax-blobs-store
@@ -234,5 +234,5 @@ cargo run -- daemon --gateway --blob-store s3 \
   --s3-secret-key minioadmin
 
 # Or run multiple gateways with different backends
-./bin/dev.sh blob-stores
+./bin/dev blob-stores
 ```

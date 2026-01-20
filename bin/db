@@ -28,7 +28,7 @@ fi
 
 if [ ! -f "$DB_PATH" ]; then
     echo "Error: Database not found at $DB_PATH"
-    echo "Make sure you've run ./dev.sh first"
+    echo "Make sure you've run ./bin/dev first"
     exit 1
 fi
 
