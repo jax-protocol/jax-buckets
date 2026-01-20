@@ -339,30 +339,3 @@ curl http://localhost:9090/gw/550e8400-.../
 # Access specific file
 curl http://localhost:9090/gw/550e8400-.../path/to/file.txt
 ```
-
-## Helper Scripts
-
-Use `./bin/dev api` for convenient API access during development:
-
-```bash
-./bin/dev api help              # Show all commands
-
-# Health checks (all nodes)
-./bin/dev api full health       # Check full node health
-./bin/dev api gw health         # Check gateway health
-
-# Bucket operations (app nodes only: full, app)
-./bin/dev api full list         # List buckets
-./bin/dev api full create "test" # Create bucket
-./bin/dev api full ls <id> /    # List directory
-./bin/dev api full cat <id> /f  # Read file
-```
-
-**Node specification (required first argument):**
-- `full` or `node0` - Full node (app + gateway)
-- `app` or `node1` - App-only node
-- `gw` or `node2` - Gateway-only node (health commands only)
-
-Gateway nodes only support health commands. Bucket commands require app nodes.
-
-See `./bin/dev api help` for full usage.
