@@ -2,6 +2,10 @@
 name = "jax-blobs-store"
 version = "0.1.0"
 edition.workspace = true
+description = "SQLite + object storage backend for blob data"
+readme = "README.md"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 # Core async/error handling
