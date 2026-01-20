@@ -8,6 +8,7 @@ pub mod cat;
 pub mod create;
 pub mod delete;
 pub mod export;
+pub mod latest_published;
 pub mod list;
 pub mod ls;
 pub mod mkdir;
@@ -37,5 +38,6 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/ping", post(ping::handler))
         .route("/share", post(share::handler))
         .route("/export", post(export::handler))
+        .route("/latest-published", post(latest_published::handler))
         .with_state(state)
 }
