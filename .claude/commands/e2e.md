@@ -13,12 +13,9 @@ allowed-tools:
 
 Run end-to-end tests of the dev environment to verify fixtures and cross-node sync.
 
-Read `agents/DEBUG.md` for full documentation on:
-- Dev environment commands (`./bin/dev`)
-- Node configuration and ports
-- Fixture system and expected state
-- Debugging techniques
-- Common issues and fixes
+Read `agents/DEBUG.md` for dev environment commands and debugging.
+
+**Expected end state is documented in `bin/dev_/fixtures.toml`** - see the "EXPECTED END STATE" comment at the end of that file for what to verify.
 
 ## E2E Test Flow
 

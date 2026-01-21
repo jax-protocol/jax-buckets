@@ -90,3 +90,29 @@ bucket = "test"
 from = "/hello.txt"
 to = "/docs/hello.txt"
 node = "full"
+
+# =============================================================================
+# EXPECTED END STATE
+# =============================================================================
+#
+# After all fixtures apply successfully:
+#
+# Bucket "test" structure:
+#   /docs/
+#   /docs/hello.txt    (moved from /hello.txt)
+#   /docs/readme.md
+#
+# Node visibility:
+#   - full (8081): Owns bucket, sees latest state
+#   - app (8082):  Owner share, sees latest state after sync
+#   - gw (9093):   Mirror share, sees latest published state
+#
+# Gateway (http://localhost:9091/, 9092, 9093):
+#   - Bucket "test" listed with "Published" status
+#   - Clicking opens file explorer showing /docs/ directory
+#   - Files readable: /docs/hello.txt, /docs/readme.md
+#
+# Verify with:
+#   ./bin/dev api full ls <bucket_id> /docs
+#   ./bin/dev api app ls <bucket_id> /docs
+#   curl http://localhost:9091/gw/<bucket_id>/docs/hello.txt
