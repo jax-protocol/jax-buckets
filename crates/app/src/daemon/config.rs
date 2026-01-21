@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 use common::prelude::SecretKey;
 
+use crate::state::BlobStoreConfig;
+
 #[derive(Debug)]
 pub struct Config {
     // peer configuration
@@ -12,9 +14,12 @@ pub struct Config {
     /// on system file path to our secret,
     ///  if not set then a new secret will be generated
     pub node_secret: Option<SecretKey>,
-    /// the path to our blobs store, if not set then
-    ///  a temporary directory will be used
-    pub node_blobs_store_path: Option<PathBuf>,
+
+    // blob store configuration
+    /// Blob storage backend configuration
+    pub blob_store: BlobStoreConfig,
+    /// Path to the jax directory (absolute path, used for legacy blobs and cache)
+    pub jax_dir: PathBuf,
 
     // http server configuration - just two optional ports
     /// Port for the App server (UI + API combined).
@@ -29,8 +34,10 @@ pub struct Config {
     ///  in-memory database will be used
     pub sqlite_path: Option<PathBuf>,
 
-    // misc
+    // logging
     pub log_level: tracing::Level,
+    /// Directory for log files (optional, logs to stdout only if not set)
+    pub log_dir: Option<PathBuf>,
 
     // url configuration
     /// API URL for HTML UI (for JS to call API endpoints)
@@ -39,22 +46,6 @@ pub struct Config {
     /// External gateway URL (e.g., "https://gateway.example.com")
     /// Used for generating share/download links
     pub gateway_url: Option<String>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            node_listen_addr: None,
-            node_secret: None,
-            node_blobs_store_path: None,
-            app_port: Some(8080), // Default app server on 8080
-            gateway_port: None,   // No gateway by default
-            sqlite_path: None,
-            log_level: tracing::Level::INFO,
-            api_url: None,
-            gateway_url: None,
-        }
-    }
 }
 
 // TODO (amiller68): real error handling

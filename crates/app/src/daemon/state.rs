@@ -1,10 +1,11 @@
 use url::Url;
 
+use super::blobs::{Blobs, BlobsSetupError};
 use super::config::Config;
 use crate::daemon::database::{Database, DatabaseSetupError};
 
 use common::crypto::SecretKey;
-use common::peer::{BlobsStore, Peer, PeerBuilder};
+use common::peer::{Peer, PeerBuilder};
 
 use super::sync_provider::{QueuedSyncConfig, QueuedSyncProvider};
 
@@ -40,15 +41,9 @@ impl State {
             .clone()
             .unwrap_or_else(SecretKey::generate);
 
-        // 3. Setup blobs store
-        let blobs_store_path = config.node_blobs_store_path.clone().unwrap_or_else(|| {
-            let temp_dir = tempfile::tempdir().expect("failed to create temporary directory");
-            temp_dir.path().to_path_buf()
-        });
+        // 3. Setup blobs store using the new blobs module
         tracing::debug!("ServiceState::from_config - loading blobs store");
-        let blobs = BlobsStore::fs(&blobs_store_path)
-            .await
-            .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
+        let blobs = Blobs::setup(&config.blob_store, &config.jax_dir).await?;
         tracing::debug!("ServiceState::from_config - blobs store loaded successfully");
 
         // 4. Build peer from the database as the log provider
@@ -60,7 +55,7 @@ impl State {
         let mut peer_builder = PeerBuilder::new()
             .with_sync_provider(std::sync::Arc::new(sync_provider))
             .log_provider(database.clone())
-            .blobs_store(blobs.clone())
+            .blobs_store(blobs.into_inner())
             .secret_key(node_secret.clone());
 
         if let Some(addr) = config.node_listen_addr {
@@ -119,6 +114,6 @@ pub enum StateSetupError {
     DatabaseSetupError(#[from] DatabaseSetupError),
     #[error("Invalid database URL")]
     InvalidDatabaseUrl,
-    #[error("Blobs store error: {0}")]
-    BlobsStoreError(String),
+    #[error("Blobs setup error: {0}")]
+    BlobsSetupError(#[from] BlobsSetupError),
 }

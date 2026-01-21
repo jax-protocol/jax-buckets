@@ -1,0 +1,37 @@
+[package]
+name = "jax-blobs-store"
+version = "0.1.0"
+edition.workspace = true
+description = "SQLite + object storage backend for blob data"
+readme = "README.md"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Core async/error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+bytes = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# iroh-blobs for Hash type
+iroh-blobs = { workspace = true }
+
+# SQLite
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+
+# Object storage
+object_store = { version = "0.11", features = ["aws"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

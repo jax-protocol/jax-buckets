@@ -330,6 +330,117 @@ async fn setup_test_env() -> (Mount, BlobsStore, SecretKey, TempDir) {
 
 ---
 
+## API Design
+
+### CLI Flag Hygiene
+
+Prefer fewer, well-designed CLI flags over many granular ones:
+
+**Bad** - Too many flags, env vars, runtime config for infrastructure:
+```rust
+#[arg(long)] blob_store: BlobStoreType,
+#[arg(long)] s3_endpoint: Option<String>,
+#[arg(long)] s3_bucket: Option<String>,
+#[arg(long, env = "JAX_S3_ACCESS_KEY")] s3_access_key: Option<String>,
+#[arg(long, env = "JAX_S3_SECRET_KEY")] s3_secret_key: Option<String>,
+```
+
+**Good** - Single URL, set at init time (infrastructure config):
+```rust
+#[arg(long)] s3_url: Option<String>,  // s3://key:secret@host:port/bucket
+```
+
+**Principles:**
+- Infrastructure config (storage backend) → set at `init`, not runtime
+- Runtime config (public hostname, external URLs) → can be CLI flags on daemon
+- Credentials → prefer URL encoding or config file over env vars
+- Combine related params into URLs or structured config
+
+### Config Locality
+
+Configuration should be set where it makes sense:
+- `init` time: Storage backends, directories, ports, infrastructure
+- `daemon` time: Public hostname, external URLs, runtime behavior
+- Config file: Persisted settings that rarely change
+
+Don't put init-time config as daemon flags.
+
+---
+
+## Module Size
+
+### Keep Files Focused
+
+Each file should have one clear responsibility. Signs a file needs splitting:
+
+- **Multiple "setup" functions** for different subsystems
+- **Mix of concerns** (config parsing + state management + business logic)
+- **> 200 lines** with distinct logical sections
+
+**Bad** - `state.rs` does setup for database AND blobs:
+```rust
+// state.rs - 200+ lines
+async fn setup_blobs_store(...) { /* 100 lines */ }
+impl State {
+    pub async fn from_config(...) { /* uses both */ }
+}
+```
+
+**Good** - Separate modules for each subsystem:
+```
+daemon/
+├── database/      # Database setup, one responsibility
+│   ├── mod.rs
+│   └── sqlite.rs
+├── blobs/         # Blobs setup, one responsibility
+│   ├── mod.rs
+│   └── setup.rs
+└── state.rs       # Orchestrates both, delegates setup
+```
+
+### Follow Existing Patterns
+
+When adding new subsystems, check how existing ones are structured:
+- Does `database/` have a pattern? Follow it for `blobs/`
+- Does the crate have a module per subsystem? Don't inline.
+
+---
+
+## Avoiding Dead Code
+
+### Only Write What's Needed
+
+Don't write speculative code. Every public method should have a caller.
+
+**Bad** - Methods "for future use":
+```rust
+impl Blobs {
+    pub fn store(&self) -> &BlobsStore { &self.0 }      // Never called
+    pub fn into_inner(self) -> BlobsStore { self.0 }    // Actually used
+}
+
+impl Deref for Blobs {  // Never used via deref
+    type Target = BlobsStore;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+```
+
+**Good** - Only what's needed:
+```rust
+impl Blobs {
+    pub fn into_inner(self) -> BlobsStore { self.0 }
+}
+```
+
+**Before adding code, ask:**
+1. Is there a caller for this right now?
+2. Am I adding this "just in case"?
+3. Will this show up as dead_code warning?
+
+If `#[allow(dead_code)]` is needed, the code probably shouldn't exist yet.
+
+---
+
 ## Quick Reference
 
 | Pattern | Example |

@@ -32,7 +32,7 @@ jax daemon --gateway (gateway-only mode)
 | # | Ticket | Status | Track |
 |---|--------|--------|-------|
 | 0 | [Gateway subcommand](./0-gateway-subcommand.md) | Done | Gateway |
-| 1 | [SQLite blob store](./1-sqlite-blobstore.md) | Planned | Gateway |
+| 1 | [SQLite blob store](./1-sqlite-blobstore.md) | In Progress | Gateway |
 | 2 | [Conflict resolution](./2-conflict-resolution.md) | Planned | Common |
 | 3 | [FUSE integration](./3-fuse-integration.md) | Planned | Local |
 | 4 | [Desktop integration](./4-desktop-integration.md) | Planned | Local |

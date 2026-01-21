@@ -1,8 +1,8 @@
 # Gateway SQLite + Object Storage Blob Store
 
-**Status:** Planned
+**Status:** In Progress
 **Track:** Gateway
-**Reference:** `amiller68/sqlite-minio-blobs` branch, `issues/sqlite-object-storage-blobs.md`
+**Reference:** `sqlite-blob-store` branch, `issues/sqlite-object-storage-blobs.md`
 
 ## Objective
 
@@ -10,12 +10,12 @@ Integrate SQLite + Object Storage blob backend into gateway for cloud-native dep
 
 ## Implementation Steps
 
-1. Create `crates/blobs-store/` crate (from reference branch)
-2. Implement iroh-blobs store trait bridge
-3. Add blob store config to gateway command (S3 endpoint, bucket, credentials)
-4. Wire blob store into gateway's peer
+1. ✅ Create `crates/blobs-store/` crate
+2. ⬜ Implement iroh-blobs store trait bridge
+3. ✅ Add blob store config to gateway command (S3 endpoint, bucket, credentials)
+4. ⬜ Wire blob store into gateway's peer (currently falls back to legacy)
 
-## Files to Create
+## Files Created
 
 | File | Description |
 |------|-------------|
@@ -24,33 +24,42 @@ Integrate SQLite + Object Storage blob backend into gateway for cloud-native dep
 | `crates/blobs-store/src/store.rs` | Main BlobStore API |
 | `crates/blobs-store/src/database.rs` | SQLite pool + migrations |
 | `crates/blobs-store/src/object_store.rs` | S3/MinIO wrapper |
+| `crates/blobs-store/src/error.rs` | Error types |
 
-## Files to Modify
+## Files Modified
 
 | File | Changes |
 |------|---------|
 | `Cargo.toml` | Add workspace member |
 | `crates/app/Cargo.toml` | Add blobs-store dependency |
-| `crates/app/src/ops/daemon.rs` | Add blob store config to gateway flags |
+| `crates/app/src/state.rs` | Add `BlobStoreConfig` enum |
+| `crates/app/src/daemon/config.rs` | Replace `node_blobs_store_path` with `blob_store` + `jax_dir` |
+| `crates/app/src/daemon/state.rs` | Add `setup_blobs_store()` helper |
+| `crates/app/src/ops/init.rs` | Add blob store CLI flags (`--blob-store`, `--s3-url`, `--blobs-path`) |
+| `bin/dev` | Add `minio` and `blob-stores` commands |
 
 ## Acceptance Criteria
 
-- [ ] `crates/blobs-store` compiles independently
+- [x] `crates/blobs-store` compiles independently
 - [ ] Trait bridge implements iroh-blobs store traits
-- [ ] `jax daemon --gateway --blob-store s3 --s3-endpoint ...` works
-- [ ] SQLite metadata can be rebuilt from object storage
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] `jax init --blob-store s3 --s3-url ...` parses correctly
+- [x] SQLite metadata can be rebuilt from object storage (`recover_from_storage()`)
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings
+
+## Remaining Work
+
+- Implement iroh-blobs store traits for `BlobStore`
+- Replace fallback code in `setup_blobs_store()` with actual BlobStore usage
+- Add BAO verified streaming support
 
 ## Verification
 
 ```bash
 # Start MinIO
-./bin/minio.sh start
+./bin/dev minio
 
-# Start gateway with S3 config
-cargo run -- daemon --gateway --blob-store s3 --s3-endpoint http://localhost:9000 --s3-bucket jax-blobs
-
-# Verify blobs stored in MinIO
-mc ls minio/jax-blobs
+# Init with S3 config, then run gateway
+jax init --blob-store s3 --s3-url s3://minioadmin:minioadmin@localhost:9000/jax-blobs
+jax daemon --gateway
 ```

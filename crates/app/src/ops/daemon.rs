@@ -24,6 +24,10 @@ pub struct Daemon {
     /// Also run gateway alongside app server
     #[arg(long)]
     pub with_gateway: bool,
+
+    /// Directory for log files (logs to stdout only if not set)
+    #[arg(long)]
+    pub log_dir: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -68,14 +72,17 @@ impl crate::op::Op for Daemon {
             (Some(state.config.app_port), None)
         };
 
+        // Blob store configuration is read from config.toml (set at init time)
         let config = ServiceConfig {
             node_listen_addr,
             node_secret: Some(secret_key),
-            node_blobs_store_path: Some(state.blobs_path),
+            blob_store: state.config.blob_store.clone(),
+            jax_dir: state.jax_dir.clone(),
             app_port,
             gateway_port,
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::DEBUG,
+            log_dir: self.log_dir.clone(),
             api_url: self.api_url.clone(),
             gateway_url: self.gateway_url.clone(),
         };

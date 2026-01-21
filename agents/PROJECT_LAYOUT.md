@@ -15,6 +15,7 @@ The main binary (`jax-bucket`). Handles CLI commands, runs the HTTP daemon, and 
   - `http_server/api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
   - `http_server/html/` - Web UI page handlers
   - `database/` - SQLite storage and bucket log provider
+  - `blobs/` - Blob store setup and configuration
 - `src/ops/` - CLI command implementations
 
 #### Askama Templating
@@ -50,6 +51,18 @@ Shared library (`jax-common`) with crypto, storage, and peer protocol.
   - `sync/` - Sync jobs (download, ping, sync bucket)
 - `src/bucket_log/` - Append-only log for bucket history
 
+### `crates/blobs-store` - Blob Storage
+
+SQLite + object storage backend for blob data (`jax-blobs-store`).
+
+**Key areas:**
+
+- `src/store.rs` - Main BlobStore API (put, get, delete, list, recover)
+- `src/database.rs` - SQLite metadata storage (hash, size, state)
+- `src/object_store.rs` - S3/MinIO/local/memory storage wrapper
+- `src/error.rs` - Error types
+- `migrations/` - SQLite schema
+
 #### Integration Tests
 
 - `tests/` - Integration tests for mount operations
@@ -58,5 +71,15 @@ Shared library (`jax-common`) with crypto, storage, and peer protocol.
 ## Other Directories
 
 - `agents/` - Documentation for AI agents (you're reading one)
+  - `API.md` - HTTP API reference
+  - `DEBUG.md` - Debugging workflow guide
 - `bin/` - Shell scripts for build, check, dev, test
+  - `dev` - Development environment entry point (`./bin/dev`)
+  - `dev_/` - Dev environment modules and config
+    - `nodes.toml` - Node definitions (ports, blob stores, nicknames)
+    - `fixtures.toml` - Initial data fixtures
+    - `*.sh` - Modules (api, logs, fixtures, nodes, config)
+  - `db` - SQLite database helper
+  - `minio` - MinIO local server for S3-compatible blob storage testing
+  - `utils/` - Utility scripts for demos and development
 - `.github/workflows/` - CI and release automation

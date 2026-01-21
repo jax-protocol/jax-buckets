@@ -14,8 +14,8 @@ Review the current branch changes against project conventions defined in `agents
 ## Context Files
 
 Read these files first to understand conventions:
+- `agents/CONTRIBUTING.md` - Contribution guidelines, commit format, and **review checklist**
 - `agents/RUST_PATTERNS.md` - Rust code patterns (error handling, async, serialization)
-- `CONTRIBUTING.md` - Contribution guidelines (conventional commits, PR format)
 - `agents/PROJECT_LAYOUT.md` - Current project structure
 
 ## Review Steps

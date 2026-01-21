@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# JAX Development Environment
+#
+# Usage:
+#   ./bin/dev              Start all nodes in tmux
+#   ./bin/dev clean        Remove all dev data
+#   ./bin/dev kill         Kill the tmux session
+#   ./bin/dev api <cmd>    API helper commands
+#   ./bin/dev logs <cmd>   Log viewing commands
+#   ./bin/dev fixtures     Apply initial data
+#   ./bin/dev help         Show help
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DATA_DIR="$PROJECT_ROOT/data"
+DEV_DIR="$SCRIPT_DIR/dev_"
+CONFIG_FILE="$DEV_DIR/nodes.toml"
+FIXTURES_FILE="$DEV_DIR/fixtures.toml"
+SCRIPT_DIR="$DEV_DIR"  # For modules that reference SCRIPT_DIR
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+# Source modules
+source "$DEV_DIR/config.sh"
+source "$DEV_DIR/nodes.sh"
+source "$DEV_DIR/api.sh"
+source "$DEV_DIR/logs.sh"
+source "$DEV_DIR/fixtures.sh"
+source "$DEV_DIR/db.sh"
+
+cmd_help() {
+    echo "JAX Development Environment"
+    echo ""
+    echo "Usage: ./bin/dev <command> [args...]"
+    echo ""
+    echo "Commands:"
+    echo "  run [--background]  Start all nodes in tmux (default)"
+    echo "  clean               Remove all dev data"
+    echo "  kill [--force]      Kill tmux session (--force also kills port processes)"
+    echo "  status              Show status of nodes"
+    echo "  api <cmd>           API helper (run 'api help' for details)"
+    echo "  logs <cmd>          Log viewer (run 'logs help' for details)"
+    echo "  fixtures <cmd>      Apply/list fixtures (run 'fixtures help' for details)"
+    echo "  db <node> [query]   Database inspection (run 'db help' for details)"
+    echo "  help                Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  ./bin/dev                    # Start dev environment"
+    echo "  ./bin/dev run --background   # Start without attaching to tmux"
+    echo "  ./bin/dev api health         # Check node0 health"
+    echo "  ./bin/dev api health full    # Check by nickname"
+    echo "  ./bin/dev api list           # List buckets"
+    echo "  ./bin/dev logs tail          # Tail all logs"
+    echo "  ./bin/dev logs grep ERROR    # Search logs"
+    echo "  ./bin/dev fixtures           # Apply initial data"
+    echo ""
+    echo "Node config: $CONFIG_FILE"
+    echo "Fixtures: $FIXTURES_FILE"
+}
+
+# Main dispatcher
+case "${1:-run}" in
+    run)      shift; cmd_run "$@" ;;
+    clean)    cmd_clean ;;
+    kill)     shift; cmd_kill "$@" ;;
+    status)   cmd_status ;;
+    api)      shift; cmd_api "$@" ;;
+    logs)     shift; cmd_logs "$@" ;;
+    fixtures) shift; cmd_fixtures "$@" ;;
+    db)       shift; cmd_db "$@" ;;
+    help|-h|--help) cmd_help ;;
+    *)        echo -e "${RED}Unknown command: $1${NC}"; cmd_help; exit 1 ;;
+esac

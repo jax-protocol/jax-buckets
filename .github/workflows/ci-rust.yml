@@ -40,7 +40,7 @@ jobs:
             ${{ runner.os }}-cargo-build-target-
 
       - name: Run quality checks
-        run: bash bin/check.sh
+        run: bash bin/check
 
   test:
     name: Tests
@@ -76,7 +76,7 @@ jobs:
             ${{ runner.os }}-cargo-build-target-
 
       - name: Run tests
-        run: bash bin/test.sh
+        run: bash bin/test
 
   build:
     name: Build
@@ -112,4 +112,4 @@ jobs:
             ${{ runner.os }}-cargo-build-target-
 
       - name: Build project
-        run: bash bin/build.sh
+        run: bash bin/build

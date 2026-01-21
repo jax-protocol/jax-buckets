@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Watch for changes and restart the service
-# Usage: ./watch-service.sh
+# Usage: ./bin/watch
 
 set -o errexit
 set -o nounset
