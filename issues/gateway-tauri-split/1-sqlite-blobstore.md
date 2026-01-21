@@ -35,7 +35,7 @@ Integrate SQLite + Object Storage blob backend into gateway for cloud-native dep
 | `crates/app/src/state.rs` | Add `BlobStoreConfig` enum |
 | `crates/app/src/daemon/config.rs` | Replace `node_blobs_store_path` with `blob_store` + `jax_dir` |
 | `crates/app/src/daemon/state.rs` | Add `setup_blobs_store()` helper |
-| `crates/app/src/ops/daemon.rs` | Add blob store CLI flags (`--blob-store`, `--s3-*`) |
+| `crates/app/src/ops/init.rs` | Add blob store CLI flags (`--blob-store`, `--s3-url`, `--blobs-path`) |
 | `bin/dev` | Add `minio` and `blob-stores` commands |
 
 ## Acceptance Criteria
