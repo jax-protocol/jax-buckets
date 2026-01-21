@@ -161,6 +161,31 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
+## Code Review Checklist
+
+Quick checks for PR review (see also [RUST_PATTERNS.md](./RUST_PATTERNS.md) for detailed patterns).
+
+### API Surface
+- [ ] CLI flags are minimal and well-designed
+- [ ] Infrastructure config is at init time, not daemon time
+- [ ] No unnecessary env var support
+- [ ] Related params combined (URLs vs separate fields)
+
+### Code Quality
+- [ ] New code follows existing patterns (check similar modules)
+- [ ] Files have single responsibility (< 200 lines typical)
+- [ ] Setup logic in dedicated modules, not mixed with state
+- [ ] All public methods have callers
+- [ ] No `#[allow(dead_code)]` without justification
+- [ ] No speculative abstractions (Deref, From, etc. without use)
+
+### Documentation Sync
+- [ ] PROJECT_LAYOUT.md updated for new files/modules
+- [ ] Issue tickets updated if implementation differs from spec
+- [ ] Downstream tickets checked for outdated references
+
+---
+
 ## Getting Help
 
 - **Documentation issues** - Update the relevant doc and submit a PR
