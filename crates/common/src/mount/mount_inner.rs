@@ -1415,6 +1415,48 @@ impl Mount {
         Ok(None)
     }
 
+    /// Apply resolved operations to the entry tree.
+    ///
+    /// For each operation in the resolved state:
+    /// - Files with content links are checked for existence (cannot recreate without secret)
+    /// - Directories are created if they don't exist
+    async fn apply_resolved_state(&mut self, merged_ops: &PathOpLog) -> Result<(), MountError> {
+        let resolved_state = merged_ops.resolve_all();
+
+        for (path, op) in &resolved_state {
+            if op.content_link.is_some() {
+                // File operation - check if it exists in our tree
+                let abs_path = Path::new("/").join(path);
+                match self.get(&abs_path).await {
+                    Ok(_) => {
+                        // File exists, skip
+                    }
+                    Err(MountError::PathNotFound(_)) => {
+                        // Can't recreate - ops_log stores Link but not decryption secret
+                        tracing::warn!(
+                            "apply_resolved_state: cannot recreate file {} - no secret",
+                            path.display()
+                        );
+                        // Record in ops_log so it's tracked
+                        let mut inner = self.0.lock().await;
+                        inner.ops_log.merge(&PathOpLog::from_operation(op));
+                    }
+                    Err(e) => return Err(e),
+                }
+            } else if op.is_dir && matches!(op.op_type, super::path_ops::OpType::Mkdir) {
+                // Directory operation - create if missing
+                let abs_path = Path::new("/").join(path);
+                match self.mkdir(&abs_path).await {
+                    Ok(()) => {}
+                    Err(MountError::PathAlreadyExists(_)) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Merge another mount's changes into this one using the given resolver.
     ///
     /// This method:
@@ -1456,54 +1498,8 @@ impl Mount {
         let mut merged_ops = local_ops.clone();
         let merge_result = merged_ops.merge_with_resolver(&incoming_ops, resolver, &peer_id);
 
-        // Apply the merged ops to build the new entry tree
-        // We rebuild from the resolved state
-        let resolved_state = merged_ops.resolve_all();
-
-        // Rebuild the entry tree from resolved operations
-        // For now, we apply the ops that have content links (Add operations)
-        // This preserves all files that exist in the merged state
-        for (path, op) in &resolved_state {
-            if let Some(_content_link) = &op.content_link {
-                // This is an Add operation with content - we need to ensure the file exists
-                // Get the secret from the operation (stored in the NodeLink)
-                // For simplicity, we re-add files that aren't in our current tree
-                let abs_path = Path::new("/").join(path);
-
-                // Check if this file already exists in our current state
-                match self.get(&abs_path).await {
-                    Ok(_) => {
-                        // File exists, check if it's the same content
-                        // For now, we skip if file already exists
-                    }
-                    Err(MountError::PathNotFound(_)) => {
-                        // File doesn't exist, we need to handle this
-                        // This is a limitation - we can't recreate files without their secrets
-                        // The ops_log stores the Link but not the decryption secret
-                        // For a complete implementation, ops would need to store NodeLinks
-                        tracing::warn!(
-                            "merge_from: cannot recreate file {} - content link only, no secret",
-                            path.display()
-                        );
-
-                        // Record the operation in the ops_log so it's tracked
-                        let mut inner = self.0.lock().await;
-                        inner.ops_log.merge(&PathOpLog::from_operation(op));
-                    }
-                    Err(e) => return Err(e),
-                }
-            } else if op.is_dir && matches!(op.op_type, super::path_ops::OpType::Mkdir) {
-                // This is a Mkdir operation - ensure directory exists
-                let abs_path = Path::new("/").join(path);
-                match self.mkdir(&abs_path).await {
-                    Ok(()) => {}
-                    Err(MountError::PathAlreadyExists(_)) => {
-                        // Directory already exists, that's fine
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-        }
+        // Apply merged state to the entry tree
+        self.apply_resolved_state(&merged_ops).await?;
 
         // Merge the ops_log to include all merged operations
         {

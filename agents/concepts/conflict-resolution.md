@@ -220,6 +220,48 @@ During bucket synchronization, the resolver is applied when merging incoming Pat
 
 The sync protocol itself doesn't choose the resolver - that's an application-level decision.
 
+## Mount-Level Merge API
+
+For higher-level operations, the `Mount` struct provides methods to merge divergent chains:
+
+### Finding Common Ancestor
+
+```rust
+// Find where two mount chains diverged
+let ancestor: Option<Link> = alice.find_common_ancestor(&bob, &blobs).await?;
+```
+
+Walks both manifest chains backwards via `previous` links and returns the first common link.
+
+### Collecting Operations Since Ancestor
+
+```rust
+// Get all ops from current version back to (not including) ancestor
+let ops: PathOpLog = alice.collect_ops_since(ancestor.as_ref(), &blobs).await?;
+```
+
+Traverses the manifest chain, loading and merging each version's `ops_log`.
+
+### Merging Two Mounts
+
+```rust
+// Merge Bob's changes into Alice with conflict resolution
+let resolver = ConflictFile::new();
+let (result, new_link) = alice.merge_from(&bob, &resolver, &blobs).await?;
+
+// Check what happened
+println!("Conflicts: {}", result.total_conflicts());
+for resolved in &result.conflicts_resolved {
+    println!("  {} -> {:?}", resolved.conflict.path.display(), resolved.resolution);
+}
+```
+
+The `merge_from` method:
+1. Finds the common ancestor
+2. Collects ops from both chains since that point
+3. Merges using the resolver
+4. Saves the result as a new version
+
 ## Design Decisions
 
 ### Why Content Hash Instead of Timestamp?
