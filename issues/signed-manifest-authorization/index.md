@@ -48,7 +48,7 @@ Proposed (secure):
 |---|--------|--------|-------------|
 | 0 | [Manifest signature](./0-manifest-signature.md) | Done | Add author/signature fields to Manifest |
 | 1 | [Sync validation](./1-sync-validation.md) | Done | Validate signature and author during sync |
-| 2 | [Role enforcement](./2-role-enforcement.md) | Planned | Reject updates from non-owners |
+| 2 | [Role enforcement](./2-role-enforcement.md) | Done | Reject updates from non-owners |
 
 ## Execution Order
 

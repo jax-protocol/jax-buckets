@@ -10,15 +10,15 @@ use thiserror::Error;
 use crate::bucket_log::BucketLogProvider;
 use crate::linked_data::Link;
 
-/// Errors that can occur during bucket synchronization.
+/// Errors that can occur during provenance verification.
 #[derive(Debug, Error)]
-pub enum SyncError {
-    #[error("not authorized: our key not in bucket shares")]
-    NotAuthorized,
+pub enum ProvenanceError {
     #[error("invalid signature on manifest")]
     InvalidSignature,
     #[error("author not in manifest shares")]
     AuthorNotInShares,
+    #[error("author does not have write permission")]
+    AuthorNotWriter,
     #[error("invalid manifest in chain at {link}: {reason}")]
     InvalidManifestInChain { link: Link, reason: String },
     #[error("{0}")]

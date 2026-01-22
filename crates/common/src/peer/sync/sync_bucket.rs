@@ -9,23 +9,20 @@ use crate::bucket_log::BucketLogProvider;
 use crate::crypto::PublicKey;
 use crate::linked_data::Link;
 use crate::mount::Manifest;
+use crate::mount::PrincipalRole;
 use crate::peer::Peer;
 
-use super::{DownloadPinsJob, SyncError, SyncJob};
+use super::{DownloadPinsJob, ProvenanceError, SyncJob};
 
 /// Result of provenance verification for a manifest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ProvenanceResult {
-    /// Manifest is valid - properly signed by an author in shares
+    /// Manifest is valid - properly signed by an authorized writer
     Valid,
-    /// Our key is not in the manifest's shares
+    /// Our key is not in the manifest's shares (not an error, just skip)
     NotAuthorized,
     /// Manifest is unsigned (allowed during migration)
     UnsignedLegacy,
-    /// Signature verification failed
-    InvalidSignature,
-    /// Author public key not found in manifest shares
-    AuthorNotInShares,
 }
 
 /// Target peer and state for bucket synchronization
@@ -151,14 +148,6 @@ where
             tracing::warn!("Provenance verification failed: our key not in bucket shares");
             return Ok(());
         }
-        ProvenanceResult::InvalidSignature => {
-            tracing::warn!("Provenance verification failed: invalid signature");
-            return Err(SyncError::InvalidSignature.into());
-        }
-        ProvenanceResult::AuthorNotInShares => {
-            tracing::warn!("Provenance verification failed: author not in shares");
-            return Err(SyncError::AuthorNotInShares.into());
-        }
     }
 
     // apply the updates to the bucket
@@ -251,19 +240,10 @@ where
     let mut previous: Option<&Manifest> = trusted_base;
 
     for (manifest, link) in manifests.iter() {
-        let result = verify_author(manifest, previous)?;
-        match result {
-            ProvenanceResult::Valid | ProvenanceResult::UnsignedLegacy => {
-                // Valid, continue to next manifest
-            }
-            _ => {
-                return Err(SyncError::InvalidManifestInChain {
-                    link: link.clone(),
-                    reason: format!("{:?}", result),
-                }
-                .into());
-            }
-        }
+        verify_author(manifest, previous).map_err(|e| ProvenanceError::InvalidManifestInChain {
+            link: link.clone(),
+            reason: e.to_string(),
+        })?;
         previous = Some(manifest);
     }
 
@@ -434,6 +414,7 @@ where
 /// Checks that:
 /// 1. The manifest is properly signed (or unsigned during migration)
 /// 2. The author was in the previous manifest's shares (authorized to make changes)
+/// 3. The author has write permission (Owner role)
 ///
 /// This is used for chain validation where we don't yet know if the receiver
 /// is in the final shares.
@@ -447,7 +428,7 @@ where
 fn verify_author(
     manifest: &Manifest,
     previous: Option<&Manifest>,
-) -> Result<ProvenanceResult, SyncError> {
+) -> Result<ProvenanceResult, ProvenanceError> {
     // 1. Check manifest is signed
     if !manifest.is_signed() {
         // Allow unsigned for backwards compatibility during migration
@@ -458,10 +439,10 @@ fn verify_author(
     // 2. Verify signature
     match manifest.verify_signature() {
         Ok(true) => {}
-        Ok(false) => return Ok(ProvenanceResult::InvalidSignature),
+        Ok(false) => return Err(ProvenanceError::InvalidSignature),
         Err(e) => {
             tracing::warn!("Signature verification error: {}", e);
-            return Ok(ProvenanceResult::InvalidSignature);
+            return Err(ProvenanceError::InvalidSignature);
         }
     }
 
@@ -474,8 +455,14 @@ fn verify_author(
     let check_shares = previous
         .map(|p| p.shares())
         .unwrap_or_else(|| manifest.shares());
-    if check_shares.get(&author_hex).is_none() {
-        return Ok(ProvenanceResult::AuthorNotInShares);
+
+    let author_share = check_shares
+        .get(&author_hex)
+        .ok_or(ProvenanceError::AuthorNotInShares)?;
+
+    // 4. Check author has write permission (Owner role)
+    if *author_share.role() != PrincipalRole::Owner {
+        return Err(ProvenanceError::AuthorNotWriter);
     }
 
     tracing::debug!(
@@ -493,6 +480,7 @@ fn verify_author(
 /// 1. Our key is in the manifest's shares (we're authorized to receive it)
 /// 2. The manifest is properly signed (or unsigned during migration)
 /// 3. The author was in the previous manifest's shares (authorized to make changes)
+/// 4. The author has write permission (Owner role)
 ///
 /// # Arguments
 ///
@@ -505,7 +493,7 @@ fn verify_provenance<L>(
     peer: &Peer<L>,
     manifest: &Manifest,
     previous: Option<&Manifest>,
-) -> Result<ProvenanceResult, SyncError>
+) -> Result<ProvenanceResult, ProvenanceError>
 where
     L: BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
@@ -523,12 +511,8 @@ where
         return Ok(ProvenanceResult::NotAuthorized);
     }
 
-    // 2. Verify author (signature + author in previous shares)
-    let author_result = verify_author(manifest, previous)?;
-    if author_result != ProvenanceResult::Valid && author_result != ProvenanceResult::UnsignedLegacy
-    {
-        return Ok(author_result);
-    }
+    // 2. Verify author (signature + role check)
+    let result = verify_author(manifest, previous)?;
 
     // Log success with receiver info
     if manifest.is_signed() {
@@ -541,5 +525,70 @@ where
         );
     }
 
-    Ok(author_result)
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::{SecretKey, SecretShare};
+    use crate::mount::Share;
+
+    fn create_test_manifest(owner: &SecretKey) -> Manifest {
+        let share = SecretShare::default();
+        Manifest::new(
+            uuid::Uuid::new_v4(),
+            "test".to_string(),
+            owner.public(),
+            share,
+            Link::default(),
+            Link::default(),
+            0,
+        )
+    }
+
+    #[test]
+    fn test_verify_author_valid_owner() {
+        let owner = SecretKey::generate();
+        let mut manifest = create_test_manifest(&owner);
+        manifest.sign(&owner).unwrap();
+
+        let result = verify_author(&manifest, None).unwrap();
+        assert_eq!(result, ProvenanceResult::Valid);
+    }
+
+    #[test]
+    fn test_verify_author_rejects_non_writer() {
+        let owner = SecretKey::generate();
+        let mirror = SecretKey::generate();
+
+        let mut manifest = create_test_manifest(&owner);
+        manifest.add_share(Share::new_mirror(mirror.public()));
+        manifest.sign(&mirror).unwrap();
+
+        let result = verify_author(&manifest, None);
+        assert!(matches!(result, Err(ProvenanceError::AuthorNotWriter)));
+    }
+
+    #[test]
+    fn test_verify_author_rejects_unknown_signer() {
+        let owner = SecretKey::generate();
+        let attacker = SecretKey::generate();
+
+        let mut manifest = create_test_manifest(&owner);
+        manifest.sign(&attacker).unwrap();
+
+        let result = verify_author(&manifest, None);
+        assert!(matches!(result, Err(ProvenanceError::AuthorNotInShares)));
+    }
+
+    #[test]
+    fn test_verify_author_accepts_unsigned_legacy() {
+        let owner = SecretKey::generate();
+        let manifest = create_test_manifest(&owner);
+        // Not signed
+
+        let result = verify_author(&manifest, None).unwrap();
+        assert_eq!(result, ProvenanceResult::UnsignedLegacy);
+    }
 }

@@ -1,6 +1,6 @@
 # Role Enforcement
 
-**Status:** Planned
+**Status:** Done
 **Depends on:** Ticket 1 (Sync validation)
 
 ## Objective
@@ -135,12 +135,12 @@ Currently, role checking only happens client-side. A malicious mirror could sign
 
 ## Acceptance Criteria
 
-- [ ] `verify_provenance()` checks author has `Owner` role
-- [ ] Updates signed by `Mirror` peers are rejected
-- [ ] Role transitions are validated against previous manifest
-- [ ] Clear error messages for role violations
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] `verify_provenance()` checks author has `Owner` role
+- [x] Updates signed by `Mirror` peers are rejected
+- [x] Role transitions are validated against previous manifest
+- [x] Clear error messages for role violations
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings
 
 ## Verification
 
