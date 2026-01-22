@@ -12,6 +12,50 @@ use ::common::mount::{merge_logs, ConflictFile, OpType, Resolution};
 #[tokio::test]
 async fn test_single_file_conflict() {
     let (mut alice, blobs, _, _temp) = common::setup_test_env().await;
+    let (mut bob, _bob_key) = common::fork_mount(&mut alice, &blobs).await;
+
+    // Both create notes.txt offline
+    alice
+        .add(
+            &PathBuf::from("/notes.txt"),
+            Cursor::new(b"Alice's notes".to_vec()),
+        )
+        .await
+        .unwrap();
+    bob.add(
+        &PathBuf::from("/notes.txt"),
+        Cursor::new(b"Bob's notes".to_vec()),
+    )
+    .await
+    .unwrap();
+
+    // Save both mounts to persist their ops_logs
+    alice.save(&blobs, false).await.unwrap();
+    bob.save(&blobs, false).await.unwrap();
+
+    // Merge Bob's changes into Alice using the new API
+    let resolver = ConflictFile::new();
+    let (result, _new_link) = alice.merge_from(&bob, &resolver, &blobs).await.unwrap();
+
+    // One conflict: notes.txt
+    assert_eq!(result.total_conflicts(), 1);
+    let resolved = &result.conflicts_resolved[0];
+    match &resolved.resolution {
+        Resolution::RenameIncoming { new_path } => {
+            assert!(new_path.to_string_lossy().starts_with("notes@"));
+        }
+        other => panic!("Expected RenameIncoming, got {:?}", other),
+    }
+
+    // Verify merge was successful
+    // Either operations were added or conflicts were resolved
+    assert!(result.operations_added > 0 || result.total_conflicts() > 0);
+}
+
+/// Test the low-level merge_logs function for direct ops_log manipulation
+#[tokio::test]
+async fn test_merge_logs_low_level() {
+    let (mut alice, blobs, _, _temp) = common::setup_test_env().await;
     let (mut bob, bob_key) = common::fork_mount(&mut alice, &blobs).await;
 
     // Both create notes.txt offline
@@ -29,7 +73,7 @@ async fn test_single_file_conflict() {
     .await
     .unwrap();
 
-    // Merge
+    // Merge using the low-level API (without saving)
     let alice_log = alice.inner().await.ops_log().clone();
     let bob_log = bob.inner().await.ops_log().clone();
     let resolver = ConflictFile::new();
@@ -83,7 +127,7 @@ async fn test_single_file_conflict() {
 #[tokio::test]
 async fn test_multi_version_divergence() {
     let (mut alice, blobs, _, _temp) = common::setup_test_env().await;
-    let (mut bob, bob_key) = common::fork_mount(&mut alice, &blobs).await;
+    let (mut bob, _bob_key) = common::fork_mount(&mut alice, &blobs).await;
 
     // -------------------------------------------------------------------------
     // Alice's chain: 3 versions of changes
@@ -166,25 +210,125 @@ async fn test_multi_version_divergence() {
     bob.save(&blobs, false).await.unwrap();
 
     // -------------------------------------------------------------------------
-    // Merge: Alice discovers Bob's chain and merges it
+    // Merge: Alice discovers Bob's chain and merges it using new API
     // -------------------------------------------------------------------------
-    let alice_log = alice.inner().await.ops_log().clone();
-    let bob_log = bob.inner().await.ops_log().clone();
+
+    // First, verify the common ancestor is found correctly
+    let ancestor = alice.find_common_ancestor(&bob, &blobs).await.unwrap();
+    assert!(ancestor.is_some(), "Should find common ancestor");
+
+    // Now merge Bob's changes into Alice
+    let resolver = ConflictFile::new();
+    let (result, _new_link) = alice.merge_from(&bob, &resolver, &blobs).await.unwrap();
+
+    // Only config.toml conflicts
+    let config_conflicts: Vec<_> = result
+        .conflicts_resolved
+        .iter()
+        .filter(|c| c.conflict.path.to_string_lossy().contains("config"))
+        .collect();
+    assert_eq!(config_conflicts.len(), 1);
+
+    // Verify Alice still has her files
+    assert!(alice.cat(&PathBuf::from("/README.md")).await.is_ok());
+    assert!(alice.cat(&PathBuf::from("/src/main.rs")).await.is_ok());
+    assert!(alice.cat(&PathBuf::from("/src/utils.rs")).await.is_ok());
+    assert!(alice.cat(&PathBuf::from("/config.toml")).await.is_ok());
+}
+
+/// Test the original low-level merge_logs API still works correctly
+/// This ensures backward compatibility for code using the direct ops_log merge
+#[tokio::test]
+async fn test_multi_version_divergence_low_level() {
+    let (mut alice, blobs, _, _temp) = common::setup_test_env().await;
+    let (mut bob, bob_key) = common::fork_mount(&mut alice, &blobs).await;
+
+    // Alice's chain: 3 versions of changes
+    alice
+        .add(
+            &PathBuf::from("/README.md"),
+            Cursor::new(b"Alice README".to_vec()),
+        )
+        .await
+        .unwrap();
+    alice.mkdir(&PathBuf::from("/src")).await.unwrap();
+    alice.save(&blobs, false).await.unwrap();
+
+    alice
+        .add(
+            &PathBuf::from("/src/main.rs"),
+            Cursor::new(b"fn main() {}".to_vec()),
+        )
+        .await
+        .unwrap();
+    alice
+        .add(
+            &PathBuf::from("/src/utils.rs"),
+            Cursor::new(b"pub fn help() {}".to_vec()),
+        )
+        .await
+        .unwrap();
+    alice.save(&blobs, false).await.unwrap();
+
+    alice
+        .add(
+            &PathBuf::from("/config.toml"),
+            Cursor::new(b"[alice]".to_vec()),
+        )
+        .await
+        .unwrap();
+    alice.save(&blobs, false).await.unwrap();
+
+    // Bob's chain: 3 versions, diverging from the same v0
+    bob.add(
+        &PathBuf::from("/CONTRIBUTING.md"),
+        Cursor::new(b"Bob contrib".to_vec()),
+    )
+    .await
+    .unwrap();
+    bob.mkdir(&PathBuf::from("/src")).await.unwrap();
+    bob.save(&blobs, false).await.unwrap();
+
+    bob.add(
+        &PathBuf::from("/src/lib.rs"),
+        Cursor::new(b"pub mod tests;".to_vec()),
+    )
+    .await
+    .unwrap();
+    bob.save(&blobs, false).await.unwrap();
+
+    bob.add(
+        &PathBuf::from("/config.toml"),
+        Cursor::new(b"[bob]".to_vec()),
+    )
+    .await
+    .unwrap();
+    bob.add(
+        &PathBuf::from("/.gitignore"),
+        Cursor::new(b"target/".to_vec()),
+    )
+    .await
+    .unwrap();
+    bob.save(&blobs, false).await.unwrap();
+
+    // Collect ops using the new collect_ops_since API
+    let alice_ops = alice.collect_ops_since(None, &blobs).await.unwrap();
+    let bob_ops = bob.collect_ops_since(None, &blobs).await.unwrap();
 
     // Sanity check: both peers should have accumulated ops across their saves
     assert!(
-        alice_log.len() >= 5,
+        alice_ops.len() >= 5,
         "Alice should have at least 5 ops, got {}",
-        alice_log.len()
+        alice_ops.len()
     );
     assert!(
-        bob_log.len() >= 5,
+        bob_ops.len() >= 5,
         "Bob should have at least 5 ops, got {}",
-        bob_log.len()
+        bob_ops.len()
     );
 
     let resolver = ConflictFile::new();
-    let (merged, results) = merge_logs(&[&alice_log, &bob_log], &resolver, &bob_key.public());
+    let (merged, results) = merge_logs(&[&alice_ops, &bob_ops], &resolver, &bob_key.public());
 
     // Only config.toml conflicts
     let config_conflicts: Vec<_> = results[0]

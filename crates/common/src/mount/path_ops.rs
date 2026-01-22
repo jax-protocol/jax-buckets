@@ -103,6 +103,14 @@ impl PathOpLog {
         Self::default()
     }
 
+    /// Create a log containing a single operation
+    pub fn from_operation(op: &PathOperation) -> Self {
+        let mut log = Self::new();
+        log.operations.insert(op.id.clone(), op.clone());
+        log.local_clock = op.id.timestamp;
+        log
+    }
+
     /// Rebuild local clock from operations (call after deserialization)
     pub fn rebuild_clock(&mut self) {
         self.local_clock = self
@@ -353,6 +361,16 @@ impl PathOpLog {
     /// Check if empty
     pub fn is_empty(&self) -> bool {
         self.operations.is_empty()
+    }
+
+    /// Clear operations but preserve the local clock value.
+    ///
+    /// This is used after persisting operations to a manifest. We clear the
+    /// operations (since they're now saved) but keep the clock so future
+    /// operations have unique timestamps across save cycles.
+    pub fn clear_preserving_clock(&mut self) {
+        self.operations.clear();
+        // local_clock is preserved
     }
 
     /// Get operations affecting a specific path, in order
