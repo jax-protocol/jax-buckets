@@ -44,7 +44,14 @@ Shared library (`jax-common`) with crypto, storage, and peer protocol.
   - `manifest.rs` - Bucket metadata, shares, principals
   - `mount_inner.rs` - File operations (add, rm, mkdir, mv)
   - `node.rs` - File/directory tree nodes
-  - `conflict.rs` - Conflict resolution for PathOpLog merges
+  - `path_ops.rs` - PathOpLog CRDT for tracking filesystem changes
+  - `conflict/` - Conflict resolution for PathOpLog merges
+    - `mod.rs` - ConflictResolver trait, helpers, exports
+    - `types.rs` - Conflict, Resolution, MergeResult types
+    - `last_write_wins.rs` - LastWriteWins resolver (default CRDT)
+    - `base_wins.rs` - BaseWins resolver (local wins)
+    - `fork_on_conflict.rs` - ForkOnConflict resolver (keep both)
+    - `conflict_file.rs` - ConflictFile resolver (rename incoming)
 - `src/peer/` - P2P networking
   - `peer_inner.rs` - Peer state and mount operations
   - `blobs_store.rs` - Content-addressed blob storage (iroh-blobs)
