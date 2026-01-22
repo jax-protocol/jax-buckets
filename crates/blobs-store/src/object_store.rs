@@ -79,11 +79,37 @@ impl Storage {
                     .with_region(region.as_deref().unwrap_or("us-east-1"))
                     .with_allow_http(endpoint.starts_with("http://"));
 
-                Arc::new(
+                let store: Arc<dyn ObjectStore> = Arc::new(
                     builder
                         .build()
                         .map_err(|e| BlobStoreError::InvalidConfig(e.to_string()))?,
-                )
+                );
+
+                // Verify bucket exists by listing (empty prefix)
+                // This will fail fast if the bucket doesn't exist
+                {
+                    use futures::TryStreamExt;
+                    let prefix = ObjectPath::from("");
+                    let mut stream = store.list(Some(&prefix));
+                    match stream.try_next().await {
+                        Ok(_) => {} // Bucket exists (may or may not have items)
+                        Err(object_store::Error::NotFound { .. }) => {
+                            return Err(BlobStoreError::BucketNotFound(bucket.clone()));
+                        }
+                        Err(e) => {
+                            // Check if error message indicates bucket doesn't exist
+                            let msg = e.to_string();
+                            if msg.contains("NoSuchBucket")
+                                || msg.contains("bucket") && msg.contains("not")
+                            {
+                                return Err(BlobStoreError::BucketNotFound(bucket.clone()));
+                            }
+                            return Err(e.into());
+                        }
+                    }
+                }
+
+                store
             }
         };
 
