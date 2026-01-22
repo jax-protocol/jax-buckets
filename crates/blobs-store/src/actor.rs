@@ -612,6 +612,10 @@ async fn import_path(cmd: ImportPathMsg) -> anyhow::Result<ImportEntry> {
     import_bytes(res.into(), scope, format, tx).await
 }
 
+/// Maximum blob size we're willing to import (1 GB).
+/// This prevents memory exhaustion attacks from malformed or malicious size values.
+const MAX_IMPORT_SIZE: u64 = 1024 * 1024 * 1024;
+
 async fn import_bao(
     store: BlobStore,
     hash: Hash,
@@ -621,6 +625,21 @@ async fn import_bao(
 ) {
     let size = size.get();
     debug!("ImportBao: starting import for hash {} size {}", hash, size);
+
+    // Sanity check: reject absurdly large sizes to prevent OOM
+    if size > MAX_IMPORT_SIZE {
+        error!(
+            "ImportBao: rejecting import of hash {} with unreasonable size {} (max is {})",
+            hash, size, MAX_IMPORT_SIZE
+        );
+        tx.send(Err(ApiError::io(
+            io::ErrorKind::InvalidInput,
+            format!("blob size {} exceeds maximum {}", size, MAX_IMPORT_SIZE),
+        )))
+        .await
+        .ok();
+        return;
+    }
 
     let mut data = vec![0u8; size as usize];
     let mut leaf_count = 0usize;
