@@ -2729,11 +2729,17 @@ name = "jax-blobs-store"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bao-tree",
  "bytes",
  "chrono",
+ "derive_more 2.0.1",
  "futures",
  "iroh-blobs",
+ "irpc",
+ "n0-future 0.2.0",
  "object_store",
+ "range-collections",
+ "ref-cast",
  "serde",
  "sqlx",
  "tempfile",

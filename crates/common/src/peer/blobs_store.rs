@@ -86,6 +86,30 @@ impl BlobsStore {
         })
     }
 
+    /// Create a BlobsStore from an existing iroh-blobs Store.
+    ///
+    /// This allows using custom store backends like S3Store.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use jax_common::peer::BlobsStore;
+    /// use jax_blobs_store::S3Store;
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// // Create an S3-backed store
+    /// let s3_store = S3Store::new_ephemeral().await?;
+    /// let blobs_store = BlobsStore::from_store(s3_store.into());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_store(store: iroh_blobs::api::Store) -> Self {
+        let blobs = BlobsProtocol::new(&store, None);
+        Self {
+            inner: Arc::new(blobs),
+        }
+    }
+
     /// Get a handle to the underlying blobs client against
     ///  the store
     pub fn blobs(&self) -> &Blobs {

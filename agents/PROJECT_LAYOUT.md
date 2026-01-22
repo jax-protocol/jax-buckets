@@ -60,6 +60,8 @@ SQLite + object storage backend for blob data (`jax-blobs-store`).
 - `src/store.rs` - Main BlobStore API (put, get, delete, list, recover)
 - `src/database.rs` - SQLite metadata storage (hash, size, state)
 - `src/object_store.rs` - S3/MinIO/local/memory storage wrapper
+- `src/actor.rs` - iroh-blobs proto::Request command handler (S3Actor)
+- `src/iroh_store.rs` - S3Store wrapper for iroh-blobs Store API
 - `src/error.rs` - Error types
 - `migrations/` - SQLite schema
 

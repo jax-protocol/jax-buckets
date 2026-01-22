@@ -44,12 +44,15 @@
 //! # }
 //! ```
 
+mod actor;
 mod database;
 mod error;
+mod iroh_store;
 mod object_store;
 mod store;
 
 pub use database::{BlobMetadata, BlobState, Database};
 pub use error::{BlobStoreError, Result};
+pub use iroh_store::S3Store;
 pub use object_store::{ObjectStoreConfig, Storage};
 pub use store::{BlobStore, RecoveryStats};

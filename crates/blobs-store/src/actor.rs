@@ -682,11 +682,17 @@ async fn import_bao(
         return;
     }
 
-    debug!("ImportBao: hash verified, storing {} bytes for {}", size, hash);
+    debug!(
+        "ImportBao: hash verified, storing {} bytes for {}",
+        size, hash
+    );
 
     match store.put(data).await {
         Ok(stored_hash) => {
-            info!("ImportBao: successfully stored hash {} (returned {})", hash, stored_hash);
+            info!(
+                "ImportBao: successfully stored hash {} (returned {})",
+                hash, stored_hash
+            );
             tx.send(Ok(())).await.ok();
         }
         Err(e) => {

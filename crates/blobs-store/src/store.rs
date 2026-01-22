@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use bytes::Bytes;
+use futures::{Stream, TryStreamExt};
 use iroh_blobs::Hash;
 use tracing::{debug, info, warn};
 
@@ -118,6 +119,79 @@ impl BlobStore {
     pub async fn has(&self, hash: &Hash) -> Result<bool> {
         let hash_str = hash.to_string();
         self.db.has_blob(&hash_str).await
+    }
+
+    /// Check if a blob exists in the store (alias for `has`).
+    ///
+    /// This method is provided for compatibility with iroh-blobs BlobsStore API.
+    pub async fn stat(&self, hash: &Hash) -> Result<bool> {
+        self.has(hash).await
+    }
+
+    /// Store data from a stream and return its content hash.
+    ///
+    /// The stream is consumed and buffered in memory before computing the hash.
+    pub async fn put_stream<S>(&self, stream: S) -> Result<Hash>
+    where
+        S: Stream<Item = std::io::Result<Bytes>> + Send + Unpin,
+    {
+        // Collect the stream into a buffer
+        let chunks: Vec<Bytes> = stream
+            .map_err(|e| crate::error::BlobStoreError::Io(std::io::Error::other(e.to_string())))
+            .try_collect()
+            .await?;
+
+        // Concatenate all chunks
+        let total_size: usize = chunks.iter().map(|c| c.len()).sum();
+        let mut buffer = Vec::with_capacity(total_size);
+        for chunk in chunks {
+            buffer.extend_from_slice(&chunk);
+        }
+
+        // Use the regular put method
+        self.put(buffer).await
+    }
+
+    /// Create a blob containing a sequence of hashes.
+    ///
+    /// Each hash is 32 bytes, stored consecutively.
+    /// Returns the hash of the blob containing all the hashes.
+    pub async fn create_hash_list<I>(&self, hashes: I) -> Result<Hash>
+    where
+        I: IntoIterator<Item = Hash>,
+    {
+        let mut data = Vec::new();
+        for hash in hashes {
+            data.extend_from_slice(hash.as_bytes());
+        }
+        self.put(data).await
+    }
+
+    /// Read all hashes from a hash list blob.
+    ///
+    /// Returns a Vec of all hashes in the list, or an error if the
+    /// blob doesn't exist or has invalid format.
+    pub async fn read_hash_list(&self, list_hash: Hash) -> Result<Vec<Hash>> {
+        let data = self
+            .get(&list_hash)
+            .await?
+            .ok_or_else(|| crate::error::BlobStoreError::NotFound(list_hash.to_string()))?;
+
+        // Parse hashes (32 bytes each)
+        if data.len() % 32 != 0 {
+            return Err(crate::error::BlobStoreError::InvalidHashList(
+                "length is not a multiple of 32".into(),
+            ));
+        }
+
+        let mut hashes = Vec::with_capacity(data.len() / 32);
+        for chunk in data.chunks_exact(32) {
+            let mut hash_bytes = [0u8; 32];
+            hash_bytes.copy_from_slice(chunk);
+            hashes.push(Hash::from_bytes(hash_bytes));
+        }
+
+        Ok(hashes)
     }
 
     /// Delete a blob from the store.
