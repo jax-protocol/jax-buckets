@@ -370,6 +370,60 @@ impl PathOpLog {
     }
 }
 
+/// Merge multiple PathOpLogs from divergent chains into a single log
+///
+/// This is useful when synchronizing with multiple peers who have diverged
+/// from a common ancestor. Each log is merged in sequence, with conflicts
+/// resolved according to the provided resolver strategy.
+///
+/// # Arguments
+///
+/// * `logs` - Slice of PathOpLog references to merge (first one is used as base)
+/// * `resolver` - The conflict resolution strategy to use
+/// * `local_peer` - The local peer's identity (for tie-breaking)
+///
+/// # Returns
+///
+/// A tuple of:
+/// - The merged PathOpLog (cloned from first, with all others merged in)
+/// - Vector of MergeResults, one for each merge operation
+///
+/// # Example
+///
+/// ```ignore
+/// // Alice has log_alice, Bob has log_bob, Carol has log_carol
+/// // All diverged from a common ancestor
+/// let (merged, results) = merge_logs(
+///     &[&log_alice, &log_bob, &log_carol],
+///     &ConflictFile::new(),
+///     &alice_peer_id,
+/// );
+/// // merged now contains all operations from all logs
+/// // results[0] = merge of log_bob into log_alice
+/// // results[1] = merge of log_carol into (log_alice + log_bob)
+/// ```
+pub fn merge_logs<R: ConflictResolver>(
+    logs: &[&PathOpLog],
+    resolver: &R,
+    local_peer: &PublicKey,
+) -> (PathOpLog, Vec<MergeResult>) {
+    if logs.is_empty() {
+        return (PathOpLog::new(), Vec::new());
+    }
+
+    // Start with a clone of the first log
+    let mut merged = logs[0].clone();
+    let mut results = Vec::with_capacity(logs.len().saturating_sub(1));
+
+    // Merge each subsequent log into the merged result
+    for log in logs.iter().skip(1) {
+        let result = merged.merge_with_resolver(log, resolver, local_peer);
+        results.push(result);
+    }
+
+    (merged, results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -846,5 +900,142 @@ mod tests {
             let conflict = log1.resolve_path(new_path).unwrap();
             assert_eq!(conflict.id.peer_id, peer2);
         }
+    }
+
+    #[test]
+    fn test_merge_logs_empty() {
+        use super::super::conflict::LastWriteWins;
+        use super::merge_logs;
+
+        let peer1 = make_peer_id(1);
+        let resolver = LastWriteWins::new();
+
+        // Empty slice
+        let (merged, results) = merge_logs::<LastWriteWins>(&[], &resolver, &peer1);
+        assert!(merged.is_empty());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_merge_logs_single() {
+        use super::super::conflict::LastWriteWins;
+        use super::merge_logs;
+
+        let peer1 = make_peer_id(1);
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file.txt", None, false);
+
+        let resolver = LastWriteWins::new();
+        let (merged, results) = merge_logs(&[&log1], &resolver, &peer1);
+
+        // Single log just clones it
+        assert_eq!(merged.len(), 1);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_merge_logs_two_no_conflict() {
+        use super::super::conflict::LastWriteWins;
+        use super::merge_logs;
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file1.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        log2.record(peer2, OpType::Add, "file2.txt", None, false);
+
+        let resolver = LastWriteWins::new();
+        let (merged, results) = merge_logs(&[&log1, &log2], &resolver, &peer1);
+
+        // Both files should be present
+        assert_eq!(merged.len(), 2);
+        assert!(merged.resolve_path("file1.txt").is_some());
+        assert!(merged.resolve_path("file2.txt").is_some());
+
+        // One merge result
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].operations_added, 1);
+        assert_eq!(results[0].total_conflicts(), 0);
+    }
+
+    #[test]
+    fn test_merge_logs_three_way() {
+        use super::super::conflict::ConflictFile;
+        use super::merge_logs;
+        use crate::linked_data::Link;
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+        let peer3 = make_peer_id(3);
+
+        let make_link = |seed: u8| {
+            let mut hash_bytes = [0u8; 32];
+            hash_bytes[0] = seed;
+            let hash = iroh_blobs::Hash::from_bytes(hash_bytes);
+            Link::new(crate::linked_data::LD_RAW_CODEC, hash)
+        };
+
+        // Alice has file.txt
+        let mut log_alice = PathOpLog::new();
+        log_alice.record(peer1, OpType::Add, "file.txt", Some(make_link(0xAA)), false);
+
+        // Bob also has file.txt (different content)
+        let mut log_bob = PathOpLog::new();
+        log_bob.record(peer2, OpType::Add, "file.txt", Some(make_link(0xBB)), false);
+
+        // Carol also has file.txt (different content)
+        let mut log_carol = PathOpLog::new();
+        log_carol.record(peer3, OpType::Add, "file.txt", Some(make_link(0xCC)), false);
+
+        let resolver = ConflictFile::new();
+        let (merged, results) = merge_logs(&[&log_alice, &log_bob, &log_carol], &resolver, &peer1);
+
+        // Two merge operations
+        assert_eq!(results.len(), 2);
+
+        // Both merges should have conflicts
+        assert_eq!(results[0].total_conflicts(), 1);
+        assert_eq!(results[1].total_conflicts(), 1);
+
+        // All three versions should be present (original + 2 conflict files)
+        assert_eq!(merged.len(), 3);
+
+        // Original file should exist
+        assert!(merged.resolve_path("file.txt").is_some());
+    }
+
+    #[test]
+    fn test_merge_logs_accumulates_operations() {
+        use super::super::conflict::LastWriteWins;
+        use super::merge_logs;
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+        let peer3 = make_peer_id(3);
+
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "a.txt", None, false);
+        log1.record(peer1, OpType::Add, "b.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        log2.record(peer2, OpType::Add, "c.txt", None, false);
+
+        let mut log3 = PathOpLog::new();
+        log3.record(peer3, OpType::Add, "d.txt", None, false);
+        log3.record(peer3, OpType::Add, "e.txt", None, false);
+
+        let resolver = LastWriteWins::new();
+        let (merged, results) = merge_logs(&[&log1, &log2, &log3], &resolver, &peer1);
+
+        // All files should be present
+        assert_eq!(merged.len(), 5);
+
+        // Two merge results
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].operations_added, 1); // c.txt from log2
+        assert_eq!(results[1].operations_added, 2); // d.txt, e.txt from log3
     }
 }

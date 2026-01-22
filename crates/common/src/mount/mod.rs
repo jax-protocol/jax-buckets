@@ -58,6 +58,6 @@ pub use conflict::{
 pub use manifest::{Manifest, ManifestError, Share, Shares};
 pub use mount_inner::{Mount, MountError};
 pub use node::{Node, NodeError, NodeLink};
-pub use path_ops::{OpId, OpType, PathOpLog, PathOperation};
+pub use path_ops::{merge_logs, OpId, OpType, PathOpLog, PathOperation};
 pub use pins::Pins;
 pub use principal::{Principal, PrincipalRole};
