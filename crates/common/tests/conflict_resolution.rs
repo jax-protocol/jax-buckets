@@ -394,12 +394,271 @@ async fn scenario_nested_directory_conflicts() {
 }
 
 // =============================================================================
-// SCENARIO: Complex divergent history
+// SCENARIO: Multi-version divergence (the real-world case)
 // =============================================================================
 
-/// Simulate a realistic scenario where peers work independently then sync.
+/// Simulate the realistic scenario where peers diverge for MULTIPLE save cycles.
+///
+/// This is the core use case: Alice and Bob start from a common ancestor,
+/// then each works offline making multiple changes across multiple saves.
+/// When they finally sync, their ops_logs contain many accumulated operations.
+///
+/// Timeline:
+/// ```text
+/// v0 (common ancestor - empty bucket)
+///  |
+///  +-- Alice's branch:
+///  |   v1: adds README.md, creates src/
+///  |   v2: adds src/main.rs, src/utils.rs
+///  |   v3: adds config.toml, modifies README.md
+///  |
+///  +-- Bob's branch:
+///      v1': adds CONTRIBUTING.md, creates src/
+///      v2': adds src/lib.rs, src/tests.rs
+///      v3': adds config.toml (CONFLICT!), adds .gitignore
+/// ```
 #[tokio::test]
-async fn scenario_realistic_divergent_work() {
+async fn scenario_multi_version_divergence() {
+    use ::common::mount::Mount;
+
+    // Setup: Create Alice's mount (this is v0 - empty bucket)
+    let (mut alice_mount, blobs, alice_key, _temp) = common::setup_test_env().await;
+
+    // Add Bob as an owner so he can load
+    let bob_key = SecretKey::generate();
+    alice_mount.add_owner(bob_key.public()).await.unwrap();
+
+    // Save v0 - the common ancestor (empty bucket with just the structure)
+    let (ancestor_link, _, _) = alice_mount.save(&blobs, false).await.unwrap();
+
+    // Bob loads from v0 - same starting point
+    let mut bob_mount = Mount::load(&ancestor_link, &bob_key, &blobs)
+        .await
+        .expect("Bob should load from ancestor");
+
+    // =========================================================================
+    // Alice's work session - multiple saves accumulating operations
+    // =========================================================================
+
+    // Alice v1: initial project setup
+    alice_mount
+        .add(
+            &PathBuf::from("/README.md"),
+            Cursor::new(b"# My Project\n\nAlice's README".to_vec()),
+        )
+        .await
+        .unwrap();
+    alice_mount.mkdir(&PathBuf::from("/src")).await.unwrap();
+    let (_alice_v1, _, _) = alice_mount.save(&blobs, false).await.unwrap();
+
+    // Alice v2: add source files
+    alice_mount
+        .add(
+            &PathBuf::from("/src/main.rs"),
+            Cursor::new(b"fn main() { println!(\"Alice\"); }".to_vec()),
+        )
+        .await
+        .unwrap();
+    alice_mount
+        .add(
+            &PathBuf::from("/src/utils.rs"),
+            Cursor::new(b"pub fn helper() {}".to_vec()),
+        )
+        .await
+        .unwrap();
+    let (_alice_v2, _, _) = alice_mount.save(&blobs, false).await.unwrap();
+
+    // Alice v3: add config and update README
+    alice_mount
+        .add(
+            &PathBuf::from("/config.toml"),
+            Cursor::new(b"[alice]\nowner = true".to_vec()),
+        )
+        .await
+        .unwrap();
+    alice_mount.rm(&PathBuf::from("/README.md")).await.unwrap();
+    alice_mount
+        .add(
+            &PathBuf::from("/README.md"),
+            Cursor::new(b"# My Project v2\n\nUpdated by Alice".to_vec()),
+        )
+        .await
+        .unwrap();
+    let (_alice_v3, _, _) = alice_mount.save(&blobs, false).await.unwrap();
+
+    // =========================================================================
+    // Bob's work session - also multiple saves, diverging from same v0
+    // =========================================================================
+
+    // Bob v1': different initial setup
+    bob_mount
+        .add(
+            &PathBuf::from("/CONTRIBUTING.md"),
+            Cursor::new(b"# Contributing\n\nBob's guidelines".to_vec()),
+        )
+        .await
+        .unwrap();
+    bob_mount.mkdir(&PathBuf::from("/src")).await.unwrap(); // Same dir as Alice - idempotent
+    let (_bob_v1, _, _) = bob_mount.save(&blobs, false).await.unwrap();
+
+    // Bob v2': add his source files
+    bob_mount
+        .add(
+            &PathBuf::from("/src/lib.rs"),
+            Cursor::new(b"pub mod tests;".to_vec()),
+        )
+        .await
+        .unwrap();
+    bob_mount
+        .add(
+            &PathBuf::from("/src/tests.rs"),
+            Cursor::new(b"#[test] fn it_works() {}".to_vec()),
+        )
+        .await
+        .unwrap();
+    let (_bob_v2, _, _) = bob_mount.save(&blobs, false).await.unwrap();
+
+    // Bob v3': add config (CONFLICT with Alice!) and .gitignore
+    bob_mount
+        .add(
+            &PathBuf::from("/config.toml"),
+            Cursor::new(b"[bob]\ncontributor = true".to_vec()),
+        )
+        .await
+        .unwrap();
+    bob_mount
+        .add(
+            &PathBuf::from("/.gitignore"),
+            Cursor::new(b"target/\n*.log".to_vec()),
+        )
+        .await
+        .unwrap();
+    let (_bob_v3, _, _) = bob_mount.save(&blobs, false).await.unwrap();
+
+    // =========================================================================
+    // Now merge - both have accumulated 3 versions worth of operations
+    // =========================================================================
+
+    let alice_ops_log = alice_mount.inner().await.ops_log().clone();
+    let bob_ops_log = bob_mount.inner().await.ops_log().clone();
+
+    // Verify we have substantial operation counts before merge
+    assert!(
+        alice_ops_log.len() >= 6,
+        "Alice should have at least 6 ops (README, mkdir, main.rs, utils.rs, config, README update), got {}",
+        alice_ops_log.len()
+    );
+    assert!(
+        bob_ops_log.len() >= 6,
+        "Bob should have at least 6 ops, got {}",
+        bob_ops_log.len()
+    );
+
+    // Merge with ConflictFile resolver
+    let resolver = ConflictFile::new();
+    let local_peer = alice_key.public();
+    let (merged_log, results) = merge_logs(&[&alice_ops_log, &bob_ops_log], &resolver, &local_peer);
+
+    // =========================================================================
+    // Verify the merge results
+    // =========================================================================
+
+    assert_eq!(results.len(), 1);
+    let result = &results[0];
+
+    // Should have conflicts:
+    // - config.toml: Alice and Bob both added (CONFLICT -> creates conflict file)
+    // - src/: Both created, but mkdir is idempotent (no conflict)
+    let config_conflicts: Vec<_> = result
+        .conflicts_resolved
+        .iter()
+        .filter(|c| c.conflict.path.to_string_lossy().contains("config"))
+        .collect();
+    assert_eq!(
+        config_conflicts.len(),
+        1,
+        "Should have exactly one config.toml conflict"
+    );
+
+    // Verify final state has all files from both branches
+    let final_state = merged_log.resolve_all();
+
+    // Alice's files
+    assert!(
+        final_state.contains_key(&PathBuf::from("README.md")),
+        "Alice's README.md should exist"
+    );
+    assert!(
+        final_state.contains_key(&PathBuf::from("src/main.rs")),
+        "Alice's src/main.rs should exist"
+    );
+    assert!(
+        final_state.contains_key(&PathBuf::from("src/utils.rs")),
+        "Alice's src/utils.rs should exist"
+    );
+
+    // Bob's files
+    assert!(
+        final_state.contains_key(&PathBuf::from("CONTRIBUTING.md")),
+        "Bob's CONTRIBUTING.md should exist"
+    );
+    assert!(
+        final_state.contains_key(&PathBuf::from("src/lib.rs")),
+        "Bob's src/lib.rs should exist"
+    );
+    assert!(
+        final_state.contains_key(&PathBuf::from("src/tests.rs")),
+        "Bob's src/tests.rs should exist"
+    );
+    assert!(
+        final_state.contains_key(&PathBuf::from(".gitignore")),
+        "Bob's .gitignore should exist"
+    );
+
+    // Shared directory (idempotent)
+    assert!(
+        final_state.contains_key(&PathBuf::from("src")),
+        "src/ directory should exist"
+    );
+
+    // config.toml - Alice's version at original path
+    assert!(
+        final_state.contains_key(&PathBuf::from("config.toml")),
+        "Original config.toml should exist"
+    );
+
+    // Bob's config.toml as conflict file
+    let conflict_configs: Vec<_> = final_state
+        .keys()
+        .filter(|p| {
+            let s = p.to_string_lossy();
+            s.starts_with("config@") && s.ends_with(".toml")
+        })
+        .collect();
+    assert_eq!(
+        conflict_configs.len(),
+        1,
+        "Should have one config conflict file for Bob's version"
+    );
+
+    // Total file count: Alice (4) + Bob (4) + shared src (1) + conflict file (1) = depends on removes
+    // Actually: README, src, main.rs, utils.rs, config.toml from Alice
+    //           CONTRIBUTING, src (idempotent), lib.rs, tests.rs, .gitignore, config@hash.toml from Bob
+    // Minus the README remove/re-add (still 1 README in final state)
+    assert!(
+        final_state.len() >= 10,
+        "Should have at least 10 resolved paths, got {}",
+        final_state.len()
+    );
+}
+
+// =============================================================================
+// SCENARIO: Simple divergent work (single-version, for comparison)
+// =============================================================================
+
+/// Simpler scenario for comparison - single save on each side.
+#[tokio::test]
+async fn scenario_single_version_divergent_work() {
     let alice = make_peer_id(1);
     let bob = make_peer_id(2);
 
@@ -410,10 +669,7 @@ async fn scenario_realistic_divergent_work() {
         ::common::linked_data::Link::new(::common::linked_data::LD_RAW_CODEC, hash)
     };
 
-    // Alice's work session:
-    // - Creates project structure
-    // - Adds some files
-    // - Edits (re-adds) a shared file
+    // Alice's single work session
     let mut alice_log = PathOpLog::new();
     alice_log.record(alice, OpType::Mkdir, "src", None, true);
     alice_log.record(
@@ -426,76 +682,37 @@ async fn scenario_realistic_divergent_work() {
     alice_log.record(
         alice,
         OpType::Add,
-        "README.md",
-        Some(make_link(0x02)),
-        false,
-    );
-    alice_log.record(
-        alice,
-        OpType::Add,
         "config.toml",
         Some(make_link(0xAA)),
         false,
     );
 
-    // Bob's work session (started from same base, worked independently):
-    // - Also creates src directory (idempotent)
-    // - Adds different files
-    // - Also edits the shared config file
+    // Bob's single work session
     let mut bob_log = PathOpLog::new();
     bob_log.record(bob, OpType::Mkdir, "src", None, true);
     bob_log.record(bob, OpType::Add, "src/lib.rs", Some(make_link(0x03)), false);
-    bob_log.record(bob, OpType::Add, "Cargo.toml", Some(make_link(0x04)), false);
     bob_log.record(
         bob,
         OpType::Add,
         "config.toml",
         Some(make_link(0xBB)),
         false,
-    ); // conflict!
+    );
 
     // Merge
     let resolver = ConflictFile::new();
     let (merged, results) = merge_logs(&[&alice_log, &bob_log], &resolver, &alice);
 
-    // Check merge result
     assert_eq!(results.len(), 1);
-
-    // Should have exactly one conflict (config.toml)
     assert_eq!(
         results[0].conflicts_resolved.len(),
         1,
         "Only config.toml should conflict"
     );
 
-    // Verify all expected files are present
     let final_state = merged.resolve_all();
-
-    // Directories (both should have src from idempotent mkdir)
     assert!(final_state.contains_key(&PathBuf::from("src")));
-
-    // Alice's files
     assert!(final_state.contains_key(&PathBuf::from("src/main.rs")));
-    assert!(final_state.contains_key(&PathBuf::from("README.md")));
-
-    // Bob's files
     assert!(final_state.contains_key(&PathBuf::from("src/lib.rs")));
-    assert!(final_state.contains_key(&PathBuf::from("Cargo.toml")));
-
-    // Original config.toml (Alice's version, since she's the base)
     assert!(final_state.contains_key(&PathBuf::from("config.toml")));
-
-    // Conflict file for Bob's config.toml
-    let conflict_configs: Vec<_> = final_state
-        .keys()
-        .filter(|p| {
-            let s = p.to_string_lossy();
-            s.starts_with("config@") && s.ends_with(".toml")
-        })
-        .collect();
-    assert_eq!(
-        conflict_configs.len(),
-        1,
-        "Should have one config conflict file"
-    );
 }
