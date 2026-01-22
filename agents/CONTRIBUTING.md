@@ -37,16 +37,16 @@ Each test should tell a story with:
 - **WHEN**: Clear timeline/sequence
 - **OUTCOME**: Explicit verification with descriptive assertions
 
-#### Use helper methods that read like sentences
+#### Use descriptive variable names
 
 ```rust
-// Good - reads like English
-alice.creates_file("/notes.txt", "Meeting notes").await;
-bob.creates_directory("/docs").await;
-alice.saves(&blobs).await;
+// Good - named actors
+let (mut alice, blobs, _, _temp) = setup_test_env().await;
+let (mut bob, bob_key) = fork_mount(&mut alice, &blobs).await;
 
-// Bad - implementation details visible
-alice.mount.add(&PathBuf::from("/notes.txt"), Cursor::new(b"Meeting notes".to_vec())).await.unwrap();
+// Bad - generic names
+let (mut mount1, blobs, _, _temp) = setup_test_env().await;
+let (mut mount2, key2) = fork_mount(&mut mount1, &blobs).await;
 ```
 
 #### Write scenario-based test names

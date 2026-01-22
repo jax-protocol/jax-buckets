@@ -20,3 +20,13 @@ pub async fn setup_test_env() -> (Mount, BlobsStore, SecretKey, TempDir) {
 
     (mount, blobs, secret_key, temp_dir)
 }
+
+/// Fork a mount by adding a new owner and having them load from the saved state.
+/// Returns the new mount and its owner key.
+pub async fn fork_mount(mount: &mut Mount, blobs: &BlobsStore) -> (Mount, SecretKey) {
+    let new_key = SecretKey::generate();
+    mount.add_owner(new_key.public()).await.unwrap();
+    let (link, _, _) = mount.save(blobs, false).await.unwrap();
+    let forked = Mount::load(&link, &new_key, blobs).await.unwrap();
+    (forked, new_key)
+}
