@@ -21,9 +21,84 @@ This guide covers how to contribute to jax-bucket, whether you're an AI agent or
 ### Code Quality Expectations
 
 - Follow [RUST_PATTERNS.md](./RUST_PATTERNS.md) for Rust code
-- Write tests for new functionality
+- Write tests for new functionality (see **Test Readability** below)
 - Keep functions focused - single responsibility
 - Document public APIs with rustdoc comments
+
+### Test Readability (Critical)
+
+**Tests must read like plain English.** This is not optional - the codebase relies heavily on AI-generated code, and expressive tests are the primary way to verify correctness without reading every line.
+
+#### Structure tests as stories
+
+Each test should tell a story with:
+- **WHO**: Named actors (Alice, Bob, Carol - not "peer1", "peer2")
+- **WHAT**: Actions in plain English (`.creates_file()`, `.saves()`)
+- **WHEN**: Clear timeline/sequence
+- **OUTCOME**: Explicit verification with descriptive assertions
+
+#### Use descriptive variable names
+
+```rust
+// Good - named actors
+let (mut alice, blobs, _, _temp) = setup_test_env().await;
+let (mut bob, bob_key) = fork_mount(&mut alice, &blobs).await;
+
+// Bad - generic names
+let (mut mount1, blobs, _, _temp) = setup_test_env().await;
+let (mut mount2, key2) = fork_mount(&mut mount1, &blobs).await;
+```
+
+#### Write scenario-based test names
+
+```rust
+// Good - describes the scenario
+#[test]
+async fn scenario_alice_and_bob_both_create_notes_txt() { ... }
+
+#[test]
+async fn scenario_alice_and_bob_diverge_for_three_versions() { ... }
+
+// Bad - describes implementation
+#[test]
+async fn test_merge_with_conflict_file_resolver() { ... }
+```
+
+#### Use clear section comments
+
+```rust
+// =========================================================================
+// ALICE'S CHAIN: Three versions of changes
+// =========================================================================
+
+// Version 1: Alice sets up the project
+alice.creates_file("/README.md", "# My Project").await;
+alice.saves(&blobs).await;
+
+// =========================================================================
+// VERIFY: All files from both chains exist
+// =========================================================================
+```
+
+#### Create test-specific helper structs
+
+When the standard `setup_test_env()` doesn't fit, create scenario-specific helpers:
+
+```rust
+struct TestScenario {
+    blobs: BlobsStore,
+    _temp: TempDir,
+}
+
+impl TestScenario {
+    async fn create_peer(&self, name: &'static str) -> Peer { ... }
+    async fn fork_peer(&self, original: &mut Peer, name: &'static str) -> Peer { ... }
+}
+```
+
+#### Example: Good integration test
+
+See `crates/common/tests/conflict_resolution.rs` for the canonical example of readable tests.
 
 ### File Naming Conventions
 
