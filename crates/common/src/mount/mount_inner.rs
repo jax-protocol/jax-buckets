@@ -10,6 +10,7 @@ use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, SecretShare};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::peer::{BlobsStore, BlobsStoreError};
 
+use super::conflict::MergeResult;
 use super::manifest::{Manifest, ManifestError, Share};
 use super::node::{Node, NodeError, NodeLink};
 use super::path_ops::{OpType, PathOpLog};
@@ -197,7 +198,9 @@ impl Mount {
         manifest.set_entry(entry.clone());
         manifest.set_height(height);
 
-        // Set the ops log link if we have operations
+        // Clear inherited ops_log from the template, then set if we have new operations
+        // Each version's ops_log is independent and encrypted with that version's secret
+        manifest.clear_ops_log();
         if let Some(ops_link) = ops_log_link {
             manifest.set_ops_log(ops_link);
         }
@@ -214,6 +217,10 @@ impl Mount {
             inner.manifest = manifest;
             inner.height = height;
             inner.link = link.clone();
+            // Clear the ops_log - it's now persisted in the manifest
+            // Future operations start a fresh log for the next version
+            // IMPORTANT: Preserve the clock value so future ops have unique timestamps
+            inner.ops_log.clear_preserving_clock();
         }
 
         Ok((link, previous_link, height))
@@ -1250,5 +1257,267 @@ impl Mount {
             hash
         );
         Ok(link)
+    }
+
+    /// Collect all ops from manifest chain back to (but not including) ancestor_link.
+    ///
+    /// Traverses the manifest chain starting from the current version, collecting
+    /// ops_logs from each manifest until we reach the ancestor (or genesis).
+    /// The collected ops are merged in chronological order.
+    ///
+    /// # Arguments
+    ///
+    /// * `ancestor_link` - Stop when reaching this link (not included). None means collect all
+    ///   accessible ops (stops when we can't decrypt a manifest).
+    /// * `blobs` - The blob store to read manifests from
+    ///
+    /// # Returns
+    ///
+    /// A combined PathOpLog containing all operations since the ancestor.
+    pub async fn collect_ops_since(
+        &self,
+        ancestor_link: Option<&Link>,
+        blobs: &BlobsStore,
+    ) -> Result<PathOpLog, MountError> {
+        let inner = self.0.lock().await;
+        let secret_key = inner.secret_key.clone();
+        let current_link = inner.link.clone();
+        let current_ops = inner.ops_log.clone();
+        drop(inner);
+
+        let mut all_logs: Vec<PathOpLog> = Vec::new();
+
+        // Start with any unsaved operations in the current mount
+        if !current_ops.is_empty() {
+            all_logs.push(current_ops);
+        }
+
+        // Walk the chain from current manifest backwards
+        let mut link = current_link;
+
+        loop {
+            // Check if we've reached the ancestor
+            if let Some(ancestor) = ancestor_link {
+                if &link == ancestor {
+                    break;
+                }
+            }
+
+            // Load the manifest at this link
+            let manifest = Self::_get_manifest_from_blobs(&link, blobs).await?;
+
+            // Get the secret for this manifest version
+            // If we can't get the secret (e.g., we weren't a member at this point),
+            // stop traversing - we can't read older ops anyway
+            let secret = match self.get_secret_for_manifest(&manifest, &secret_key) {
+                Ok(s) => s,
+                Err(MountError::ShareNotFound) => {
+                    tracing::debug!(
+                        "collect_ops_since: stopping at link {} - no share for current user",
+                        link.hash()
+                    );
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
+
+            // Load the ops_log if present
+            if let Some(ops_link) = manifest.ops_log() {
+                let mut ops_log = Self::_get_ops_log_from_blobs(ops_link, &secret, blobs).await?;
+                ops_log.rebuild_clock();
+                all_logs.push(ops_log);
+            }
+
+            // Move to previous manifest
+            match manifest.previous() {
+                Some(prev) => link = prev.clone(),
+                None => break, // Reached genesis
+            }
+        }
+
+        // Merge all logs in chronological order (oldest first, so reverse)
+        all_logs.reverse();
+        let mut merged = PathOpLog::new();
+        for log in all_logs {
+            merged.merge(&log);
+        }
+
+        Ok(merged)
+    }
+
+    /// Get the decryption secret for a manifest.
+    ///
+    /// Decrypts the secret share using the provided secret key.
+    #[allow(clippy::result_large_err)]
+    fn get_secret_for_manifest(
+        &self,
+        manifest: &Manifest,
+        secret_key: &SecretKey,
+    ) -> Result<Secret, MountError> {
+        let public_key = secret_key.public();
+        let share = manifest
+            .get_share(&public_key)
+            .ok_or(MountError::ShareNotFound)?;
+
+        match share.role() {
+            PrincipalRole::Owner => {
+                let secret_share = share.share().ok_or(MountError::ShareNotFound)?;
+                Ok(secret_share.recover(secret_key)?)
+            }
+            PrincipalRole::Mirror => manifest
+                .public()
+                .cloned()
+                .ok_or(MountError::MirrorCannotMount),
+        }
+    }
+
+    /// Find the common ancestor between this mount's chain and another's.
+    ///
+    /// Walks both chains backwards via the `previous` links and returns
+    /// the first link where both chains converge.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The other mount to find common ancestor with
+    /// * `blobs` - The blob store to read manifests from
+    ///
+    /// # Returns
+    ///
+    /// The common ancestor link, or None if chains never converge (different buckets).
+    pub async fn find_common_ancestor(
+        &self,
+        other: &Mount,
+        blobs: &BlobsStore,
+    ) -> Result<Option<Link>, MountError> {
+        // Build set of all links in self's chain
+        let mut self_chain: std::collections::HashSet<Link> = std::collections::HashSet::new();
+
+        let self_link = self.link().await;
+        let mut link = self_link;
+
+        loop {
+            self_chain.insert(link.clone());
+            let manifest = Self::_get_manifest_from_blobs(&link, blobs).await?;
+            match manifest.previous() {
+                Some(prev) => link = prev.clone(),
+                None => break,
+            }
+        }
+
+        // Walk other's chain and find first link in self's set
+        let other_link = other.link().await;
+        let mut link = other_link;
+
+        loop {
+            if self_chain.contains(&link) {
+                return Ok(Some(link));
+            }
+            let manifest = Self::_get_manifest_from_blobs(&link, blobs).await?;
+            match manifest.previous() {
+                Some(prev) => link = prev.clone(),
+                None => break,
+            }
+        }
+
+        // No common ancestor found
+        Ok(None)
+    }
+
+    /// Apply resolved operations to the entry tree.
+    ///
+    /// For each operation in the resolved state:
+    /// - Files with content links are checked for existence (cannot recreate without secret)
+    /// - Directories are created if they don't exist
+    async fn apply_resolved_state(&mut self, merged_ops: &PathOpLog) -> Result<(), MountError> {
+        let resolved_state = merged_ops.resolve_all();
+
+        for (path, op) in &resolved_state {
+            if op.content_link.is_some() {
+                // File operation - check if it exists in our tree
+                let abs_path = Path::new("/").join(path);
+                match self.get(&abs_path).await {
+                    Ok(_) => {
+                        // File exists, skip
+                    }
+                    Err(MountError::PathNotFound(_)) => {
+                        // Can't recreate - ops_log stores Link but not decryption secret
+                        tracing::warn!(
+                            "apply_resolved_state: cannot recreate file {} - no secret",
+                            path.display()
+                        );
+                        // Record in ops_log so it's tracked
+                        let mut inner = self.0.lock().await;
+                        inner.ops_log.merge(&PathOpLog::from_operation(op));
+                    }
+                    Err(e) => return Err(e),
+                }
+            } else if op.is_dir && matches!(op.op_type, super::path_ops::OpType::Mkdir) {
+                // Directory operation - create if missing
+                let abs_path = Path::new("/").join(path);
+                match self.mkdir(&abs_path).await {
+                    Ok(()) => {}
+                    Err(MountError::PathAlreadyExists(_)) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Merge another mount's changes into this one using the given resolver.
+    ///
+    /// This method:
+    /// 1. Finds the common ancestor between the two chains
+    /// 2. Collects ops from both chains since that ancestor
+    /// 3. Merges using the resolver
+    /// 4. Applies the merged state
+    /// 5. Saves the result as a new version
+    ///
+    /// # Arguments
+    ///
+    /// * `incoming` - The mount to merge changes from
+    /// * `resolver` - The conflict resolution strategy to use
+    /// * `blobs` - The blob store
+    ///
+    /// # Returns
+    ///
+    /// A MergeResult containing conflict information and the new version link.
+    pub async fn merge_from<R: super::ConflictResolver>(
+        &mut self,
+        incoming: &Mount,
+        resolver: &R,
+        blobs: &BlobsStore,
+    ) -> Result<(MergeResult, Link), MountError> {
+        // Find the common ancestor
+        let ancestor = self.find_common_ancestor(incoming, blobs).await?;
+
+        // Collect ops from both chains since the ancestor
+        let local_ops = self.collect_ops_since(ancestor.as_ref(), blobs).await?;
+        let incoming_ops = incoming.collect_ops_since(ancestor.as_ref(), blobs).await?;
+
+        // Get local peer ID for tie-breaking
+        let peer_id = {
+            let inner = self.0.lock().await;
+            inner.peer_id
+        };
+
+        // Merge the operations
+        let mut merged_ops = local_ops.clone();
+        let merge_result = merged_ops.merge_with_resolver(&incoming_ops, resolver, &peer_id);
+
+        // Apply merged state to the entry tree
+        self.apply_resolved_state(&merged_ops).await?;
+
+        // Merge the ops_log to include all merged operations
+        {
+            let mut inner = self.0.lock().await;
+            inner.ops_log.merge(&merged_ops);
+        }
+
+        // Save the merged state
+        let (link, _, _) = self.save(blobs, false).await?;
+
+        Ok((merge_result, link))
     }
 }

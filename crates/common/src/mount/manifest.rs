@@ -355,6 +355,14 @@ impl Manifest {
         self.ops_log = Some(link);
     }
 
+    /// Clear the operations log link.
+    ///
+    /// This should be called when creating a new version from an existing manifest,
+    /// since each version has its own independent ops_log.
+    pub fn clear_ops_log(&mut self) {
+        self.ops_log = None;
+    }
+
     /// Add a share to the manifest.
     ///
     /// Use [`Share::new_owner`] or [`Share::new_mirror`] to construct the share.

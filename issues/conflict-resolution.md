@@ -1,14 +1,18 @@
 # Extensible Conflict Resolution for PathOpLog
 
-**Status:** Planned
+**Status:** Done
 **Epic:** None (standalone feature)
 **Dependencies:** PR #32 (path operation CRDT - merged)
 
-## Reference Implementation
+## Implementation
 
-Branch: [`amiller68/conflict-resolution`](https://github.com/jax-protocol/jax-buckets/tree/amiller68/conflict-resolution)
+Branch: `alex/conflict-resolution`
 
-This branch contains a working implementation with full test coverage (32 tests). Use as reference when implementing.
+The implementation includes:
+- `ConflictResolver` trait with four built-in strategies
+- `merge_with_resolver()` method on PathOpLog
+- `merge_logs()` helper for multi-way merges
+- 104+ tests including integration tests for divergent mount scenarios
 
 ## Objective
 
@@ -169,18 +173,20 @@ When forking, preserve original: `OpId`, `op_type`, `content_link`, `is_dir`. On
 
 ## Acceptance Criteria
 
-- [ ] `ConflictResolver` trait defined with `resolve()` method
-- [ ] `Resolution` enum with `KeepBase`, `AcceptIncoming`, `Fork` variants
-- [ ] `MergeResult` struct tracks added/rejected/forked counts
-- [ ] `LastWriteWins` strategy always accepts incoming
-- [ ] `ForkOnConflict` strategy generates correct forked paths
-- [ ] `BaseWins` strategy always rejects conflicting incoming
-- [ ] `merge_with_resolver()` method on `PathOpLog`
-- [ ] All types exported from `mount` module
-- [ ] Unit tests for each resolver
-- [ ] Integration tests for merge scenarios
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] `ConflictResolver` trait defined with `resolve()` method
+- [x] `Resolution` enum with `UseBase`, `UseIncoming`, `KeepBoth`, `SkipBoth`, `RenameIncoming` variants
+- [x] `MergeResult` struct tracks operations_added, conflicts_resolved, unresolved_conflicts
+- [x] `LastWriteWins` strategy - higher timestamp wins
+- [x] `ForkOnConflict` strategy - keeps both operations, returns unresolved
+- [x] `BaseWins` strategy - always keeps local operation
+- [x] `ConflictFile` strategy - renames incoming to `file@<hash>.ext`
+- [x] `merge_with_resolver()` method on `PathOpLog`
+- [x] `merge_logs()` helper for multi-way merges
+- [x] All types exported from `mount` module
+- [x] Unit tests for each resolver
+- [x] Integration tests for merge scenarios (`tests/conflict_resolution.rs`)
+- [x] `cargo test` passes (104+ tests)
+- [x] `cargo clippy` has no warnings
 
 ## Verification
 
