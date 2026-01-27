@@ -42,7 +42,7 @@ async fn test_single_file_conflict() {
     let resolved = &result.conflicts_resolved[0];
     match &resolved.resolution {
         Resolution::RenameIncoming { new_path } => {
-            assert!(new_path.to_string_lossy().starts_with("notes@"));
+            assert!(new_path.to_string_lossy().starts_with("notes.txt@"));
         }
         other => panic!("Expected RenameIncoming, got {:?}", other),
     }
@@ -84,7 +84,7 @@ async fn test_merge_logs_low_level() {
     let resolved = &results[0].conflicts_resolved[0];
     match &resolved.resolution {
         Resolution::RenameIncoming { new_path } => {
-            assert!(new_path.to_string_lossy().starts_with("notes@"));
+            assert!(new_path.to_string_lossy().starts_with("notes.txt@"));
         }
         other => panic!("Expected RenameIncoming, got {:?}", other),
     }
@@ -228,6 +228,24 @@ async fn test_multi_version_divergence() {
         .filter(|c| c.conflict.path.to_string_lossy().contains("config"))
         .collect();
     assert_eq!(config_conflicts.len(), 1);
+
+    // The conflict resolution should produce a config@<hash>.toml file
+    // where <hash> is derived from Bob's content link for config.toml
+    let resolved = &config_conflicts[0];
+    match &resolved.resolution {
+        Resolution::RenameIncoming { new_path } => {
+            let name = new_path.to_string_lossy();
+            assert!(
+                name.starts_with("config.toml@"),
+                "Conflict file should be config.toml@<hash>, got: {}",
+                name
+            );
+        }
+        other => panic!(
+            "Expected RenameIncoming for config.toml conflict, got {:?}",
+            other
+        ),
+    }
 
     // Verify Alice still has her files
     assert!(alice.cat(&PathBuf::from("/README.md")).await.is_ok());

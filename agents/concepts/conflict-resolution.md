@@ -72,7 +72,7 @@ Before conflict:
 
 After sync with ConflictFile resolver:
   notes.txt          (Alice's version - unchanged)
-  notes@a1b2c3d4.txt (Bob's version - renamed with content hash)
+  notes.txt@a1b2c3d4 (Bob's version - renamed with content hash)
 ```
 
 The hash suffix comes from the incoming file's content link, ensuring:
@@ -87,7 +87,7 @@ impl ConflictResolver for ConflictFile {
                 // Both are adds - create conflict file for incoming
                 let hash = conflict.incoming.content_link.hash().to_string();
                 let version = &hash[..8];  // First 8 chars
-                let new_path = conflict_path(&conflict.incoming.path, version);
+                let new_path = Self::conflict_path(&conflict.incoming.path, version);
                 Resolution::RenameIncoming { new_path }
             }
             _ => {
@@ -196,9 +196,9 @@ For `ConflictFile` strategy, filenames are generated as:
 
 | Original | Content Hash | Result |
 |----------|--------------|--------|
-| `report.txt` | `abc123de...` | `report@abc123de.txt` |
+| `report.txt` | `abc123de...` | `report.txt@abc123de` |
 | `Makefile` | `deadbeef...` | `Makefile@deadbeef` |
-| `src/lib.rs` | `cafebabe...` | `src/lib@cafebabe.rs` |
+| `src/lib.rs` | `cafebabe...` | `src/lib.rs@cafebabe` |
 
 The hash length is configurable (default: 8 characters):
 

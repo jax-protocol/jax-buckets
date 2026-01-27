@@ -902,7 +902,7 @@ mod tests {
                     link_incoming.hash().to_string().chars().take(8).collect();
                 assert_eq!(
                     new_path,
-                    &std::path::PathBuf::from(format!("document@{}.txt", expected_version))
+                    &std::path::PathBuf::from(format!("document.txt@{}", expected_version))
                 );
             }
             _ => panic!("Expected RenameIncoming, got {:?}", resolved.resolution),

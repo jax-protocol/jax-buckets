@@ -43,15 +43,13 @@ impl ConflictFile {
 
     /// Generate a conflict filename using a version string
     ///
-    /// Format: `<stem>@<version>.<ext>` or `<stem>@<version>` if no extension
+    /// Format: `<name>@<version>` (extension precedes the `@`)
+    ///
+    /// Examples: `config.toml@abc123de`, `README@abc123de`
     pub fn conflict_path(path: &std::path::Path, version: &str) -> PathBuf {
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
-        let ext = path.extension().and_then(|e| e.to_str());
+        let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("file");
 
-        let conflict_name = match ext {
-            Some(ext) => format!("{}@{}.{}", stem, version, ext),
-            None => format!("{}@{}", stem, version),
-        };
+        let conflict_name = format!("{}@{}", file_name, version);
 
         match path.parent() {
             Some(parent) if parent != std::path::Path::new("") => parent.join(conflict_name),
@@ -142,7 +140,7 @@ mod tests {
     fn test_conflict_file_path_with_extension() {
         let path = PathBuf::from("document.txt");
         let result = ConflictFile::conflict_path(&path, "abc12345");
-        assert_eq!(result, PathBuf::from("document@abc12345.txt"));
+        assert_eq!(result, PathBuf::from("document.txt@abc12345"));
     }
 
     #[test]
@@ -156,7 +154,7 @@ mod tests {
     fn test_conflict_file_path_nested() {
         let path = PathBuf::from("docs/notes/file.md");
         let result = ConflictFile::conflict_path(&path, "v42");
-        assert_eq!(result, PathBuf::from("docs/notes/file@v42.md"));
+        assert_eq!(result, PathBuf::from("docs/notes/file.md@v42"));
     }
 
     #[test]
@@ -187,7 +185,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     new_path,
-                    PathBuf::from(format!("file@{}.txt", expected_version))
+                    PathBuf::from(format!("file.txt@{}", expected_version))
                 );
             }
             _ => panic!("Expected RenameIncoming, got {:?}", resolution),
@@ -272,10 +270,12 @@ mod tests {
         // Result: Bob's file gets renamed to include his content hash
         match resolution {
             Resolution::RenameIncoming { new_path } => {
-                // The new path should be "notes@<first-8-chars-of-hash>.txt"
+                // The new path should be "notes.txt@<first-8-chars-of-hash>"
                 let path_str = new_path.to_string_lossy();
-                assert!(path_str.starts_with("notes@"), "Should have @ separator");
-                assert!(path_str.ends_with(".txt"), "Should keep extension");
+                assert!(
+                    path_str.starts_with("notes.txt@"),
+                    "Should be notes.txt@<hash>"
+                );
                 assert!(path_str.contains("22"), "Should contain Bob's hash prefix");
             }
             other => panic!("Expected RenameIncoming, got {:?}", other),
@@ -287,9 +287,9 @@ mod tests {
     #[test]
     fn scenario_conflict_file_naming_examples() {
         // Example 1: Simple text file
-        // "report.txt" with hash "abc123def456..." becomes "report@abc123de.txt"
+        // "report.txt" with hash "abc123def456..." becomes "report.txt@abc123de"
         let path1 = ConflictFile::conflict_path(&PathBuf::from("report.txt"), "abc123de");
-        assert_eq!(path1.to_string_lossy(), "report@abc123de.txt");
+        assert_eq!(path1.to_string_lossy(), "report.txt@abc123de");
 
         // Example 2: File without extension
         // "Makefile" with hash "deadbeef..." becomes "Makefile@deadbeef"
@@ -297,9 +297,9 @@ mod tests {
         assert_eq!(path2.to_string_lossy(), "Makefile@deadbeef");
 
         // Example 3: Nested path
-        // "src/lib/utils.rs" with hash "cafebabe..." becomes "src/lib/utils@cafebabe.rs"
+        // "src/lib/utils.rs" with hash "cafebabe..." becomes "src/lib/utils.rs@cafebabe"
         let path3 = ConflictFile::conflict_path(&PathBuf::from("src/lib/utils.rs"), "cafebabe");
-        assert_eq!(path3.to_string_lossy(), "src/lib/utils@cafebabe.rs");
+        assert_eq!(path3.to_string_lossy(), "src/lib/utils.rs@cafebabe");
     }
 
     /// Scenario: Different conflict types get different resolutions.
@@ -354,7 +354,7 @@ mod tests {
         // Default: 8 characters
         let resolver_8 = ConflictFile::new();
         if let Resolution::RenameIncoming { new_path } = resolver_8.resolve(&conflict, &alice) {
-            let name = new_path.file_stem().unwrap().to_string_lossy();
+            let name = new_path.file_name().unwrap().to_string_lossy();
             let hash_part = name.split('@').nth(1).unwrap();
             assert_eq!(hash_part.len(), 8, "Default should use 8 hash chars");
         }
@@ -362,7 +362,7 @@ mod tests {
         // Custom: 4 characters (shorter, but more collision risk)
         let resolver_4 = ConflictFile::with_hash_length(4);
         if let Resolution::RenameIncoming { new_path } = resolver_4.resolve(&conflict, &alice) {
-            let name = new_path.file_stem().unwrap().to_string_lossy();
+            let name = new_path.file_name().unwrap().to_string_lossy();
             let hash_part = name.split('@').nth(1).unwrap();
             assert_eq!(hash_part.len(), 4, "Custom should use 4 hash chars");
         }
@@ -370,7 +370,7 @@ mod tests {
         // Custom: 16 characters (longer, less collision risk)
         let resolver_16 = ConflictFile::with_hash_length(16);
         if let Resolution::RenameIncoming { new_path } = resolver_16.resolve(&conflict, &alice) {
-            let name = new_path.file_stem().unwrap().to_string_lossy();
+            let name = new_path.file_name().unwrap().to_string_lossy();
             let hash_part = name.split('@').nth(1).unwrap();
             assert_eq!(hash_part.len(), 16, "Custom should use 16 hash chars");
         }
