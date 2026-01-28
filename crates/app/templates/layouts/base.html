@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <title>{% block title %}Jax Tracker{% endblock %}</title>
-    
+
+    <title>{% block title %}Jax Gateway{% endblock %}</title>
+
     <!-- Inter font -->
     <link rel="preconnect" href="https://rsms.me/" />
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-    
+
     <style>
       :root {
         font-family: Inter, sans-serif;
@@ -46,26 +46,12 @@
     </script>
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/core.iife.js"></script>
-    
+
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-    
+
     <!-- Custom styles -->
     <link rel="stylesheet" href="/static/style.css">
-
-    <!-- Load CodeMirror 6 once for all pages -->
-    <script type="module">
-      import { EditorView, basicSetup } from "https://esm.sh/codemirror@6.0.1";
-      import { markdown } from "https://esm.sh/@codemirror/lang-markdown@6.2.4";
-      import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
-
-      // Store in window for global access
-      window.CodeMirror = { EditorView, basicSetup, markdown, oneDark };
-      window.CodeMirrorLoaded = true;
-
-      // Dispatch event for any listeners
-      window.dispatchEvent(new Event('codemirror-loaded'));
-    </script>
 
     {% block head %}{% endblock %}
 </head>
@@ -76,17 +62,14 @@
                 <i class="fas fa-database"></i>
                 <span>jax</span>
             </a>
-            {% block nav_actions %}{% endblock %}
         </div>
     </nav>
 
-    {% block main %}
     <main class="flex-1">
         {% block content %}{% endblock %}
     </main>
-    {% endblock %}
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/icon.iife.js"></script>
     <script src="/static/app.js"></script>
 </body>
-</html> 
+</html>

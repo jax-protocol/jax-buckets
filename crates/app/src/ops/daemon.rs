@@ -5,25 +5,13 @@ use crate::state::AppState;
 
 #[derive(Args, Debug, Clone)]
 pub struct Daemon {
-    /// Run only the gateway server (no App UI/API)
+    /// Override HTTP server port (default from config)
     #[arg(long)]
-    pub gateway: bool,
-
-    /// API URL for HTML UI (default: same origin)
-    #[arg(long)]
-    pub api_url: Option<String>,
-
-    /// Override gateway port (implies gateway is enabled)
-    #[arg(long)]
-    pub gateway_port: Option<u16>,
+    pub port: Option<u16>,
 
     /// Gateway URL for share/download links (e.g., https://gateway.example.com)
     #[arg(long)]
     pub gateway_url: Option<String>,
-
-    /// Also run gateway alongside app server
-    #[arg(long)]
-    pub with_gateway: bool,
 
     /// Directory for log files (logs to stdout only if not set)
     #[arg(long)]
@@ -58,19 +46,8 @@ impl crate::op::Op for Daemon {
                 .expect("Failed to parse peer listen address")
         });
 
-        // Determine app_port and gateway_port based on flags
-        let (app_port, gateway_port) = if self.gateway {
-            // Gateway-only mode: no app server, just gateway
-            let gateway_port = self.gateway_port.unwrap_or(state.config.gateway_port);
-            (None, Some(gateway_port))
-        } else if self.with_gateway || self.gateway_port.is_some() {
-            // App + Gateway mode: run both
-            let gateway_port = self.gateway_port.unwrap_or(state.config.gateway_port);
-            (Some(state.config.app_port), Some(gateway_port))
-        } else {
-            // Default: App only, no gateway
-            (Some(state.config.app_port), None)
-        };
+        // Use port from flag or config
+        let port = self.port.unwrap_or(state.config.port);
 
         // Blob store configuration is read from config.toml (set at init time)
         let config = ServiceConfig {
@@ -78,12 +55,10 @@ impl crate::op::Op for Daemon {
             node_secret: Some(secret_key),
             blob_store: state.config.blob_store.clone(),
             jax_dir: state.jax_dir.clone(),
-            app_port,
-            gateway_port,
+            port,
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::DEBUG,
             log_dir: self.log_dir.clone(),
-            api_url: self.api_url.clone(),
             gateway_url: self.gateway_url.clone(),
         };
 

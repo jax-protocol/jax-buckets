@@ -84,16 +84,19 @@ get_default_node() {
     get_node_names | head -1
 }
 
-# Get app port for a node
-get_app_port() {
+# Get port for a node (unified HTTP port)
+get_port() {
     local node=$(resolve_node "${1:-$(get_default_node)}")
-    toml_get "$node" "app_port"
+    toml_get "$node" "port"
 }
 
-# Get gateway port for a node
+# Deprecated aliases for backwards compatibility with scripts
+get_app_port() {
+    get_port "$1"
+}
+
 get_gateway_port() {
-    local node=$(resolve_node "${1:-$(get_default_node)}")
-    toml_get "$node" "gateway_port"
+    get_port "$1"
 }
 
 # Get node type (full, app, gateway)
@@ -128,15 +131,8 @@ list_nodes() {
         local nick=$(toml_get "$node" "nick")
         local name=$(toml_get "$node" "name")
         local type=$(toml_get "$node" "type")
-        local app_port=$(toml_get "$node" "app_port")
-        local gw_port=$(toml_get "$node" "gateway_port")
+        local port=$(toml_get "$node" "port")
 
-        printf "  %-8s %-6s %-30s" "$node" "($nick)" "$name"
-
-        case "$type" in
-            full)    echo " App:$app_port Gateway:$gw_port" ;;
-            app)     echo " App:$app_port" ;;
-            gateway) echo " Gateway:$gw_port" ;;
-        esac
+        printf "  %-8s %-6s %-30s Port:%s\n" "$node" "($nick)" "$name" "$port"
     done
 }

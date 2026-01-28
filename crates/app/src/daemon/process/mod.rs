@@ -105,17 +105,7 @@ async fn shutdown_and_join(
     }
 }
 
-/// Spawns the daemon service based on config.
-///
-/// - Always spawns P2P peer for sync
-/// - Spawns App server (UI + API) if app_port is set
-/// - Spawns Gateway server if gateway_port is set
-///
-/// You can run:
-/// - Just peer (sync only, no HTTP) - both ports None
-/// - App only (UI + API) - app_port set, gateway_port None
-/// - Gateway only - app_port None, gateway_port set
-/// - App + Gateway - both ports set
+/// Spawns the daemon service: P2P peer + unified HTTP server on a single port.
 pub async fn spawn_service(service_config: &ServiceConfig) {
     let _guards = init_logging(service_config);
     let (graceful_waiter, shutdown_rx) = utils::graceful_shutdown_blocker();
@@ -133,54 +123,21 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     });
     handles.push(peer_handle);
 
-    // Arc the state for sharing with servers
-    let state = std::sync::Arc::new(state);
+    // Spawn unified HTTP server
+    let port = service_config.port;
+    let listen_addr =
+        SocketAddr::from_str(&format!("0.0.0.0:{}", port)).expect("Failed to parse listen address");
+    let http_state = state.clone();
+    let http_config = http_server::Config::new(listen_addr, service_config.gateway_url.clone());
+    let http_rx = shutdown_rx.clone();
+    let http_handle = tokio::spawn(async move {
+        if let Err(e) = http_server::run(http_config, http_state, http_rx).await {
+            tracing::error!("HTTP server error: {}", e);
+        }
+    });
+    handles.push(http_handle);
 
-    // Spawn App server if app_port is configured
-    if let Some(app_port) = service_config.app_port {
-        let app_listen_addr = SocketAddr::from_str(&format!("0.0.0.0:{}", app_port))
-            .expect("Failed to parse app listen address");
-        let app_state = state.as_ref().clone();
-        let app_config = http_server::Config::new(
-            app_listen_addr,
-            service_config.api_url.clone(),
-            service_config.gateway_url.clone(),
-        );
-        let app_rx = shutdown_rx.clone();
-        let app_handle = tokio::spawn(async move {
-            tracing::info!("Starting App server on {}", app_listen_addr);
-            if let Err(e) = http_server::run_app(app_config, app_state, app_rx).await {
-                tracing::error!("App server error: {}", e);
-            }
-        });
-        handles.push(app_handle);
-    }
-
-    // Spawn Gateway server if gateway_port is configured
-    if let Some(gateway_port) = service_config.gateway_port {
-        let gateway_listen_addr = SocketAddr::from_str(&format!("0.0.0.0:{}", gateway_port))
-            .expect("Failed to parse gateway listen address");
-        let gateway_state = state.as_ref().clone();
-        let gateway_config = http_server::Config::new(gateway_listen_addr, None, None);
-        let gateway_rx = shutdown_rx.clone();
-        let gateway_handle = tokio::spawn(async move {
-            tracing::info!("Starting Gateway server on {}", gateway_listen_addr);
-            if let Err(e) =
-                http_server::run_gateway(gateway_config, gateway_state, gateway_rx).await
-            {
-                tracing::error!("Gateway server error: {}", e);
-            }
-        });
-        handles.push(gateway_handle);
-    }
-
-    // Log what we're running
-    match (service_config.app_port, service_config.gateway_port) {
-        (Some(app), Some(gw)) => tracing::info!("Running: Peer + App:{} + Gateway:{}", app, gw),
-        (Some(app), None) => tracing::info!("Running: Peer + App:{}", app),
-        (None, Some(gw)) => tracing::info!("Running: Peer + Gateway:{}", gw),
-        (None, None) => tracing::info!("Running: Peer only (no HTTP servers)"),
-    }
+    tracing::info!("Running: Peer + HTTP on port {}", port);
 
     shutdown_and_join(graceful_waiter, handles).await;
 }
