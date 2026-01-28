@@ -21,13 +21,9 @@ pub struct Config {
     /// Path to the jax directory (absolute path, used for legacy blobs and cache)
     pub jax_dir: PathBuf,
 
-    // http server configuration - just two optional ports
-    /// Port for the App server (UI + API combined).
-    /// If not set, no app server will be started.
-    pub app_port: Option<u16>,
-    /// Port for the Gateway server (read-only content serving).
-    /// If not set, no gateway server will be started.
-    pub gateway_port: Option<u16>,
+    // http server configuration - single port
+    /// Port for the HTTP server (API + gateway combined).
+    pub port: u16,
 
     // data store configuration
     /// a path to a sqlite database, if not set then an
@@ -40,9 +36,6 @@ pub struct Config {
     pub log_dir: Option<PathBuf>,
 
     // url configuration
-    /// API URL for HTML UI (for JS to call API endpoints)
-    /// If not set, defaults to same origin as the UI
-    pub api_url: Option<String>,
     /// External gateway URL (e.g., "https://gateway.example.com")
     /// Used for generating share/download links
     pub gateway_url: Option<String>,

@@ -11,34 +11,26 @@ pub const BLOBS_DIR_NAME: &str = "blobs";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    /// Port for the App server (UI + API combined)
-    #[serde(default = "default_app_port")]
-    pub app_port: u16,
+    /// Port for the HTTP server (API + gateway combined)
+    #[serde(default = "default_port")]
+    pub port: u16,
     /// Listen port for the peer (P2P) node (optional, defaults to ephemeral)
     #[serde(default)]
     pub peer_port: Option<u16>,
-    /// Listen port for the gateway server
-    #[serde(default = "default_gateway_port")]
-    pub gateway_port: u16,
     /// Blob storage backend configuration (set at init time)
     #[serde(default)]
     pub blob_store: BlobStoreConfig,
 }
 
-fn default_app_port() -> u16 {
+fn default_port() -> u16 {
     8080
-}
-
-fn default_gateway_port() -> u16 {
-    9090
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            app_port: default_app_port(),
+            port: default_port(),
             peer_port: None,
-            gateway_port: default_gateway_port(),
             blob_store: BlobStoreConfig::default(),
         }
     }

@@ -18,17 +18,13 @@ pub enum BlobStoreType {
 
 #[derive(Args, Debug, Clone)]
 pub struct Init {
-    /// App server port (UI + API combined, default: 8080)
+    /// HTTP server port (API + gateway combined, default: 8080)
     #[arg(long, default_value = "8080")]
-    pub app_port: u16,
+    pub port: u16,
 
     /// Peer (P2P) node listen port (optional, defaults to ephemeral port if not specified)
     #[arg(long)]
     pub peer_port: Option<u16>,
-
-    /// Gateway server listen port (default: 9090)
-    #[arg(long, default_value = "9090")]
-    pub gateway_port: u16,
 
     /// Blob store backend type
     #[arg(long, value_enum, default_value_t = BlobStoreType::Legacy)]
@@ -112,9 +108,8 @@ impl crate::op::Op for Init {
         let blob_store = self.build_blob_store_config(&jax_dir)?;
 
         let config = AppConfig {
-            app_port: self.app_port,
+            port: self.port,
             peer_port: self.peer_port,
-            gateway_port: self.gateway_port,
             blob_store: blob_store.clone(),
         };
 
@@ -140,18 +135,16 @@ impl crate::op::Op for Init {
              - Key: {}\n\
              - Blobs: {}\n\
              - Config: {}\n\
-             - App port: {}\n\
+             - Port: {}\n\
              - Peer port: {}\n\
-             - Gateway port: {}\n\
              - Blob store: {}",
             state.jax_dir.display(),
             state.db_path.display(),
             state.key_path.display(),
             state.blobs_path.display(),
             state.config_path.display(),
-            state.config.app_port,
+            state.config.port,
             peer_port_str,
-            state.config.gateway_port,
             blob_store_str
         );
 

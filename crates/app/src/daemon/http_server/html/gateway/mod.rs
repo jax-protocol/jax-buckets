@@ -8,7 +8,21 @@ use uuid::Uuid;
 
 use common::mount::NodeLink;
 
-use super::buckets::file_viewer::format_bytes;
+/// Format a byte count into a human-readable string (e.g., "1.50 KB")
+fn format_bytes(bytes: usize) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+
+    let bytes_f64 = bytes as f64;
+    let k = 1024_f64;
+    let i = (bytes_f64.log(k).floor() as usize).min(UNITS.len() - 1);
+    let size = bytes_f64 / k.powi(i as i32);
+
+    format!("{:.2} {}", size, UNITS[i])
+}
 use crate::ServiceState;
 
 // Lazy static regex patterns for URL rewriting

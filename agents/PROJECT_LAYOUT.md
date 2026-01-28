@@ -6,27 +6,28 @@ Quick guide to finding your way around the jax-bucket workspace.
 
 ### `crates/app` - CLI & Daemon
 
-The main binary (`jax-bucket`). Handles CLI commands, runs the HTTP daemon, and serves the web UI.
+The main binary (`jax-bucket`). Handles CLI commands and runs the headless HTTP daemon (REST API + gateway).
 
 **Key areas:**
 
 - `src/main.rs` - Entry point, CLI parsing
 - `src/daemon/` - HTTP server and database
   - `http_server/api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
-  - `http_server/html/` - Web UI page handlers
+  - `http_server/html/gateway/` - Gateway HTML handlers for published content
+  - `http_server/gateway_index.rs` - Gateway index page (lists published buckets)
   - `database/` - SQLite storage and bucket log provider
   - `blobs/` - Blob store setup and configuration
 - `src/ops/` - CLI command implementations
 
-#### Askama Templating
+#### Gateway Templates
 
-The web UI uses [Askama](https://github.com/djc/askama) for HTML templating.
+The gateway uses [Askama](https://github.com/djc/askama) for HTML templating of published content.
 
-- `templates/layouts/` - Base layouts (`base.html`, `explorer.html`)
-- `templates/pages/` - Full page templates
-  - `pages/buckets/` - Bucket explorer, file viewer, history, peers
-  - `pages/gateway/` - Read-only gateway UI (explorer, viewer, identity page)
-- `templates/components/` - Reusable UI components (cards, modals, sidebars)
+- `templates/layouts/base.html` - Base HTML layout
+- `templates/pages/gateway/` - Gateway UI templates
+  - `index.html` - Gateway homepage (node ID, published buckets list)
+  - `explorer.html` - Directory listing for published buckets
+  - `viewer.html` - File viewer for published content
 
 Templates are compiled at build time. Handler structs derive `Template` and reference template files.
 
