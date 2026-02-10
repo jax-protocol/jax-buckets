@@ -112,7 +112,7 @@ This document describes JaxBucket's security model, threat model, best practices
   - `sync_bucket.rs` - Manifest chain download and log application
   - `download_pins.rs` - Pin content download
   - `mod.rs` - Job definitions and common utilities
-- **Sync Provider**: `crates/app/src/daemon/sync_provider.rs`
+- **Sync Provider**: `crates/daemon/src/daemon/sync_provider.rs`
   - QueuedSyncProvider implementation
   - Background worker with periodic ping scheduler
 

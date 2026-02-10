@@ -89,7 +89,7 @@ cd jax-bucket
 cargo build --release
 
 # Install to ~/.cargo/bin
-cargo install --path crates/app
+cargo install --path crates/daemon
 
 # Or run directly from the build directory
 ./target/release/jax --help

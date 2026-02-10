@@ -43,12 +43,13 @@ jax bucket ls <bucket-id>
 
 | Crate | Description |
 |-------|-------------|
-| [jax-bucket](crates/app/) | CLI and daemon binary |
+| [jax-bucket](crates/daemon/) | CLI and daemon binary |
 | [jax-common](crates/common/) | Core library (crypto, mount, peer) |
+| [jax-desktop](crates/desktop/) | Tauri desktop app |
 
 ## Documentation
 
-- [CLI Usage](crates/app/README.md) - Commands and API reference
+- [CLI Usage](crates/daemon/README.md) - Commands and API reference
 - [Library API](crates/common/README.md) - Core data structures
 - [Architecture](agents/concepts/) - System design and concepts
 - [Installation](agents/INSTALL.md) - Installation and setup guide

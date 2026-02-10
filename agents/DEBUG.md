@@ -10,8 +10,8 @@ Guide for debugging jax-bucket during development.
 ./bin/dev
 
 # In another terminal - test the API
-./bin/dev api full health   # Should return {"status": "ok"}
-./bin/dev api full list     # List buckets
+./bin/dev api owner health   # Should return {"status": "ok"}
+./bin/dev api owner list     # List buckets
 
 # View logs
 ./bin/dev logs              # Tail all node logs
@@ -22,11 +22,13 @@ Guide for debugging jax-bucket during development.
 
 The `./bin/dev` script reads node configuration from `./bin/dev_/nodes.toml`:
 
-| Node | Nick | Type | Ports | Blob Store |
-|------|------|------|-------|------------|
-| node0 | full | Full (App + Gateway) | 8080, 9090 | legacy |
-| node1 | app | App only | 8081 | filesystem |
-| node2 | gw | Gateway only | 9092 | s3 (MinIO) |
+| Node | Nick | Role | API Port | Gateway Port | Blob Store |
+|------|------|------|----------|-------------|------------|
+| node0 | owner | Primary owner | 5002 | 8081 | legacy |
+| node1 | _owner | Replica owner | 5003 | 8082 | filesystem |
+| node2 | mirror | Mirror | 5004 | 8083 | s3 (MinIO) |
+
+Each node runs both an API server (private, mutation/RPC) and a gateway server (public, read-only) on separate ports.
 
 ### Commands
 
@@ -73,7 +75,7 @@ Logs are written to `./data/<node>/logs/jax.log.YYYY-MM-DD`.
 
 Logs use the tracing format:
 ```
-2024-01-20T12:00:00.123456Z  INFO http_server: App server listening addr=0.0.0.0:8080
+2024-01-20T12:00:00.123456Z  INFO http_server: API server listening addr=0.0.0.0:5002
 2024-01-20T12:00:01.456789Z DEBUG mount: Adding file path="/test.txt" size=123
 ```
 
@@ -98,16 +100,16 @@ Use `./bin/dev api` for quick API tests:
 
 ```bash
 # Health checks (all nodes)
-./bin/dev api full health         # Liveness on full node
-./bin/dev api app ready           # Readiness on app node
-./bin/dev api gw identity         # Gateway identity
+./bin/dev api owner health         # Liveness on owner node
+./bin/dev api _owner ready         # Readiness on replica
+./bin/dev api mirror identity      # Mirror identity
 
-# Bucket operations (app nodes only: full, app)
-./bin/dev api full create "test"       # Create bucket
-./bin/dev api full list                # List all buckets
-./bin/dev api app ls <bucket_id> /     # List root directory
-./bin/dev api full cat <bucket_id> /f  # Read file
-./bin/dev api full upload <bucket_id> / ./file.txt
+# Bucket operations (all nodes)
+./bin/dev api owner create "test"       # Create bucket
+./bin/dev api owner list                # List all buckets
+./bin/dev api _owner ls <bucket_id> /   # List root directory
+./bin/dev api owner cat <bucket_id> /f  # Read file
+./bin/dev api owner upload <bucket_id> / ./file.txt
 ```
 
 ## Common Debugging Scenarios
@@ -116,7 +118,7 @@ Use `./bin/dev api` for quick API tests:
 
 1. Check if ports are in use:
    ```bash
-   lsof -i :8080
+   lsof -i :5002
    lsof -i :8081
    ```
 
@@ -134,7 +136,7 @@ Use `./bin/dev api` for quick API tests:
 
 1. Check the request:
    ```bash
-   ./bin/dev api list  # Returns JSON with error
+   ./bin/dev api owner list  # Returns JSON with error
    ```
 
 2. Check logs for the error:
@@ -151,7 +153,7 @@ Use `./bin/dev api` for quick API tests:
 
 1. Check bucket exists:
    ```bash
-   ./bin/dev api list
+   ./bin/dev api owner list
    ```
 
 2. Check logs for mount errors:
@@ -163,8 +165,8 @@ Use `./bin/dev api` for quick API tests:
 
 1. Check node identities:
    ```bash
-   ./bin/dev api identity full
-   ./bin/dev api identity app
+   ./bin/dev api owner identity
+   ./bin/dev api _owner identity
    ```
 
 2. Look for peer connection logs:
@@ -201,7 +203,7 @@ Example prompt:
 ```
 I'm seeing this error when creating a bucket:
 
-$ ./bin/api create "test"
+$ ./bin/dev api owner create "test"
 {"error": "Mount error: ..."}
 
 Logs show:

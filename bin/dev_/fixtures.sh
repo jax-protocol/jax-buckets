@@ -248,13 +248,7 @@ fixture_share() {
 
     # Get peer's public key
     local peer_node=$(resolve_node "$peer")
-    local peer_type=$(get_node_type "$peer_node")
-    local peer_port
-    if [[ "$peer_type" == "gateway" ]]; then
-        peer_port=$(get_gateway_port "$peer_node")
-    else
-        peer_port=$(get_app_port "$peer_node")
-    fi
+    local peer_port=$(get_api_port "$peer_node")
 
     local peer_identity=$(curl -s "http://localhost:$peer_port/_status/identity")
     local peer_public_key=$(echo "$peer_identity" | jq -r '.node_id // empty')
@@ -349,8 +343,7 @@ fixtures_help() {
     echo "  publish - Publish a bucket (grant decryption to mirrors)"
     echo "  mv      - Move/rename a file or directory"
     echo ""
-    echo "Note: Fixtures require app nodes (full, app). Gateway-only nodes"
-    echo "do not expose the bucket API needed for fixtures."
+    echo "All nodes run both API and gateway servers."
 }
 
 fixtures_list() {

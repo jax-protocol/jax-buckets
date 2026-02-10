@@ -116,8 +116,8 @@ jobs:
 
           # Get version info from Cargo.toml
           COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
-          BUCKET_VERSION=$(grep "^version" crates/app/Cargo.toml | cut -d'"' -f2)
-          BLOBS_STORE_VERSION=$(grep "^version" crates/blobs-store/Cargo.toml | cut -d'"' -f2)
+          BUCKET_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
+          OBJECT_STORE_VERSION=$(grep "^version" crates/object-store/Cargo.toml | cut -d'"' -f2)
 
           PR_BODY="## Release Updates
 
@@ -125,7 +125,7 @@ jobs:
 
           ### New versions:
           - jax-common v$COMMON_VERSION
-          - jax-blobs-store v$BLOBS_STORE_VERSION
+          - jax-object-store v$OBJECT_STORE_VERSION
           - jax-bucket v$BUCKET_VERSION
 
           ### What happens when merged:

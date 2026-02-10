@@ -4,29 +4,31 @@ Quick guide to finding your way around the jax-bucket workspace.
 
 ## Crates
 
-### `crates/app` - CLI & Daemon
+### `crates/daemon` - CLI & Daemon (lib + bin)
 
-The main binary (`jax-bucket`). Handles CLI commands, runs the HTTP daemon, and serves the web UI.
+The main binary (`jax-bucket`) and library (`jax_app`). The library exports daemon functionality for embedding (used by Tauri). The binary handles CLI commands and runs the headless HTTP daemon (REST API + gateway).
 
 **Key areas:**
 
-- `src/main.rs` - Entry point, CLI parsing
+- `src/lib.rs` - Library entry point, re-exports daemon and state modules
+- `src/main.rs` - Binary entry point, CLI parsing
 - `src/daemon/` - HTTP server and database
   - `http_server/api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
-  - `http_server/html/` - Web UI page handlers
+  - `http_server/html/gateway/` - Gateway HTML handlers for published content
+  - `http_server/gateway_index.rs` - Gateway index page (lists published buckets)
   - `database/` - SQLite storage and bucket log provider
   - `blobs/` - Blob store setup and configuration
 - `src/ops/` - CLI command implementations
 
-#### Askama Templating
+#### Gateway Templates
 
-The web UI uses [Askama](https://github.com/djc/askama) for HTML templating.
+The gateway uses [Askama](https://github.com/djc/askama) for HTML templating of published content.
 
-- `templates/layouts/` - Base layouts (`base.html`, `explorer.html`)
-- `templates/pages/` - Full page templates
-  - `pages/buckets/` - Bucket explorer, file viewer, history, peers
-  - `pages/gateway/` - Read-only gateway UI (explorer, viewer, identity page)
-- `templates/components/` - Reusable UI components (cards, modals, sidebars)
+- `templates/layouts/base.html` - Base HTML layout
+- `templates/pages/gateway/` - Gateway UI templates
+  - `index.html` - Gateway homepage (node ID, published buckets list)
+  - `explorer.html` - Directory listing for published buckets
+  - `viewer.html` - File viewer for published content
 
 Templates are compiled at build time. Handler structs derive `Template` and reference template files.
 
@@ -76,6 +78,30 @@ SQLite + object storage backend for blob data (`jax-object-store`).
 
 - `tests/` - Integration tests for mount operations
 - `tests/common/mod.rs` - Shared test utilities (`setup_test_env()`)
+
+### `crates/desktop` - Desktop App
+
+Tauri 2.0 desktop application (`jax-desktop`) with SolidJS frontend. Embeds the daemon in-process and exposes IPC commands that access `ServiceState` directly (no HTTP proxying for most operations). Released via GitHub Actions (not cargo publish).
+
+**Key areas:**
+
+- `src-tauri/src/lib.rs` - Tauri entry point, daemon lifecycle management
+- `src-tauri/src/commands/bucket.rs` - Bucket IPC commands (list, ls, cat, add, mkdir, delete, history, shares)
+- `src-tauri/src/commands/daemon.rs` - Daemon status and config IPC commands
+- `src-tauri/src/tray.rs` - System tray setup (Open, Status, Quit)
+- `src-tauri/capabilities/default.json` - Tauri permission capabilities
+- `src-tauri/tauri.conf.json` - Tauri configuration
+- `src/` - SolidJS frontend source
+  - `App.tsx` - Root component with router and sidebar layout
+  - `lib/api.ts` - IPC wrapper functions (TypeScript bindings for all commands)
+  - `pages/Home.tsx` - Node status dashboard
+  - `pages/Buckets.tsx` - Bucket list and creation
+  - `pages/Explorer.tsx` - File explorer with breadcrumbs, upload, mkdir, delete, share
+  - `pages/Viewer.tsx` - File viewer (text, markdown, images, video, audio)
+  - `pages/Editor.tsx` - Text file editor with save
+  - `pages/History.tsx` - Bucket version history with navigation to past versions
+  - `pages/Settings.tsx` - Auto-launch toggle, theme switcher, local config paths
+  - `components/SharePanel.tsx` - Slide-in panel for peer sharing
 
 ## Other Directories
 

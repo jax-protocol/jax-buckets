@@ -1,35 +1,34 @@
 # Node definitions for the dev environment
 #
 # Each node has:
-#   name        - Display name
-#   nick        - Short nickname for CLI commands (e.g., "full", "app", "gw")
-#   type        - "full" | "app" | "gateway"
-#   blob_store  - "legacy" | "filesystem" | "s3"
-#   app_port    - Port for app server (optional for gateway-only)
-#   gateway_port - Port for gateway server
-#   s3_url      - S3 URL (required if blob_store = "s3")
+#   name          - Display name
+#   nick          - Short nickname for CLI commands (e.g., "owner", "_owner", "mirror")
+#   blob_store    - "legacy" | "filesystem" | "s3"
+#   api_port      - API server port (private, mutation/RPC)
+#   gateway_port  - Gateway server port (public, read-only)
+#   s3_url        - S3 URL (required if blob_store = "s3")
+#
+# Dev ports start at 5002/8081 to avoid conflicting with a local daemon
+# on default ports 5001/8080.
 
 [node0]
-name = "Full Node (legacy)"
-nick = "full"
-type = "full"
+name = "Owner (primary)"
+nick = "owner"
 blob_store = "legacy"
-app_port = 8081
-gateway_port = 9091
+api_port = 5002
+gateway_port = 8081
 
 [node1]
-name = "App Only (filesystem)"
-nick = "app"
-type = "app"
+name = "Owner (replica)"
+nick = "_owner"
 blob_store = "filesystem"
-app_port = 8082
-gateway_port = 9092
+api_port = 5003
+gateway_port = 8082
 
 [node2]
-name = "Gateway Only (s3)"
-nick = "gw"
-type = "gateway"
+name = "Mirror"
+nick = "mirror"
 blob_store = "s3"
-app_port = 8083
-gateway_port = 9093
+api_port = 5004
+gateway_port = 8083
 s3_url = "s3://minioadmin:minioadmin@localhost:9000/jax-blobs"

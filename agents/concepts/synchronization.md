@@ -51,7 +51,7 @@ JaxBucket implements a pull-based P2P sync protocol using height-based version c
 
 ### Sync Architecture
 
-**Location**: `crates/app/src/daemon/sync_provider.rs`
+**Location**: `crates/daemon/src/daemon/sync_provider.rs`
 
 JaxBucket uses a **QueuedSyncProvider** that decouples protocol handlers from sync execution:
 
@@ -337,7 +337,7 @@ This provides:
 
 ### Periodic Sync Coordination
 
-**Location**: `crates/app/src/daemon/sync_provider.rs:run_worker()`
+**Location**: `crates/daemon/src/daemon/sync_provider.rs:run_worker()`
 
 The background worker runs a periodic ping scheduler:
 

@@ -403,14 +403,14 @@ hexdump -C ~/.config/jax/blobs/HASH
 
 ### Add a New CLI Command
 
-1. Create a new module in `crates/app/src/ops/`
+1. Create a new module in `crates/daemon/src/ops/`
 2. Implement the command logic
-3. Add the command to `crates/app/src/main.rs`
+3. Add the command to `crates/daemon/src/main.rs`
 4. Add tests
 
 ### Add a New API Endpoint
 
-1. Add route in `crates/app/src/daemon/http_server/mod.rs`
+1. Add route in `crates/daemon/src/daemon/http_server/mod.rs`
 2. Implement handler function
 3. Update API documentation
 4. Add integration test
@@ -419,7 +419,7 @@ hexdump -C ~/.config/jax/blobs/HASH
 
 1. Update `crates/common/src/peer/protocol/messages/`
 2. Implement serialization/deserialization
-3. Add handler in `crates/app/src/daemon/sync_provider.rs`
+3. Add handler in `crates/daemon/src/daemon/sync_provider.rs`
 4. Update protocol documentation
 
 ### Modify the Data Model

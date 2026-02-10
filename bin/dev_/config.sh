@@ -71,35 +71,21 @@ resolve_node() {
     return 1
 }
 
-# Get the default node (first app node, not gateway-only)
+# Get the default node (first node)
 get_default_node() {
-    for node in $(get_node_names); do
-        local type=$(toml_get "$node" "type")
-        if [[ "$type" != "gateway" ]]; then
-            echo "$node"
-            return 0
-        fi
-    done
-    # Fallback to first node if all are gateways (shouldn't happen)
     get_node_names | head -1
 }
 
-# Get app port for a node
-get_app_port() {
+# Get API port for a node
+get_api_port() {
     local node=$(resolve_node "${1:-$(get_default_node)}")
-    toml_get "$node" "app_port"
+    toml_get "$node" "api_port"
 }
 
 # Get gateway port for a node
-get_gateway_port() {
+get_gw_port() {
     local node=$(resolve_node "${1:-$(get_default_node)}")
     toml_get "$node" "gateway_port"
-}
-
-# Get node type (full, app, gateway)
-get_node_type() {
-    local node=$(resolve_node "${1:-$(get_default_node)}")
-    toml_get "$node" "type"
 }
 
 # Get node display name
@@ -127,16 +113,9 @@ list_nodes() {
     for node in $(get_node_names); do
         local nick=$(toml_get "$node" "nick")
         local name=$(toml_get "$node" "name")
-        local type=$(toml_get "$node" "type")
-        local app_port=$(toml_get "$node" "app_port")
+        local api_port=$(toml_get "$node" "api_port")
         local gw_port=$(toml_get "$node" "gateway_port")
 
-        printf "  %-8s %-6s %-30s" "$node" "($nick)" "$name"
-
-        case "$type" in
-            full)    echo " App:$app_port Gateway:$gw_port" ;;
-            app)     echo " App:$app_port" ;;
-            gateway) echo " Gateway:$gw_port" ;;
-        esac
+        printf "  %-8s %-10s %-25s API:%s  GW:%s\n" "$node" "($nick)" "$name" "$api_port" "$gw_port"
     done
 }
