@@ -1,6 +1,6 @@
 use clap::Args;
-use jax_app::daemon::http_server::api::client::ApiError;
-use jax_app::daemon::http_server::api::v0::bucket::add::AddResponse;
+use jax_daemon::daemon::http_server::api::client::ApiError;
+use jax_daemon::daemon::http_server::api::v0::bucket::add::AddResponse;
 use reqwest::multipart;
 use std::env;
 use std::path::PathBuf;

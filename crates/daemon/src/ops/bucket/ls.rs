@@ -1,6 +1,6 @@
 use clap::Args;
-use jax_app::daemon::http_server::api::client::ApiError;
-use jax_app::daemon::http_server::api::v0::bucket::ls::{LsRequest, LsResponse};
+use jax_daemon::daemon::http_server::api::client::ApiError;
+use jax_daemon::daemon::http_server::api::v0::bucket::ls::{LsRequest, LsResponse};
 use uuid::Uuid;
 
 #[derive(Args, Debug, Clone)]

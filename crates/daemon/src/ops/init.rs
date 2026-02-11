@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, ValueEnum};
 
-use jax_app::state::{AppConfig, AppState, BlobStoreConfig};
+use jax_daemon::state::{AppConfig, AppState, BlobStoreConfig};
 
 /// Blob store backend type for CLI selection
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
@@ -49,7 +49,7 @@ pub struct Init {
 #[derive(Debug, thiserror::Error)]
 pub enum InitError {
     #[error("init failed: {0}")]
-    StateFailed(#[from] jax_app::state::StateError),
+    StateFailed(#[from] jax_daemon::state::StateError),
 
     #[error("missing required config: {0}")]
     MissingConfig(String),

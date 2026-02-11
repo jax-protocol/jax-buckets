@@ -1,5 +1,5 @@
-use jax_app::daemon::http_server::api::client::ApiError;
-use jax_app::daemon::http_server::api::v0::bucket::share::{ShareRequest, ShareResponse};
+use jax_daemon::daemon::http_server::api::client::ApiError;
+use jax_daemon::daemon::http_server::api::v0::bucket::share::{ShareRequest, ShareResponse};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BucketShareError {

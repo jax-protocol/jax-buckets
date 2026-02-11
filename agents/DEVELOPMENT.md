@@ -267,7 +267,7 @@ cargo test
 
 ```bash
 cargo test -p jax-common
-cargo test -p jax-bucket
+cargo test -p jax-daemon
 ```
 
 ### Run a Specific Test

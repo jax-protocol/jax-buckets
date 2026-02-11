@@ -1,5 +1,5 @@
-use jax_app::daemon::http_server::api::client::ApiError;
-use jax_app::daemon::http_server::api::v0::bucket::create::{CreateRequest, CreateResponse};
+use jax_daemon::daemon::http_server::api::client::ApiError;
+use jax_daemon::daemon::http_server::api::v0::bucket::create::{CreateRequest, CreateResponse};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BucketCreateError {

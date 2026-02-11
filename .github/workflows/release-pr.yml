@@ -54,7 +54,7 @@ jobs:
         id: check
         run: |
           # Get the latest release tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 --match "jax-bucket-v*" 2>/dev/null || echo "")
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match "jax-daemon-v*" 2>/dev/null || echo "")
 
           if [ -z "$LATEST_TAG" ]; then
             echo "No previous release found, will create initial release"
@@ -93,7 +93,7 @@ jobs:
         run: |
           # Execute release: updates files, creates commits, but NO TAGS
           # Tags will be created by publish workflow after PR is merged
-          cargo smart-release jax-bucket \
+          cargo smart-release jax-daemon \
             --execute \
             --no-publish \
             --no-tag \
@@ -116,7 +116,7 @@ jobs:
 
           # Get version info from Cargo.toml
           COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
-          BUCKET_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
+          DAEMON_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
           OBJECT_STORE_VERSION=$(grep "^version" crates/object-store/Cargo.toml | cut -d'"' -f2)
 
           PR_BODY="## Release Updates
@@ -126,7 +126,7 @@ jobs:
           ### New versions:
           - jax-common v$COMMON_VERSION
           - jax-object-store v$OBJECT_STORE_VERSION
-          - jax-bucket v$BUCKET_VERSION
+          - jax-daemon v$DAEMON_VERSION
 
           ### What happens when merged:
           1. Tags will be created automatically

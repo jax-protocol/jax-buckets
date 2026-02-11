@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 use crate::op::Op;
-use jax_app::daemon::http_server::api::client::ApiError;
+use jax_daemon::daemon::http_server::api::client::ApiError;
 
 use super::clone_state::{CloneConfig, CloneStateError, CloneStateManager, PathHashMap};
 

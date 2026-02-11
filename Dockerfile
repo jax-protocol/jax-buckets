@@ -1,9 +1,9 @@
 # Multi-stage build for smaller final image
 FROM rust:1.85-slim as builder
 
-# Install jax-bucket from crates.io with pinned version
+# Install jax-daemon from crates.io with pinned version
 ARG JAX_VERSION=0.1.0
-RUN cargo install jax-bucket --version ${JAX_VERSION}
+RUN cargo install jax-daemon --version ${JAX_VERSION}
 
 # Runtime stage with minimal dependencies
 FROM debian:bookworm-slim

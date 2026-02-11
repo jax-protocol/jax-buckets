@@ -1,10 +1,10 @@
 # API Reference
 
-This document describes the HTTP API endpoints for jax-bucket.
+This document describes the HTTP API endpoints for jax-daemon.
 
 ## Overview
 
-jax-bucket has two server types:
+jax-daemon has two server types:
 - **App Server**: Full API + Web UI (writable operations)
 - **Gateway Server**: Read-only content serving
 

@@ -1,5 +1,5 @@
-use jax_app::daemon::http_server::api::client::ApiError;
-use jax_app::daemon::http_server::api::v0::bucket::list::{ListRequest, ListResponse};
+use jax_daemon::daemon::http_server::api::client::ApiError;
+use jax_daemon::daemon::http_server::api::v0::bucket::list::{ListRequest, ListResponse};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BucketListError {

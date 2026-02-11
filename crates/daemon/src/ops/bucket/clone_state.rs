@@ -2,4 +2,4 @@
 //!
 //! This module re-exports types from the daemon for use in CLI ops.
 
-pub use jax_app::daemon::clone_state::*;
+pub use jax_daemon::daemon::clone_state::*;

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use url::Url;
 
-use jax_app::daemon::http_server::api::client::{ApiClient, ApiError};
+use jax_daemon::daemon::http_server::api::client::{ApiClient, ApiError};
 
 #[derive(Clone)]
 pub struct OpContext {

@@ -2,7 +2,7 @@ use clap::Args;
 use std::path::PathBuf;
 
 use crate::op::Op;
-use jax_app::daemon::http_server::api::client::ApiError;
+use jax_daemon::daemon::http_server::api::client::ApiError;
 
 use super::clone_state::{CloneStateError, CloneStateManager, PathHashMap};
 

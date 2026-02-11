@@ -1,7 +1,6 @@
-# Daemon library + CLI binary. Conceptually "jax-daemon".
-# Package name "jax-bucket" kept for cargo publish compatibility.
+# Daemon library + CLI binary.
 [package]
-name = "jax-bucket"
+name = "jax-daemon"
 version = "0.1.7"
 edition.workspace = true
 license.workspace = true
@@ -14,7 +13,7 @@ readme = "README.md"
 build = "build.rs"
 
 [lib]
-name = "jax_app"
+name = "jax_daemon"
 path = "src/lib.rs"
 
 [[bin]]

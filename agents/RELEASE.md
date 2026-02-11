@@ -60,7 +60,7 @@ If you prefer to release manually from the command line:
 
 2. **Preview what would happen** (dry-run):
    ```bash
-   cargo smart-release jax-bucket -v
+   cargo smart-release jax-daemon -v
    ```
 
    This shows:
@@ -70,13 +70,13 @@ If you prefer to release manually from the command line:
 
 3. **Execute the release**:
    ```bash
-   cargo smart-release jax-bucket --execute --no-publish
+   cargo smart-release jax-daemon --execute --no-publish
    ```
 
    This will:
    - Update version numbers in all Cargo.toml files
    - Update CHANGELOGs based on commits since last release
-   - Create git tags (e.g., `jax-common-v0.1.1`, `jax-object-store-v0.1.1`, `jax-bucket-v0.1.1`)
+   - Create git tags (e.g., `jax-common-v0.1.1`, `jax-object-store-v0.1.1`, `jax-daemon-v0.1.1`)
    - Commit the changes with message like "release"
    - Push tags and commits to GitHub
    - **Note**: It does NOT publish to crates.io (that's handled by GitHub Actions)
@@ -114,13 +114,13 @@ If you want to force a specific version bump instead of auto-detection:
 
 ```bash
 # Force a minor version bump
-cargo smart-release jax-bucket --execute --no-publish --bump minor
+cargo smart-release jax-daemon --execute --no-publish --bump minor
 
 # Force a patch version bump
-cargo smart-release jax-bucket --execute --no-publish --bump patch
+cargo smart-release jax-daemon --execute --no-publish --bump patch
 
 # Force a major version bump
-cargo smart-release jax-bucket --execute --no-publish --bump major
+cargo smart-release jax-daemon --execute --no-publish --bump major
 ```
 
 ## Editing Changelogs Manually
@@ -133,7 +133,7 @@ If the auto-generated changelog is empty or needs tweaking:
 
 Or use:
 ```bash
-cargo changelog --write jax-bucket
+cargo changelog --write jax-daemon
 ```
 
 ## How the Automation Works
@@ -208,10 +208,10 @@ git push origin main
 git log --oneline
 
 # 2. Dry-run to preview
-cargo smart-release jax-bucket -v
+cargo smart-release jax-daemon -v
 
 # 3. Execute if everything looks good
-cargo smart-release jax-bucket --execute --no-publish
+cargo smart-release jax-daemon --execute --no-publish
 
 # 4. Wait for GitHub Actions to publish to crates.io
 # Check: https://github.com/jax-ethdenver-2025/jax-bucket/actions
@@ -231,5 +231,5 @@ git push origin main
 # Go to Actions → "Create Release PR" → "Run workflow"
 
 # Option 3: Manual release (fastest)
-cargo smart-release jax-bucket --execute --no-publish --bump patch
+cargo smart-release jax-daemon --execute --no-publish --bump patch
 ```

@@ -1,11 +1,11 @@
-# jax-bucket
+# jax-daemon
 
 CLI and daemon for end-to-end encrypted P2P storage buckets.
 
 ## Installation
 
 ```bash
-cargo install jax-bucket
+cargo install jax-daemon
 ```
 
 ## Quick Start

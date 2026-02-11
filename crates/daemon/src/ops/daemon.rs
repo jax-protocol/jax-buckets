@@ -1,7 +1,7 @@
 use clap::Args;
 
-use jax_app::daemon::{spawn_service, ServiceConfig};
-use jax_app::state::AppState;
+use jax_daemon::daemon::{spawn_service, ServiceConfig};
+use jax_daemon::state::AppState;
 
 #[derive(Args, Debug, Clone)]
 pub struct Daemon {
@@ -25,7 +25,7 @@ pub struct Daemon {
 #[derive(Debug, thiserror::Error)]
 pub enum DaemonError {
     #[error("state error: {0}")]
-    StateError(#[from] jax_app::state::StateError),
+    StateError(#[from] jax_daemon::state::StateError),
 
     #[error("daemon failed: {0}")]
     Failed(String),

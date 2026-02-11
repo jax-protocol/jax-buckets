@@ -54,22 +54,22 @@ jobs:
         run: |
           # Read versions from Cargo.toml files
           COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
-          BUCKET_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
+          DAEMON_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
           OBJECT_STORE_VERSION=$(grep "^version" crates/object-store/Cargo.toml | cut -d'"' -f2)
 
           echo "Creating tags for:"
           echo "  jax-common v$COMMON_VERSION"
-          echo "  jax-bucket v$BUCKET_VERSION"
+          echo "  jax-daemon v$DAEMON_VERSION"
           echo "  jax-object-store v$OBJECT_STORE_VERSION"
 
           # Create annotated tags
           git tag -a "jax-common-v$COMMON_VERSION" -m "Release jax-common v$COMMON_VERSION"
-          git tag -a "jax-bucket-v$BUCKET_VERSION" -m "Release jax-bucket v$BUCKET_VERSION"
+          git tag -a "jax-daemon-v$DAEMON_VERSION" -m "Release jax-daemon v$DAEMON_VERSION"
           git tag -a "jax-object-store-v$OBJECT_STORE_VERSION" -m "Release jax-object-store v$OBJECT_STORE_VERSION"
 
           # Push tags to remote
           git push origin "jax-common-v$COMMON_VERSION"
-          git push origin "jax-bucket-v$BUCKET_VERSION"
+          git push origin "jax-daemon-v$DAEMON_VERSION"
           git push origin "jax-object-store-v$OBJECT_STORE_VERSION"
 
           echo "Tags pushed successfully"
@@ -102,11 +102,11 @@ jobs:
           echo "Waiting 90 seconds for crates.io to index jax-object-store..."
           sleep 90
 
-      - name: Publish jax-bucket
+      - name: Publish jax-daemon
         run: |
           cd crates/daemon
-          echo "Publishing jax-bucket..."
-          cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-bucket publish failed or already published"
+          echo "Publishing jax-daemon..."
+          cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-daemon publish failed or already published"
           cd ../..
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -114,14 +114,14 @@ jobs:
       - name: Summary
         run: |
           COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
-          BUCKET_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
+          DAEMON_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
           OBJECT_STORE_VERSION=$(grep "^version" crates/object-store/Cargo.toml | cut -d'"' -f2)
           echo "Release complete!"
           echo "   - jax-common v$COMMON_VERSION"
           echo "   - jax-object-store v$OBJECT_STORE_VERSION"
-          echo "   - jax-bucket v$BUCKET_VERSION"
+          echo "   - jax-daemon v$DAEMON_VERSION"
           echo ""
           echo "Check crates.io:"
           echo "   - https://crates.io/crates/jax-common"
           echo "   - https://crates.io/crates/jax-object-store"
-          echo "   - https://crates.io/crates/jax-bucket"
+          echo "   - https://crates.io/crates/jax-daemon"

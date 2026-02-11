@@ -6,7 +6,7 @@ Quick guide to finding your way around the jax-bucket workspace.
 
 ### `crates/daemon` - CLI & Daemon (lib + bin)
 
-The main binary (`jax-bucket`) and library (`jax_app`). The library exports daemon functionality for embedding (used by Tauri). The binary handles CLI commands and runs the headless HTTP daemon (REST API + gateway).
+The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports daemon functionality for embedding (used by Tauri). The binary handles CLI commands and runs the headless HTTP daemon (REST API + gateway).
 
 **Key areas:**
 

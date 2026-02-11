@@ -15,7 +15,7 @@ cargo fmt        # Format code
 
 ## Project Structure
 
-- `crates/daemon/` - Main binary (`jax-bucket`) with CLI and daemon
+- `crates/daemon/` - Main binary (`jax-daemon`) with CLI and daemon
 - `crates/desktop/` - Tauri desktop app (`jax-desktop`)
 - `crates/common/` - Shared library (`jax-common`) with crypto, mount, and peer modules
 - `agents/` - Agent documentation (read these first)

@@ -11,7 +11,7 @@ pub mod share;
 pub mod sync;
 
 use crate::op::Op;
-use jax_app::daemon::http_server::api::v0::bucket::{CreateRequest, ListRequest, ShareRequest};
+use jax_daemon::daemon::http_server::api::v0::bucket::{CreateRequest, ListRequest, ShareRequest};
 
 crate::command_enum! {
     (Create, CreateRequest),
