@@ -3,17 +3,17 @@ use axum::extract::{Json, State};
 use axum::response::IntoResponse;
 #[cfg(feature = "fuse")]
 use axum::response::Response;
-#[cfg(feature = "fuse")]
+use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "fuse")]
 use uuid::Uuid;
 
+use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
 use crate::database::mount_queries::{CreateMountConfig, FuseMount};
 #[cfg(feature = "fuse")]
 use crate::ServiceState;
 
-#[cfg(feature = "fuse")]
+/// Request to create a new mount configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMountRequest {
     pub bucket_id: Uuid,
@@ -26,13 +26,13 @@ pub struct CreateMountRequest {
     pub cache_ttl_secs: Option<u32>,
 }
 
-#[cfg(feature = "fuse")]
+/// Response containing the created mount
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMountResponse {
     pub mount: MountInfo,
 }
 
-#[cfg(feature = "fuse")]
+/// Information about a mount configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MountInfo {
     pub mount_id: Uuid,
@@ -130,5 +130,15 @@ impl IntoResponse for CreateMountError {
                 (http::StatusCode::BAD_REQUEST, format!("Mount error: {}", e)).into_response()
             }
         }
+    }
+}
+
+// Client implementation - builds request for this operation
+impl ApiRequest for CreateMountRequest {
+    type Response = CreateMountResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url.join("/api/v0/mounts/").unwrap();
+        client.post(full_url).json(&self)
     }
 }

@@ -7,15 +7,19 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 #[cfg(feature = "fuse")]
 use axum::Json;
-#[cfg(feature = "fuse")]
+use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "fuse")]
 use super::create::MountInfo;
+use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
 use crate::ServiceState;
 
-#[cfg(feature = "fuse")]
+/// Request to list all mount configurations
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListMountsRequest {}
+
+/// Response containing all mount configurations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListMountsResponse {
     pub mounts: Vec<MountInfo>,
@@ -75,5 +79,15 @@ impl IntoResponse for ListMountsError {
             )
                 .into_response(),
         }
+    }
+}
+
+// Client implementation - builds request for this operation
+impl ApiRequest for ListMountsRequest {
+    type Response = ListMountsResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url.join("/api/v0/mounts/").unwrap();
+        client.get(full_url)
     }
 }

@@ -1,3 +1,5 @@
+//! Get mount API endpoint
+
 use axum::extract::Path;
 #[cfg(feature = "fuse")]
 use axum::extract::State;
@@ -6,16 +8,22 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 #[cfg(feature = "fuse")]
 use axum::Json;
-#[cfg(feature = "fuse")]
+use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[cfg(feature = "fuse")]
 use super::create::MountInfo;
+use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
 use crate::ServiceState;
 
-#[cfg(feature = "fuse")]
+/// Request to get a mount by ID
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetMountRequest {
+    pub mount_id: Uuid,
+}
+
+/// Response containing the mount
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetMountResponse {
     pub mount: MountInfo,
@@ -85,5 +93,17 @@ impl IntoResponse for GetMountError {
             )
                 .into_response(),
         }
+    }
+}
+
+// Client implementation - builds request for this operation
+impl ApiRequest for GetMountRequest {
+    type Response = GetMountResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url
+            .join(&format!("/api/v0/mounts/{}", self.mount_id))
+            .unwrap();
+        client.get(full_url)
     }
 }

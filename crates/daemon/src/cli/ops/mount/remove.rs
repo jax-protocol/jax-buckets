@@ -1,11 +1,11 @@
 use clap::Args;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
 use jax_daemon::http_server::api::client::ApiError;
+use jax_daemon::http_server::api::v0::mounts::{DeleteMountRequest, DeleteMountResponse};
 
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
+#[derive(Args, Debug, Clone)]
 pub struct Remove {
     /// Mount ID to remove
     pub id: Uuid,
@@ -15,33 +15,18 @@ pub struct Remove {
     pub force: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DeleteMountResponse {
-    deleted: bool,
-}
-
 #[async_trait::async_trait]
 impl Op for Remove {
     type Error = RemoveError;
     type Output = String;
 
     async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let client = ctx.client.clone();
+        let mut client = ctx.client.clone();
 
         // TODO: Add confirmation prompt if not force
 
-        let url = client
-            .base_url()
-            .join(&format!("/api/v0/mounts/{}", self.id))
-            .unwrap();
-
-        let response: DeleteMountResponse = client
-            .http_client()
-            .delete(url)
-            .send()
-            .await?
-            .json()
-            .await?;
+        let request = DeleteMountRequest { mount_id: self.id };
+        let response: DeleteMountResponse = client.call(request).await?;
 
         if response.deleted {
             Ok(format!("Removed mount {}", self.id))
@@ -55,8 +40,6 @@ impl Op for Remove {
 pub enum RemoveError {
     #[error("API error: {0}")]
     Api(#[from] ApiError),
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
 }
 
 impl std::fmt::Display for Remove {

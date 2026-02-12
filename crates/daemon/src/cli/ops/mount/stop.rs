@@ -1,19 +1,14 @@
 use clap::Args;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
 use jax_daemon::http_server::api::client::ApiError;
+use jax_daemon::http_server::api::v0::mounts::{StopMountRequest, StopMountResponse};
 
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
+#[derive(Args, Debug, Clone)]
 pub struct Stop {
     /// Mount ID to stop
     pub id: Uuid,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StopMountResponse {
-    stopped: bool,
 }
 
 #[async_trait::async_trait]
@@ -22,15 +17,10 @@ impl Op for Stop {
     type Output = String;
 
     async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let client = ctx.client.clone();
+        let mut client = ctx.client.clone();
 
-        let url = client
-            .base_url()
-            .join(&format!("/api/v0/mounts/{}/stop", self.id))
-            .unwrap();
-
-        let response: StopMountResponse =
-            client.http_client().post(url).send().await?.json().await?;
+        let request = StopMountRequest { mount_id: self.id };
+        let response: StopMountResponse = client.call(request).await?;
 
         if response.stopped {
             Ok(format!("Stopped mount {}", self.id))
@@ -44,8 +34,6 @@ impl Op for Stop {
 pub enum StopError {
     #[error("API error: {0}")]
     Api(#[from] ApiError),
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
 }
 
 impl std::fmt::Display for Stop {

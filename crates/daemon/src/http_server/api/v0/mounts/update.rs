@@ -4,22 +4,24 @@ use axum::extract::Path;
 use axum::response::IntoResponse;
 #[cfg(feature = "fuse")]
 use axum::response::Response;
+use reqwest::{Client, RequestBuilder, Url};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(feature = "fuse")]
 use axum::extract::State;
 use axum::Json;
-use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "fuse")]
 use super::create::MountInfo;
+use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
 use crate::database::mount_queries::UpdateMountConfig;
 #[cfg(feature = "fuse")]
 use crate::ServiceState;
 
+/// Request body for updating a mount (used by handler)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateMountRequest {
+pub struct UpdateMountBody {
     pub mount_point: Option<String>,
     pub enabled: Option<bool>,
     pub auto_mount: Option<bool>,
@@ -28,7 +30,15 @@ pub struct UpdateMountRequest {
     pub cache_ttl_secs: Option<u32>,
 }
 
-#[cfg(feature = "fuse")]
+/// Full request for updating a mount (used by client)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMountRequest {
+    pub mount_id: Uuid,
+    #[serde(flatten)]
+    pub body: UpdateMountBody,
+}
+
+/// Response containing the updated mount
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMountResponse {
     pub mount: MountInfo,
@@ -38,7 +48,7 @@ pub struct UpdateMountResponse {
 pub async fn handler(
     State(state): State<ServiceState>,
     Path(id): Path<Uuid>,
-    Json(req): Json<UpdateMountRequest>,
+    Json(req): Json<UpdateMountBody>,
 ) -> Result<impl IntoResponse, UpdateMountError> {
     let mount_manager = state.mount_manager().read().await;
     let mount_manager = mount_manager
@@ -71,7 +81,7 @@ pub async fn handler(
 #[cfg(not(feature = "fuse"))]
 pub async fn handler(
     Path(_id): Path<Uuid>,
-    Json(_req): Json<UpdateMountRequest>,
+    Json(_req): Json<UpdateMountBody>,
 ) -> impl IntoResponse {
     (
         http::StatusCode::NOT_IMPLEMENTED,
@@ -109,5 +119,17 @@ impl IntoResponse for UpdateMountError {
                 (http::StatusCode::BAD_REQUEST, format!("Mount error: {}", e)).into_response()
             }
         }
+    }
+}
+
+// Client implementation - builds request for this operation
+impl ApiRequest for UpdateMountRequest {
+    type Response = UpdateMountResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url
+            .join(&format!("/api/v0/mounts/{}", self.mount_id))
+            .unwrap();
+        client.patch(full_url).json(&self.body)
     }
 }

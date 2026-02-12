@@ -1,24 +1,14 @@
 use clap::Args;
-use serde::{Deserialize, Serialize};
 
 use crate::cli::op::{Op, OpContext};
 use jax_daemon::http_server::api::client::ApiError;
+use jax_daemon::http_server::api::v0::mounts::{ListMountsRequest, ListMountsResponse};
 
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
+#[derive(Args, Debug, Clone)]
 pub struct List {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MountListItem {
-    pub mount_id: String,
-    pub bucket_id: String,
-    pub mount_point: String,
-    pub status: String,
-    pub auto_mount: bool,
-    pub read_only: bool,
 }
 
 #[async_trait::async_trait]
@@ -27,17 +17,8 @@ impl Op for List {
     type Output = String;
 
     async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let client = ctx.client.clone();
-
-        // Call the list mounts API
-        let url = client.base_url().join("/api/v0/mounts/").unwrap();
-        let response = client
-            .http_client()
-            .get(url)
-            .send()
-            .await?
-            .json::<ListMountsResponse>()
-            .await?;
+        let mut client = ctx.client.clone();
+        let response: ListMountsResponse = client.call(ListMountsRequest {}).await?;
 
         if self.json {
             return Ok(serde_json::to_string_pretty(&response.mounts)?);
@@ -79,17 +60,10 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ListMountsResponse {
-    mounts: Vec<MountListItem>,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum ListError {
     #[error("API error: {0}")]
     Api(#[from] ApiError),
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }

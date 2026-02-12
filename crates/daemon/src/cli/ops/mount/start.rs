@@ -1,19 +1,14 @@
 use clap::Args;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
 use jax_daemon::http_server::api::client::ApiError;
+use jax_daemon::http_server::api::v0::mounts::{StartMountRequest, StartMountResponse};
 
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
+#[derive(Args, Debug, Clone)]
 pub struct Start {
     /// Mount ID to start
     pub id: Uuid,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StartMountResponse {
-    started: bool,
 }
 
 #[async_trait::async_trait]
@@ -22,15 +17,10 @@ impl Op for Start {
     type Output = String;
 
     async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let client = ctx.client.clone();
+        let mut client = ctx.client.clone();
 
-        let url = client
-            .base_url()
-            .join(&format!("/api/v0/mounts/{}/start", self.id))
-            .unwrap();
-
-        let response: StartMountResponse =
-            client.http_client().post(url).send().await?.json().await?;
+        let request = StartMountRequest { mount_id: self.id };
+        let response: StartMountResponse = client.call(request).await?;
 
         if response.started {
             Ok(format!("Started mount {}", self.id))
@@ -44,8 +34,6 @@ impl Op for Start {
 pub enum StartError {
     #[error("API error: {0}")]
     Api(#[from] ApiError),
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
 }
 
 impl std::fmt::Display for Start {

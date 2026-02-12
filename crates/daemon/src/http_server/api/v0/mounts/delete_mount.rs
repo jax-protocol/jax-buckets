@@ -4,19 +4,26 @@ use axum::extract::Path;
 use axum::response::IntoResponse;
 #[cfg(feature = "fuse")]
 use axum::response::Response;
+use reqwest::{Client, RequestBuilder, Url};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(feature = "fuse")]
 use axum::extract::State;
 #[cfg(feature = "fuse")]
 use axum::Json;
-#[cfg(feature = "fuse")]
-use serde::{Deserialize, Serialize};
 
+use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
 use crate::ServiceState;
 
-#[cfg(feature = "fuse")]
+/// Request to delete a mount
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteMountRequest {
+    pub mount_id: Uuid,
+}
+
+/// Response indicating mount was deleted
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteMountResponse {
     pub deleted: bool,
@@ -70,5 +77,17 @@ impl IntoResponse for DeleteMountError {
             )
                 .into_response(),
         }
+    }
+}
+
+// Client implementation - builds request for this operation
+impl ApiRequest for DeleteMountRequest {
+    type Response = DeleteMountResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url
+            .join(&format!("/api/v0/mounts/{}", self.mount_id))
+            .unwrap();
+        client.delete(full_url)
     }
 }

@@ -17,6 +17,15 @@ mod start;
 mod stop;
 mod update;
 
+// Re-export request/response types for use by CLI and other clients
+pub use create::{CreateMountRequest, CreateMountResponse, MountInfo};
+pub use delete_mount::{DeleteMountRequest, DeleteMountResponse};
+pub use get::{GetMountRequest, GetMountResponse};
+pub use list::{ListMountsRequest, ListMountsResponse};
+pub use start::{StartMountRequest, StartMountResponse};
+pub use stop::{StopMountRequest, StopMountResponse};
+pub use update::{UpdateMountBody, UpdateMountRequest, UpdateMountResponse};
+
 pub fn router(state: ServiceState) -> Router<ServiceState> {
     Router::new()
         .route("/", post(create::handler).get(list::handler))
