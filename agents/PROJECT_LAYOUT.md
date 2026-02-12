@@ -14,19 +14,29 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
 - `src/main.rs` - Binary entry point, CLI parsing
 - `src/http_server/` - HTTP servers (API + gateway)
   - `api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
-  - `api/client/` - API client for CLI commands
+  - `api/v0/mounts/` - FUSE mount REST API (create, list, get, update, delete, start, stop)
+  - `api/client/` - API client for CLI commands and FUSE operations
   - `html/gateway/` - Gateway HTML handlers for published content
   - `gateway_index.rs` - Gateway index page (lists published buckets)
 - `src/database/` - SQLite storage and bucket log provider
+  - `mount_queries.rs` - FUSE mount persistence (CRUD, status updates)
 - `src/blobs/` - Blob store setup and configuration
-- `src/process/` - Service lifecycle (start, spawn, shutdown)
+- `src/fuse/` - FUSE filesystem integration (behind `fuse` feature flag)
+  - `mod.rs` - Module exports
+  - `jax_fs.rs` - FUSE filesystem implementation using fuser
+  - `mount_manager.rs` - Mount lifecycle management (start, stop, auto-mount)
+  - `inode_table.rs` - Bidirectional inode ↔ path mapping
+  - `cache.rs` - LRU content cache with TTL
+  - `sync_events.rs` - Sync event types for cache invalidation
+- `src/process/` - Service lifecycle (start, spawn, shutdown, auto-mount)
 - `src/service_config.rs` - Service configuration (ports, paths, blob store)
-- `src/service_state.rs` - Runtime state (database, peer)
+- `src/service_state.rs` - Runtime state (database, peer, mount_manager)
 - `src/state.rs` - App state (jax directory paths, config file)
 - `src/cli/` - CLI-specific code (not exported by library)
   - `args.rs` - CLI argument parsing
   - `op.rs` - Op trait and command_enum macro
-  - `ops/` - CLI command implementations (bucket, daemon, init, version)
+  - `ops/` - CLI command implementations (bucket, daemon, init, mount, version)
+    - `mount/` - Mount CLI commands (list, add, remove, start, stop, set)
 
 ### `crates/common` - Core Library
 
@@ -84,14 +94,16 @@ Tauri 2.0 desktop application (`jax-desktop`) with SolidJS frontend. Embeds the 
 - `src-tauri/src/lib.rs` - Tauri entry point, daemon lifecycle management
 - `src-tauri/src/commands/bucket.rs` - Bucket IPC commands (list, ls, cat, add, mkdir, delete, history, shares)
 - `src-tauri/src/commands/daemon.rs` - Daemon status and config IPC commands
+- `src-tauri/src/commands/mount.rs` - FUSE mount IPC commands (list, create, start, stop, delete, simplified mount/unmount)
 - `src-tauri/src/tray.rs` - System tray setup (Open, Status, Quit)
 - `src-tauri/capabilities/default.json` - Tauri permission capabilities
 - `src-tauri/tauri.conf.json` - Tauri configuration
 - `src/` - SolidJS frontend source
   - `App.tsx` - Root component with router and sidebar layout
-  - `lib/api.ts` - IPC wrapper functions (TypeScript bindings for all commands)
+  - `lib/api.ts` - IPC wrapper functions (TypeScript bindings for all commands including mounts)
   - `pages/Home.tsx` - Node status dashboard
-  - `pages/Buckets.tsx` - Bucket list and creation
+  - `pages/Buckets.tsx` - Bucket list, creation, and one-click mount/unmount buttons
+  - `pages/Mounts.tsx` - Advanced mount management (manual mount point selection)
   - `pages/Explorer.tsx` - File explorer with breadcrumbs, upload, mkdir, delete, share
   - `pages/Viewer.tsx` - File viewer (text, markdown, images, video, audio)
   - `pages/Editor.tsx` - Text file editor with save

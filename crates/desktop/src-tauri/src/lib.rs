@@ -39,6 +39,14 @@ impl Default for AppState {
 /// Run the Tauri application
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize tracing subscriber for logging
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .init();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -47,6 +55,13 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
+            // On macOS, set activation policy to Accessory to prevent
+            // creating new windows when app is activated by external events (like FUSE)
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::ActivationPolicy;
+                app.set_activation_policy(ActivationPolicy::Accessory);
+            }
             // Initialize app state
             let state = AppState::default();
             app.manage(state);
@@ -59,6 +74,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = spawn_daemon(&app_handle).await {
                     tracing::error!("Failed to spawn daemon: {}", e);
+                    eprintln!("DAEMON ERROR: {}", e);
                 }
             });
 
@@ -92,6 +108,19 @@ pub fn run() {
             commands::daemon::get_status,
             commands::daemon::get_identity,
             commands::daemon::get_config_info,
+            // Mount commands
+            commands::mount::list_mounts,
+            commands::mount::create_mount,
+            commands::mount::get_mount,
+            commands::mount::update_mount,
+            commands::mount::delete_mount,
+            commands::mount::start_mount,
+            commands::mount::stop_mount,
+            commands::mount::is_fuse_available,
+            // Simplified mount API for desktop
+            commands::mount::mount_bucket,
+            commands::mount::unmount_bucket,
+            commands::mount::is_bucket_mounted,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

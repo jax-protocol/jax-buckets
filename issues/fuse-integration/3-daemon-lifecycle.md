@@ -1,6 +1,6 @@
 # Daemon Mount Lifecycle
 
-**Status:** Planned
+**Status:** Complete
 **Track:** Local
 **Depends on:** Ticket 2 (Daemon state)
 
@@ -67,14 +67,20 @@ Command::new("fusermount").args(["-u", &mount_point]).status()?;
 
 ## Acceptance Criteria
 
-- [ ] `jax mount start <id>` spawns FUSE process and updates status
-- [ ] `jax mount stop <id>` kills process and runs platform unmount
-- [ ] Mounts with `auto_mount = true` start on daemon startup
-- [ ] All mounts stop gracefully on daemon shutdown
-- [ ] Crashed mounts have `Error` status with error message
-- [ ] macOS and Linux unmount commands work
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] `jax mount start <id>` spawns FUSE process and updates status
+- [x] `jax mount stop <id>` kills process and runs platform unmount
+- [x] Mounts with `auto_mount = true` start on daemon startup
+- [x] All mounts stop gracefully on daemon shutdown
+- [x] Crashed mounts have `Error` status with error message
+- [x] macOS and Linux unmount commands work
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings
+
+## Implementation Notes
+
+- Auto-mount triggered in `process/mod.rs` after 500ms delay for service readiness
+- Graceful shutdown calls `stop_all_mounts()` via `ShutdownHandle`
+- macOS uses `umount`, Linux uses `fusermount -u`
 
 ## Verification
 

@@ -43,6 +43,7 @@ hex = "0.4"
 
 # Tracing
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Time
 time = { version = "0.3", features = ["serde", "formatting"] }
@@ -53,5 +54,6 @@ uuid = { version = "1.8", features = ["v4", "serde"] }
 [workspace]
 
 [features]
-default = ["custom-protocol"]
+default = ["custom-protocol", "fuse"]
 custom-protocol = ["tauri/custom-protocol"]
+fuse = ["jax-daemon/fuse"]

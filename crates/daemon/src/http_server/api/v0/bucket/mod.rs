@@ -4,6 +4,7 @@ use axum::Router;
 use crate::ServiceState;
 
 pub mod add;
+pub mod add_json;
 pub mod cat;
 pub mod create;
 pub mod delete;
@@ -29,6 +30,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/", post(create::handler))
         .route("/list", post(list::handler))
         .route("/add", post(add::handler))
+        .route("/add-json", post(add_json::handler))
         .route("/update", post(update::handler))
         .route("/rename", post(rename::handler))
         .route("/mv", post(mv::handler))

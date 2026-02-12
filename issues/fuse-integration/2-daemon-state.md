@@ -1,6 +1,6 @@
 # Daemon State for FUSE Mounts
 
-**Status:** Planned
+**Status:** Complete
 **Track:** Local
 **Depends on:** Ticket 1 (FUSE filesystem)
 
@@ -77,9 +77,15 @@ pub struct MountManager {
 
 ## Acceptance Criteria
 
-- [ ] `fuse_mounts` table created by migration
-- [ ] CRUD operations on mount configs via mount_queries
-- [ ] `MountManager` tracks running mount processes
-- [ ] `MountManager` integrated into `ServiceState` behind feature flag
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] `fuse_mounts` table created by migration
+- [x] CRUD operations on mount configs via mount_queries
+- [x] `MountManager` tracks running mount processes
+- [x] `MountManager` integrated into `ServiceState` behind feature flag
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings
+
+## Implementation Notes
+
+- Migration at `migrations/20260211000000_create_fuse_mounts.{up,down}.sql`
+- `MountManager` stores `LiveMount` structs with direct `Mount` references (not just PIDs)
+- Database queries in `crates/daemon/src/database/mount_queries.rs`

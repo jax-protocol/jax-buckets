@@ -1,6 +1,6 @@
 # FUSE Integration
 
-**Status:** Planned
+**Status:** Complete
 **Reference:** `amiller68/fs-over-blobstore-v1` branch
 
 ## Summary
@@ -40,10 +40,10 @@ jax daemon (with fuse feature)
 
 | # | Ticket | Status | Description |
 |---|--------|--------|-------------|
-| 1 | [FUSE filesystem](./1-fuse-filesystem.md) | Planned | JaxFs implementation, REST endpoints, CLI commands |
-| 2 | [Daemon state](./2-daemon-state.md) | Planned | SQLite persistence, mount queries, MountManager |
-| 3 | [Daemon lifecycle](./3-daemon-lifecycle.md) | Planned | Start/stop, auto-mount, graceful shutdown |
-| 4 | [Desktop integration](./4-desktop-integration.md) | Planned | Tauri IPC, SolidJS mounts page |
+| 1 | [FUSE filesystem](./1-fuse-filesystem.md) | Complete | JaxFs implementation, REST endpoints, CLI commands |
+| 2 | [Daemon state](./2-daemon-state.md) | Complete | SQLite persistence, mount queries, MountManager |
+| 3 | [Daemon lifecycle](./3-daemon-lifecycle.md) | Complete | Start/stop, auto-mount, graceful shutdown |
+| 4 | [Desktop integration](./4-desktop-integration.md) | Complete | Tauri IPC, SolidJS mounts page |
 
 ## Execution Order
 

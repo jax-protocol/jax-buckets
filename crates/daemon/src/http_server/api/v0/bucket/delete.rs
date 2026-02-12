@@ -1,10 +1,12 @@
 use axum::extract::{Json, State};
 use axum::response::{IntoResponse, Response};
 use common::prelude::MountError;
+use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,5 +108,14 @@ impl IntoResponse for DeleteError {
             )
                 .into_response(),
         }
+    }
+}
+
+impl ApiRequest for DeleteRequest {
+    type Response = DeleteResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url.join("/api/v0/bucket/delete").unwrap();
+        client.post(full_url).json(&self)
     }
 }

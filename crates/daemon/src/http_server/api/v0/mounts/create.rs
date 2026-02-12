@@ -1,0 +1,134 @@
+#[cfg(feature = "fuse")]
+use axum::extract::{Json, State};
+use axum::response::IntoResponse;
+#[cfg(feature = "fuse")]
+use axum::response::Response;
+#[cfg(feature = "fuse")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "fuse")]
+use uuid::Uuid;
+
+#[cfg(feature = "fuse")]
+use crate::database::mount_queries::{CreateMountConfig, FuseMount};
+#[cfg(feature = "fuse")]
+use crate::ServiceState;
+
+#[cfg(feature = "fuse")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMountRequest {
+    pub bucket_id: Uuid,
+    pub mount_point: String,
+    #[serde(default)]
+    pub auto_mount: bool,
+    #[serde(default)]
+    pub read_only: bool,
+    pub cache_size_mb: Option<u32>,
+    pub cache_ttl_secs: Option<u32>,
+}
+
+#[cfg(feature = "fuse")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMountResponse {
+    pub mount: MountInfo,
+}
+
+#[cfg(feature = "fuse")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MountInfo {
+    pub mount_id: Uuid,
+    pub bucket_id: Uuid,
+    pub mount_point: String,
+    pub enabled: bool,
+    pub auto_mount: bool,
+    pub read_only: bool,
+    pub cache_size_mb: u32,
+    pub cache_ttl_secs: u32,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[cfg(feature = "fuse")]
+impl From<FuseMount> for MountInfo {
+    fn from(m: FuseMount) -> Self {
+        Self {
+            mount_id: m.mount_id,
+            bucket_id: m.bucket_id,
+            mount_point: m.mount_point,
+            enabled: m.enabled,
+            auto_mount: m.auto_mount,
+            read_only: m.read_only,
+            cache_size_mb: m.cache_size_mb,
+            cache_ttl_secs: m.cache_ttl_secs,
+            status: m.status.as_str().to_string(),
+            error_message: m.error_message,
+            created_at: m.created_at.to_string(),
+            updated_at: m.updated_at.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "fuse")]
+pub async fn handler(
+    State(state): State<ServiceState>,
+    Json(req): Json<CreateMountRequest>,
+) -> Result<impl IntoResponse, CreateMountError> {
+    let mount_manager = state.mount_manager().read().await;
+    let mount_manager = mount_manager
+        .as_ref()
+        .ok_or(CreateMountError::MountManagerUnavailable)?;
+
+    let config = CreateMountConfig {
+        bucket_id: req.bucket_id,
+        mount_point: req.mount_point,
+        auto_mount: req.auto_mount,
+        read_only: req.read_only,
+        cache_size_mb: req.cache_size_mb,
+        cache_ttl_secs: req.cache_ttl_secs,
+    };
+
+    let mount = mount_manager.create_mount(config).await?;
+
+    Ok((
+        http::StatusCode::CREATED,
+        Json(CreateMountResponse {
+            mount: mount.into(),
+        }),
+    )
+        .into_response())
+}
+
+#[cfg(not(feature = "fuse"))]
+pub async fn handler() -> impl IntoResponse {
+    (
+        http::StatusCode::NOT_IMPLEMENTED,
+        "FUSE support not enabled",
+    )
+        .into_response()
+}
+
+#[cfg(feature = "fuse")]
+#[derive(Debug, thiserror::Error)]
+pub enum CreateMountError {
+    #[error("Mount manager unavailable")]
+    MountManagerUnavailable,
+    #[error("Mount error: {0}")]
+    Mount(#[from] crate::fuse::MountError),
+}
+
+#[cfg(feature = "fuse")]
+impl IntoResponse for CreateMountError {
+    fn into_response(self) -> Response {
+        match self {
+            CreateMountError::MountManagerUnavailable => (
+                http::StatusCode::SERVICE_UNAVAILABLE,
+                "Mount manager not available",
+            )
+                .into_response(),
+            CreateMountError::Mount(e) => {
+                (http::StatusCode::BAD_REQUEST, format!("Mount error: {}", e)).into_response()
+            }
+        }
+    }
+}

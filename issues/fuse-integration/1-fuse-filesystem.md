@@ -1,6 +1,6 @@
 # FUSE Filesystem
 
-**Status:** Planned
+**Status:** Complete
 **Track:** Local
 **Reference:** `amiller68/fs-over-blobstore-v1` branch
 
@@ -86,12 +86,19 @@ Key implementation details:
 
 ## Acceptance Criteria
 
-- [ ] `JaxFs` implements all 10 FUSE operations listed above
-- [ ] macOS resource fork filtering works
-- [ ] Write buffering with sync-on-first-write works
-- [ ] 7 REST endpoints functional
-- [ ] 6 CLI commands functional
-- [ ] Compiles without `fuse` feature (no `fuser` dependency pulled in)
-- [ ] `cargo build --features fuse` compiles
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] `JaxFs` implements all 10 FUSE operations listed above
+- [x] macOS resource fork filtering works
+- [x] Write buffering with sync-on-first-write works
+- [x] 7 REST endpoints functional
+- [x] 6 CLI commands functional
+- [x] Compiles without `fuse` feature (no `fuser` dependency pulled in)
+- [x] `cargo build --features fuse` compiles
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings
+
+## Implementation Notes
+
+- FUSE feature now enabled by default in daemon
+- JaxFs uses direct Mount access instead of HTTP API (avoids self-call deadlock)
+- macOS mounts to `/Volumes/<bucket-name>` with `volname` and `local` options for Finder sidebar integration
+- Simplified `mountBucket`/`unmountBucket` API for desktop app auto-selects mount points

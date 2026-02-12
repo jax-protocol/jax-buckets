@@ -2,12 +2,13 @@
 mod cli;
 
 use clap::{Parser, Subcommand};
-use cli::{args::Args, op::Op, Bucket, Daemon, Init, Version};
+use cli::{args::Args, op::Op, Bucket, Daemon, Init, Mount, Version};
 
 command_enum! {
     (Bucket, Bucket),
     (Daemon, Daemon),
     (Init, Init),
+    (Mount, Mount),
     (Version, Version),
 }
 

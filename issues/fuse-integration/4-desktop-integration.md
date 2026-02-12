@@ -1,6 +1,6 @@
 # Desktop App Mount Integration
 
-**Status:** Planned
+**Status:** Complete
 **Track:** Local
 **Depends on:** Ticket 1 (FUSE filesystem — REST API must be stable)
 
@@ -66,12 +66,20 @@ Add mount types and API functions:
 
 ## Acceptance Criteria
 
-- [ ] IPC commands for mount CRUD + start/stop work
-- [ ] Mounts page lists all configured mounts
-- [ ] Status indicators show running/stopped/error
-- [ ] Start/stop toggle works
-- [ ] Add mount dialog creates new mount config
-- [ ] Path picker uses native dialog
-- [ ] Delete mount with confirmation works
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] IPC commands for mount CRUD + start/stop work
+- [x] Mounts page lists all configured mounts
+- [x] Status indicators show running/stopped/error
+- [x] Start/stop toggle works
+- [x] Add mount dialog creates new mount config
+- [x] Path picker uses native dialog
+- [x] Delete mount with confirmation works
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings
+
+## Implementation Notes
+
+- Two UX flows: simplified (Buckets page one-click) and advanced (Mounts page)
+- Simplified API: `mountBucket(bucketId)` auto-selects `/Volumes/<bucket-name>` on macOS
+- macOS privilege escalation uses AppleScript `with administrator privileges` for password/Touch ID prompt
+- Linux privilege escalation uses `pkexec` (polkit)
+- Naming conflicts handled with numeric suffixes (bucket-2, bucket-3, etc.)

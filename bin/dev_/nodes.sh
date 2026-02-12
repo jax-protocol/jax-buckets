@@ -118,7 +118,7 @@ init_node() {
         init_args="$init_args --s3-url $s3_url"
     fi
 
-    cargo run --bin jax -- $init_args
+    cargo run --bin jax --features fuse -- $init_args
 }
 
 # Build the daemon command for a node (for use with cargo watch -x)
@@ -128,7 +128,7 @@ get_daemon_cmd() {
     local data_path="$DATA_DIR/$node"
     local log_dir="$data_path/logs"
 
-    local cmd="run --bin jax -- --config-path $data_path daemon --log-dir $log_dir"
+    local cmd="run --bin jax --features fuse -- --config-path $data_path daemon --log-dir $log_dir"
 
     echo "$cmd"
 }

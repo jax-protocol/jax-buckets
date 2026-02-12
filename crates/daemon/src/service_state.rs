@@ -1,7 +1,14 @@
+#[cfg(feature = "fuse")]
+use std::sync::Arc;
+
+#[cfg(feature = "fuse")]
+use tokio::sync::RwLock;
 use url::Url;
 
 use crate::blobs::{Blobs, BlobsSetupError};
 use crate::database::{Database, DatabaseSetupError};
+#[cfg(feature = "fuse")]
+use crate::fuse::{MountManager, MountManagerConfig};
 use crate::service_config::Config;
 use crate::sync_provider::{QueuedSyncConfig, QueuedSyncProvider};
 
@@ -13,6 +20,8 @@ use common::peer::{Peer, PeerBuilder};
 pub struct State {
     database: Database,
     peer: Peer<Database>,
+    #[cfg(feature = "fuse")]
+    mount_manager: Arc<RwLock<Option<MountManager>>>,
 }
 
 impl State {
@@ -76,7 +85,22 @@ impl State {
             crate::sync_provider::run_worker(peer_for_worker, job_stream).await;
         });
 
-        Ok(Self { database, peer })
+        // Create the initial state
+        let state = Self {
+            database: database.clone(),
+            peer: peer.clone(),
+            #[cfg(feature = "fuse")]
+            mount_manager: Arc::new(RwLock::new(None)),
+        };
+
+        // Initialize mount manager with fuse feature
+        #[cfg(feature = "fuse")]
+        {
+            let mount_manager = MountManager::new(database, peer, MountManagerConfig::default());
+            *state.mount_manager.write().await = Some(mount_manager);
+        }
+
+        Ok(state)
     }
 
     pub fn peer(&self) -> &Peer<Database> {
@@ -90,6 +114,12 @@ impl State {
 
     pub fn database(&self) -> &Database {
         &self.database
+    }
+
+    /// Get the mount manager (only available with fuse feature)
+    #[cfg(feature = "fuse")]
+    pub fn mount_manager(&self) -> &Arc<RwLock<Option<MountManager>>> {
+        &self.mount_manager
     }
 }
 
