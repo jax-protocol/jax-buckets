@@ -23,16 +23,16 @@ pub struct FuseMount {
     pub updated_at: OffsetDateTime,
 }
 
-impl Database {
+impl FuseMount {
     /// Create a new FUSE mount configuration
-    pub async fn create_mount(
-        &self,
+    pub async fn create(
         bucket_id: Uuid,
         mount_point: &str,
         auto_mount: bool,
         read_only: bool,
         cache_size_mb: Option<u32>,
         cache_ttl_secs: Option<u32>,
+        db: &Database,
     ) -> Result<FuseMount, sqlx::Error> {
         let mount_id = Uuid::new_v4();
         let mount_id_str = mount_id.to_string();
@@ -56,16 +56,16 @@ impl Database {
         .bind(read_only)
         .bind(cache_size)
         .bind(cache_ttl)
-        .execute(&**self)
+        .execute(&**db)
         .await?;
 
-        self.get_mount(&mount_id)
+        Self::get(&mount_id, db)
             .await?
             .ok_or(sqlx::Error::RowNotFound)
     }
 
     /// Get a FUSE mount by ID
-    pub async fn get_mount(&self, mount_id: &Uuid) -> Result<Option<FuseMount>, sqlx::Error> {
+    pub async fn get(mount_id: &Uuid, db: &Database) -> Result<Option<FuseMount>, sqlx::Error> {
         let mount_id_str = mount_id.to_string();
 
         let row = sqlx::query(
@@ -79,14 +79,14 @@ impl Database {
             "#,
         )
         .bind(&mount_id_str)
-        .fetch_optional(&**self)
+        .fetch_optional(&**db)
         .await?;
 
         Ok(row.map(|r| row_to_fuse_mount(&r)))
     }
 
     /// List all FUSE mounts
-    pub async fn list_mounts(&self) -> Result<Vec<FuseMount>, sqlx::Error> {
+    pub async fn list(db: &Database) -> Result<Vec<FuseMount>, sqlx::Error> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -97,7 +97,7 @@ impl Database {
             ORDER BY created_at DESC
             "#,
         )
-        .fetch_all(&**self)
+        .fetch_all(&**db)
         .await?;
 
         Ok(rows.iter().map(row_to_fuse_mount).collect())
@@ -105,8 +105,7 @@ impl Database {
 
     /// Update a FUSE mount configuration
     #[allow(clippy::too_many_arguments)]
-    pub async fn update_mount(
-        &self,
+    pub async fn update(
         mount_id: &Uuid,
         mount_point: Option<&str>,
         enabled: Option<bool>,
@@ -114,8 +113,9 @@ impl Database {
         read_only: Option<bool>,
         cache_size_mb: Option<u32>,
         cache_ttl_secs: Option<u32>,
+        db: &Database,
     ) -> Result<Option<FuseMount>, sqlx::Error> {
-        let existing = match self.get_mount(mount_id).await? {
+        let existing = match Self::get(mount_id, db).await? {
             Some(m) => m,
             None => return Ok(None),
         };
@@ -142,28 +142,28 @@ impl Database {
         .bind(cache_size)
         .bind(cache_ttl)
         .bind(mount_id.to_string())
-        .execute(&**self)
+        .execute(&**db)
         .await?;
 
-        self.get_mount(mount_id).await
+        Self::get(mount_id, db).await
     }
 
     /// Delete a FUSE mount
-    pub async fn delete_mount(&self, mount_id: &Uuid) -> Result<bool, sqlx::Error> {
+    pub async fn delete(mount_id: &Uuid, db: &Database) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("DELETE FROM fuse_mounts WHERE mount_id = ?1")
             .bind(mount_id.to_string())
-            .execute(&**self)
+            .execute(&**db)
             .await?;
 
         Ok(result.rows_affected() > 0)
     }
 
     /// Update the status of a FUSE mount
-    pub async fn update_mount_status(
-        &self,
+    pub async fn update_status(
         mount_id: &Uuid,
         status: MountStatus,
         error_message: Option<&str>,
+        db: &Database,
     ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
             r#"
@@ -175,14 +175,14 @@ impl Database {
         .bind(status)
         .bind(error_message)
         .bind(mount_id.to_string())
-        .execute(&**self)
+        .execute(&**db)
         .await?;
 
         Ok(result.rows_affected() > 0)
     }
 
     /// Get all mounts configured for auto-mount
-    pub async fn get_auto_mount_list(&self) -> Result<Vec<FuseMount>, sqlx::Error> {
+    pub async fn auto_list(db: &Database) -> Result<Vec<FuseMount>, sqlx::Error> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -194,14 +194,14 @@ impl Database {
             ORDER BY created_at ASC
             "#,
         )
-        .fetch_all(&**self)
+        .fetch_all(&**db)
         .await?;
 
         Ok(rows.iter().map(row_to_fuse_mount).collect())
     }
 
     /// Get mounts by bucket ID
-    pub async fn get_mounts_by_bucket(&self, bucket_id: &Uuid) -> Result<Vec<FuseMount>, sqlx::Error> {
+    pub async fn by_bucket(bucket_id: &Uuid, db: &Database) -> Result<Vec<FuseMount>, sqlx::Error> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -214,7 +214,7 @@ impl Database {
             "#,
         )
         .bind(bucket_id.to_string())
-        .fetch_all(&**self)
+        .fetch_all(&**db)
         .await?;
 
         Ok(rows.iter().map(row_to_fuse_mount).collect())

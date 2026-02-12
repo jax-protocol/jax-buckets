@@ -7,9 +7,9 @@ use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
 use crate::database::models::FuseMount;
+use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
 use crate::ServiceState;
 

@@ -8,7 +8,7 @@
 use tempfile::TempDir;
 use uuid::Uuid;
 
-use jax_daemon::{Database, MountStatus};
+use jax_daemon::{Database, FuseMount, MountStatus};
 
 /// Create a test database
 async fn setup_test_db() -> (Database, TempDir) {
@@ -34,10 +34,17 @@ async fn test_create_and_get_mount() {
 
     let bucket_id = Uuid::new_v4();
 
-    let mount = db
-        .create_mount(bucket_id, &mount_point, false, false, Some(50), Some(30))
-        .await
-        .unwrap();
+    let mount = FuseMount::create(
+        bucket_id,
+        &mount_point,
+        false,
+        false,
+        Some(50),
+        Some(30),
+        &db,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(mount.bucket_id, bucket_id);
     assert_eq!(mount.mount_point, mount_point);
@@ -49,7 +56,7 @@ async fn test_create_and_get_mount() {
     assert!(mount.enabled);
 
     // Get the mount by ID
-    let retrieved = db.get_mount(&mount.mount_id).await.unwrap().unwrap();
+    let retrieved = FuseMount::get(&mount.mount_id, &db).await.unwrap().unwrap();
     assert_eq!(retrieved.mount_id, mount.mount_id);
     assert_eq!(retrieved.bucket_id, bucket_id);
 }
@@ -67,19 +74,20 @@ async fn test_list_mounts() {
             .to_string();
         std::fs::create_dir_all(&mount_point).unwrap();
 
-        db.create_mount(
+        FuseMount::create(
             Uuid::new_v4(),
             &mount_point,
             i == 1, // Only middle one is auto-mount
             false,
             None,
             None,
+            &db,
         )
         .await
         .unwrap();
     }
 
-    let mounts = db.list_mounts().await.unwrap();
+    let mounts = FuseMount::list(&db).await.unwrap();
     assert_eq!(mounts.len(), 3);
 }
 
@@ -89,27 +97,26 @@ async fn test_update_mount() {
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
-    let mount = db
-        .create_mount(Uuid::new_v4(), &mount_point, false, false, None, None)
+    let mount = FuseMount::create(Uuid::new_v4(), &mount_point, false, false, None, None, &db)
         .await
         .unwrap();
     assert!(!mount.auto_mount);
     assert!(!mount.read_only);
 
     // Update the mount
-    let updated = db
-        .update_mount(
-            &mount.mount_id,
-            None,
-            Some(false),
-            Some(true),
-            Some(true),
-            Some(200),
-            Some(120),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+    let updated = FuseMount::update(
+        &mount.mount_id,
+        None,
+        Some(false),
+        Some(true),
+        Some(true),
+        Some(200),
+        Some(120),
+        &db,
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert!(!updated.enabled);
     assert!(updated.auto_mount);
     assert!(updated.read_only);
@@ -123,23 +130,28 @@ async fn test_delete_mount() {
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
-    let mount = db
-        .create_mount(Uuid::new_v4(), &mount_point, false, false, None, None)
+    let mount = FuseMount::create(Uuid::new_v4(), &mount_point, false, false, None, None, &db)
         .await
         .unwrap();
 
     // Verify mount exists
-    assert!(db.get_mount(&mount.mount_id).await.unwrap().is_some());
+    assert!(FuseMount::get(&mount.mount_id, &db)
+        .await
+        .unwrap()
+        .is_some());
 
     // Delete the mount
-    let deleted = db.delete_mount(&mount.mount_id).await.unwrap();
+    let deleted = FuseMount::delete(&mount.mount_id, &db).await.unwrap();
     assert!(deleted);
 
     // Verify mount is gone
-    assert!(db.get_mount(&mount.mount_id).await.unwrap().is_none());
+    assert!(FuseMount::get(&mount.mount_id, &db)
+        .await
+        .unwrap()
+        .is_none());
 
     // Deleting again should return false
-    let deleted_again = db.delete_mount(&mount.mount_id).await.unwrap();
+    let deleted_again = FuseMount::delete(&mount.mount_id, &db).await.unwrap();
     assert!(!deleted_again);
 }
 
@@ -149,32 +161,31 @@ async fn test_update_mount_status() {
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
-    let mount = db
-        .create_mount(Uuid::new_v4(), &mount_point, false, false, None, None)
+    let mount = FuseMount::create(Uuid::new_v4(), &mount_point, false, false, None, None, &db)
         .await
         .unwrap();
     assert_eq!(mount.status, MountStatus::Stopped);
 
     // Update to starting
-    db.update_mount_status(&mount.mount_id, MountStatus::Starting, None)
+    FuseMount::update_status(&mount.mount_id, MountStatus::Starting, None, &db)
         .await
         .unwrap();
-    let mount = db.get_mount(&mount.mount_id).await.unwrap().unwrap();
+    let mount = FuseMount::get(&mount.mount_id, &db).await.unwrap().unwrap();
     assert_eq!(mount.status, MountStatus::Starting);
     assert!(mount.error_message.is_none());
 
     // Update to running
-    db.update_mount_status(&mount.mount_id, MountStatus::Running, None)
+    FuseMount::update_status(&mount.mount_id, MountStatus::Running, None, &db)
         .await
         .unwrap();
-    let mount = db.get_mount(&mount.mount_id).await.unwrap().unwrap();
+    let mount = FuseMount::get(&mount.mount_id, &db).await.unwrap().unwrap();
     assert_eq!(mount.status, MountStatus::Running);
 
     // Update to error with message
-    db.update_mount_status(&mount.mount_id, MountStatus::Error, Some("Test error"))
+    FuseMount::update_status(&mount.mount_id, MountStatus::Error, Some("Test error"), &db)
         .await
         .unwrap();
-    let mount = db.get_mount(&mount.mount_id).await.unwrap().unwrap();
+    let mount = FuseMount::get(&mount.mount_id, &db).await.unwrap().unwrap();
     assert_eq!(mount.status, MountStatus::Error);
     assert_eq!(mount.error_message.as_deref(), Some("Test error"));
 }
@@ -195,21 +206,37 @@ async fn test_get_auto_mount_list() {
             .to_string();
         std::fs::create_dir_all(&mount_point).unwrap();
 
-        let mount = db
-            .create_mount(Uuid::new_v4(), &mount_point, *auto_mount, false, None, None)
-            .await
-            .unwrap();
+        let mount = FuseMount::create(
+            Uuid::new_v4(),
+            &mount_point,
+            *auto_mount,
+            false,
+            None,
+            None,
+            &db,
+        )
+        .await
+        .unwrap();
 
         // Disable the mount if needed
         if !enabled {
-            db.update_mount(&mount.mount_id, None, Some(false), None, None, None, None)
-                .await
-                .unwrap();
+            FuseMount::update(
+                &mount.mount_id,
+                None,
+                Some(false),
+                None,
+                None,
+                None,
+                None,
+                &db,
+            )
+            .await
+            .unwrap();
         }
     }
 
     // Only mounts with auto_mount=true AND enabled=true should be returned
-    let auto_mounts = db.get_auto_mount_list().await.unwrap();
+    let auto_mounts = FuseMount::auto_list(&db).await.unwrap();
     assert_eq!(auto_mounts.len(), 1);
     assert!(auto_mounts[0].auto_mount);
     assert!(auto_mounts[0].enabled);
@@ -229,7 +256,7 @@ async fn test_get_mounts_by_bucket() {
             .to_string();
         std::fs::create_dir_all(&mount_point).unwrap();
 
-        db.create_mount(bucket_id, &mount_point, false, false, None, None)
+        FuseMount::create(bucket_id, &mount_point, false, false, None, None, &db)
             .await
             .unwrap();
     }
@@ -243,18 +270,26 @@ async fn test_get_mounts_by_bucket() {
         .to_string();
     std::fs::create_dir_all(&other_mount_point).unwrap();
 
-    db.create_mount(other_bucket, &other_mount_point, false, false, None, None)
-        .await
-        .unwrap();
+    FuseMount::create(
+        other_bucket,
+        &other_mount_point,
+        false,
+        false,
+        None,
+        None,
+        &db,
+    )
+    .await
+    .unwrap();
 
     // Get mounts by bucket
-    let bucket_mounts = db.get_mounts_by_bucket(&bucket_id).await.unwrap();
+    let bucket_mounts = FuseMount::by_bucket(&bucket_id, &db).await.unwrap();
     assert_eq!(bucket_mounts.len(), 2);
     for mount in &bucket_mounts {
         assert_eq!(mount.bucket_id, bucket_id);
     }
 
-    let other_mounts = db.get_mounts_by_bucket(&other_bucket).await.unwrap();
+    let other_mounts = FuseMount::by_bucket(&other_bucket, &db).await.unwrap();
     assert_eq!(other_mounts.len(), 1);
     assert_eq!(other_mounts[0].bucket_id, other_bucket);
 }

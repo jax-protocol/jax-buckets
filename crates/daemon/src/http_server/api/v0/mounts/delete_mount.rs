@@ -39,7 +39,7 @@ pub async fn handler(
         .as_ref()
         .ok_or(DeleteMountError::MountManagerUnavailable)?;
 
-    let deleted = mount_manager.delete_mount(&id).await?;
+    let deleted = mount_manager.delete(&id).await?;
 
     Ok((http::StatusCode::OK, Json(DeleteMountResponse { deleted })).into_response())
 }

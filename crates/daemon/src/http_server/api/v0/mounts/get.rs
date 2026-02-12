@@ -40,7 +40,7 @@ pub async fn handler(
         .ok_or(GetMountError::MountManagerUnavailable)?;
 
     let mount = mount_manager
-        .get_mount(&id)
+        .get(&id)
         .await?
         .ok_or(GetMountError::NotFound(id))?;
 

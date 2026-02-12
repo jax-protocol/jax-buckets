@@ -21,4 +21,5 @@ pub use service_state::State as ServiceState;
 pub use state::{AppConfig, AppState, BlobStoreConfig, StateError};
 
 // Re-exports for mount management
-pub use database::models::{FuseMount, MountStatus};
+pub use database::models::FuseMount;
+pub use database::types::MountStatus;

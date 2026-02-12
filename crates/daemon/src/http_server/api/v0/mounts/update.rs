@@ -54,7 +54,7 @@ pub async fn handler(
         .ok_or(UpdateMountError::MountManagerUnavailable)?;
 
     let mount = mount_manager
-        .update_mount(
+        .update(
             &id,
             req.mount_point.as_deref(),
             req.enabled,

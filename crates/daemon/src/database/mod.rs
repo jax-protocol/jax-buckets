@@ -2,7 +2,7 @@ pub mod bucket_log_provider;
 mod bucket_queries;
 pub mod models;
 mod sqlite;
-mod types;
+pub mod types;
 
 use std::ops::Deref;
 

@@ -34,7 +34,7 @@ pub async fn handler(
         .as_ref()
         .ok_or(ListMountsError::MountManagerUnavailable)?;
 
-    let mounts = mount_manager.list_mounts().await?;
+    let mounts = mount_manager.list().await?;
     let mount_infos: Vec<MountInfo> = mounts.into_iter().map(Into::into).collect();
 
     Ok((

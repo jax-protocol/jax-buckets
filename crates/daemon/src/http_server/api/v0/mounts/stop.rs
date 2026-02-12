@@ -39,7 +39,7 @@ pub async fn handler(
         .as_ref()
         .ok_or(StopMountError::MountManagerUnavailable)?;
 
-    mount_manager.stop_mount(&id).await?;
+    mount_manager.stop(&id).await?;
 
     Ok((
         http::StatusCode::OK,

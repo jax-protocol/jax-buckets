@@ -34,7 +34,7 @@ impl ShutdownHandle {
             tracing::info!("Stopping all FUSE mounts...");
             let mount_manager = self.state.mount_manager().read().await;
             if let Some(manager) = mount_manager.as_ref() {
-                if let Err(e) = manager.stop_all_mounts().await {
+                if let Err(e) = manager.stop_all().await {
                     tracing::error!("Failed to stop FUSE mounts: {}", e);
                 }
             }
@@ -203,7 +203,7 @@ pub async fn start_service(service_config: &ServiceConfig) -> (ServiceState, Shu
 
             let mount_manager = mount_state.mount_manager().read().await;
             if let Some(manager) = mount_manager.as_ref() {
-                if let Err(e) = manager.start_auto_mounts().await {
+                if let Err(e) = manager.start_auto().await {
                     tracing::error!("Failed to start auto-mounts: {}", e);
                 }
             }

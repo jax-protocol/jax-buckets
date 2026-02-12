@@ -11,7 +11,8 @@ use fuser::BackgroundSession;
 use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 
-use crate::database::models::{FuseMount, MountStatus};
+use crate::database::models::FuseMount;
+use crate::database::types::MountStatus;
 use crate::database::Database;
 use crate::fuse::cache::FileCacheConfig;
 use crate::fuse::jax_fs::JaxFs;
@@ -161,18 +162,17 @@ impl MountManager {
         }
 
         // Create in database
-        let mount = self
-            .db
-            .create_mount(
-                bucket_id,
-                mount_point,
-                auto_mount,
-                read_only,
-                cache_size_mb,
-                cache_ttl_secs,
-            )
-            .await
-            .map_err(MountError::Database)?;
+        let mount = FuseMount::create(
+            bucket_id,
+            mount_point,
+            auto_mount,
+            read_only,
+            cache_size_mb,
+            cache_ttl_secs,
+            &self.db,
+        )
+        .await
+        .map_err(MountError::Database)?;
 
         tracing::info!(
             "Created mount {} for bucket {} at {}",
@@ -185,21 +185,22 @@ impl MountManager {
     }
 
     /// Get a mount by ID
-    pub async fn get_mount(&self, mount_id: &Uuid) -> Result<Option<FuseMount>, MountError> {
-        self.db
-            .get_mount(mount_id)
+    pub async fn get(&self, mount_id: &Uuid) -> Result<Option<FuseMount>, MountError> {
+        FuseMount::get(mount_id, &self.db)
             .await
             .map_err(MountError::Database)
     }
 
     /// List all mounts
-    pub async fn list_mounts(&self) -> Result<Vec<FuseMount>, MountError> {
-        self.db.list_mounts().await.map_err(MountError::Database)
+    pub async fn list(&self) -> Result<Vec<FuseMount>, MountError> {
+        FuseMount::list(&self.db)
+            .await
+            .map_err(MountError::Database)
     }
 
     /// Update a mount configuration
     #[allow(clippy::too_many_arguments)]
-    pub async fn update_mount(
+    pub async fn update(
         &self,
         mount_id: &Uuid,
         mount_point: Option<&str>,
@@ -209,41 +210,38 @@ impl MountManager {
         cache_size_mb: Option<u32>,
         cache_ttl_secs: Option<u32>,
     ) -> Result<Option<FuseMount>, MountError> {
-        self.db
-            .update_mount(
-                mount_id,
-                mount_point,
-                enabled,
-                auto_mount,
-                read_only,
-                cache_size_mb,
-                cache_ttl_secs,
-            )
-            .await
-            .map_err(MountError::Database)
+        FuseMount::update(
+            mount_id,
+            mount_point,
+            enabled,
+            auto_mount,
+            read_only,
+            cache_size_mb,
+            cache_ttl_secs,
+            &self.db,
+        )
+        .await
+        .map_err(MountError::Database)
     }
 
     /// Delete a mount configuration
-    pub async fn delete_mount(&self, mount_id: &Uuid) -> Result<bool, MountError> {
+    pub async fn delete(&self, mount_id: &Uuid) -> Result<bool, MountError> {
         // First stop if running
-        let _ = self.stop_mount(mount_id).await;
+        let _ = self.stop(mount_id).await;
 
         // Remove from live mounts
         self.mounts.write().await.remove(mount_id);
 
         // Delete from database
-        self.db
-            .delete_mount(mount_id)
+        FuseMount::delete(mount_id, &self.db)
             .await
             .map_err(MountError::Database)
     }
 
     /// Start a mount (spawn FUSE process)
-    pub async fn start_mount(&self, mount_id: &Uuid) -> Result<(), MountError> {
+    pub async fn start(&self, mount_id: &Uuid) -> Result<(), MountError> {
         // Get mount config
-        let mount_config = self
-            .db
-            .get_mount(mount_id)
+        let mount_config = FuseMount::get(mount_id, &self.db)
             .await
             .map_err(MountError::Database)?
             .ok_or(MountError::MountNotFound(*mount_id))?;
@@ -259,8 +257,7 @@ impl MountManager {
         }
 
         // Update status to starting
-        self.db
-            .update_mount_status(mount_id, MountStatus::Starting, None)
+        FuseMount::update_status(mount_id, MountStatus::Starting, None, &self.db)
             .await
             .map_err(MountError::Database)?;
 
@@ -350,8 +347,7 @@ impl MountManager {
         self.mounts.write().await.insert(*mount_id, live_mount);
 
         // Update status to running
-        self.db
-            .update_mount_status(mount_id, MountStatus::Running, None)
+        FuseMount::update_status(mount_id, MountStatus::Running, None, &self.db)
             .await
             .map_err(MountError::Database)?;
 
@@ -361,12 +357,9 @@ impl MountManager {
     }
 
     /// Stop a mount
-    pub async fn stop_mount(&self, mount_id: &Uuid) -> Result<(), MountError> {
+    pub async fn stop(&self, mount_id: &Uuid) -> Result<(), MountError> {
         // Update status to stopping
-        let _ = self
-            .db
-            .update_mount_status(mount_id, MountStatus::Stopping, None)
-            .await;
+        let _ = FuseMount::update_status(mount_id, MountStatus::Stopping, None, &self.db).await;
 
         let mount_point = {
             let mut mounts = self.mounts.write().await;
@@ -377,7 +370,7 @@ impl MountManager {
                 live.config.mount_point.clone()
             } else {
                 // Try to get from database
-                match self.db.get_mount(mount_id).await {
+                match FuseMount::get(mount_id, &self.db).await {
                     Ok(Some(config)) => config.mount_point,
                     _ => return Ok(()),
                 }
@@ -388,8 +381,7 @@ impl MountManager {
         self.unmount_path(&mount_point).await?;
 
         // Update status to stopped
-        self.db
-            .update_mount_status(mount_id, MountStatus::Stopped, None)
+        FuseMount::update_status(mount_id, MountStatus::Stopped, None, &self.db)
             .await
             .map_err(MountError::Database)?;
 
@@ -399,14 +391,14 @@ impl MountManager {
     }
 
     /// Stop all running mounts
-    pub async fn stop_all_mounts(&self) -> Result<(), MountError> {
+    pub async fn stop_all(&self) -> Result<(), MountError> {
         let mount_ids: Vec<Uuid> = {
             let mounts = self.mounts.read().await;
             mounts.keys().copied().collect()
         };
 
         for mount_id in mount_ids {
-            if let Err(e) = self.stop_mount(&mount_id).await {
+            if let Err(e) = self.stop(&mount_id).await {
                 tracing::error!("Failed to stop mount {}: {}", mount_id, e);
             }
         }
@@ -415,17 +407,15 @@ impl MountManager {
     }
 
     /// Start all mounts configured for auto-mount
-    pub async fn start_auto_mounts(&self) -> Result<(), MountError> {
-        let auto_mounts = self
-            .db
-            .get_auto_mount_list()
+    pub async fn start_auto(&self) -> Result<(), MountError> {
+        let auto_mounts = FuseMount::auto_list(&self.db)
             .await
             .map_err(MountError::Database)?;
 
         tracing::info!("Starting {} auto-mount(s)", auto_mounts.len());
 
         for mount in auto_mounts {
-            if let Err(e) = self.start_mount(&mount.mount_id).await {
+            if let Err(e) = self.start(&mount.mount_id).await {
                 tracing::error!(
                     "Failed to auto-mount {} at {}: {}",
                     mount.mount_id,
@@ -434,10 +424,13 @@ impl MountManager {
                 );
 
                 // Update status to error
-                let _ = self
-                    .db
-                    .update_mount_status(&mount.mount_id, MountStatus::Error, Some(&e.to_string()))
-                    .await;
+                let _ = FuseMount::update_status(
+                    &mount.mount_id,
+                    MountStatus::Error,
+                    Some(&e.to_string()),
+                    &self.db,
+                )
+                .await;
             }
         }
 
