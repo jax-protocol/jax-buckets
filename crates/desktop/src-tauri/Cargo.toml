@@ -1,0 +1,57 @@
+# Desktop app (Tauri). Released via GitHub Actions, not cargo publish.
+[package]
+name = "jax-desktop"
+version = "0.1.0"
+description = "Jax Desktop Application"
+authors = ["Jax Team"]
+edition = "2021"
+publish = false
+
+[lib]
+name = "jax_desktop_lib"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Workspace crates
+jax-daemon = { path = "../../daemon" }
+common = { package = "jax-common", path = "../../common" }
+
+# Tauri
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client for IPC -> daemon communication
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
+
+# Base64 encoding for file content
+base64 = "0.22"
+
+# Hex encoding for link hashes
+hex = "0.4"
+
+# Tracing
+tracing = "0.1"
+
+# Time
+time = { version = "0.3", features = ["serde", "formatting"] }
+
+# UUID
+uuid = { version = "1.8", features = ["v4", "serde"] }
+
+[workspace]
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

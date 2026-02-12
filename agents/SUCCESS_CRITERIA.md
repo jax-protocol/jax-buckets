@@ -50,7 +50,7 @@ cargo test
 
 # Run tests for specific crate
 cargo test -p jax-common
-cargo test -p jax-bucket
+cargo test -p jax-daemon
 
 # Run specific test
 cargo test test_mirror_cannot_mount

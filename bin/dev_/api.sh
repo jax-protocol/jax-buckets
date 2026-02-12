@@ -9,16 +9,7 @@ API_NODE=""
 # Usage: api_url [node] - uses API_NODE if not specified
 api_url() {
     local node_arg="${1:-$API_NODE}"
-    local node=$(resolve_node "$node_arg")
-    local type=$(get_node_type "$node")
-    local port
-
-    if [[ "$type" == "gateway" ]]; then
-        port=$(get_gateway_port "$node")
-    else
-        port=$(get_app_port "$node")
-    fi
-
+    local port=$(get_api_port "$node_arg")
     echo "http://localhost:$port/api/v0"
 }
 
@@ -26,16 +17,7 @@ api_url() {
 # Usage: status_url [node] - uses API_NODE if not specified
 status_url() {
     local node_arg="${1:-$API_NODE}"
-    local node=$(resolve_node "$node_arg")
-    local type=$(get_node_type "$node")
-    local port
-
-    if [[ "$type" == "gateway" ]]; then
-        port=$(get_gateway_port "$node")
-    else
-        port=$(get_app_port "$node")
-    fi
-
+    local port=$(get_api_port "$node_arg")
     echo "http://localhost:$port/_status"
 }
 
@@ -183,8 +165,7 @@ api_delete() {
 # Get gateway base URL for a node
 gateway_url() {
     local node_arg="${1:-$API_NODE}"
-    local node=$(resolve_node "$node_arg")
-    local port=$(get_gateway_port "$node")
+    local port=$(get_gw_port "$node_arg")
     echo "http://localhost:$port"
 }
 
@@ -219,8 +200,9 @@ api_help() {
     echo "Usage: ./bin/dev api <node> <command> [args...]"
     echo ""
     echo "Nodes:"
-    echo "  full, app    - App nodes (support all commands)"
-    echo "  gw           - Gateway only (health + fetch commands)"
+    echo "  owner          - Primary owner node"
+    echo "  _owner         - Replica owner node"
+    echo "  mirror         - Mirror node (also runs MinIO)"
     echo ""
     echo "Health commands (all nodes):"
     echo "  health                        Check node health"
@@ -228,10 +210,10 @@ api_help() {
     echo "  identity                      Get node identity"
     echo "  version                       Get node version"
     echo ""
-    echo "Gateway commands (all nodes with gateway port):"
+    echo "Gateway commands (all nodes):"
     echo "  fetch <bucket_id> [path]      Fetch content from gateway"
     echo ""
-    echo "Bucket commands (app nodes only - full, app):"
+    echo "Bucket commands (all nodes):"
     echo "  list                          List all buckets"
     echo "  create <name>                 Create a new bucket"
     echo "  ls <bucket_id> [path]         List directory contents"
@@ -241,21 +223,12 @@ api_help() {
     echo "  delete <bucket_id> <path>     Delete file/directory"
     echo ""
     echo "Examples:"
-    echo "  ./bin/dev api full health     # Health check on full node"
-    echo "  ./bin/dev api gw health       # Health check on gateway"
-    echo "  ./bin/dev api gw fetch abc-123 /  # Fetch from gateway"
-    echo "  ./bin/dev api app list        # List buckets on app node"
-    echo "  ./bin/dev api full create test # Create bucket"
-    echo "  ./bin/dev api full ls abc-123 / # List files"
-}
-
-# Check if command requires the bucket API (not available on gateways)
-requires_bucket_api() {
-    local cmd="$1"
-    case "$cmd" in
-        list|create|ls|cat|upload|mkdir|delete) return 0 ;;
-        *) return 1 ;;
-    esac
+    echo "  ./bin/dev api owner health       # Health check on owner"
+    echo "  ./bin/dev api mirror health      # Health check on mirror"
+    echo "  ./bin/dev api mirror fetch abc / # Fetch from mirror gateway"
+    echo "  ./bin/dev api _owner list        # List buckets on replica"
+    echo "  ./bin/dev api owner create test  # Create bucket"
+    echo "  ./bin/dev api owner ls abc-123 / # List files"
 }
 
 cmd_api() {
@@ -270,7 +243,7 @@ cmd_api() {
     # Validate node
     if ! resolve_node "$node" >/dev/null 2>&1; then
         echo -e "${RED}Unknown node: $node${NC}"
-        echo "Valid nodes: full, app, gw (or node0, node1, node2)"
+        echo "Valid nodes: owner, _owner, mirror (or node0, node1, node2)"
         return 1
     fi
 
@@ -278,19 +251,6 @@ cmd_api() {
     shift
 
     local cmd="${1:-help}"
-    local resolved_node=$(resolve_node "$API_NODE")
-    local node_type=$(get_node_type "$resolved_node")
-
-    # Check if gateway node is trying to use bucket API
-    if [[ "$node_type" == "gateway" ]] && requires_bucket_api "$cmd"; then
-        echo -e "${RED}Error: Gateway nodes do not expose the bucket API${NC}"
-        echo "Gateway nodes only support: health, ready, identity, version"
-        echo ""
-        echo "Use an app node (full, app) for bucket operations:"
-        echo "  ./bin/dev api full $cmd ..."
-        echo "  ./bin/dev api app $cmd ..."
-        return 1
-    fi
 
     # Second arg is command
     case "$cmd" in

@@ -1,6 +1,6 @@
 # JaxBucket
 
-[![Crates.io](https://img.shields.io/crates/v/jax-bucket.svg)](https://crates.io/crates/jax-bucket)
+[![Crates.io](https://img.shields.io/crates/v/jax-daemon.svg)](https://crates.io/crates/jax-daemon)
 [![Documentation](https://docs.rs/jax-common/badge.svg)](https://docs.rs/jax-common)
 [![CI](https://github.com/jax-protocol/jax-buckets/actions/workflows/ci.yml/badge.svg)](https://github.com/jax-protocol/jax-buckets/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -30,7 +30,7 @@ JaxBucket is a local-first, encrypted storage system built on [Iroh](https://iro
 ## Quick Start
 
 ```bash
-cargo install jax-bucket
+cargo install jax-daemon
 
 jax init
 jax daemon
@@ -43,12 +43,13 @@ jax bucket ls <bucket-id>
 
 | Crate | Description |
 |-------|-------------|
-| [jax-bucket](crates/app/) | CLI and daemon binary |
+| [jax-daemon](crates/daemon/) | CLI and daemon binary |
 | [jax-common](crates/common/) | Core library (crypto, mount, peer) |
+| [jax-desktop](crates/desktop/) | Tauri desktop app |
 
 ## Documentation
 
-- [CLI Usage](crates/app/README.md) - Commands and API reference
+- [CLI Usage](crates/daemon/README.md) - Commands and API reference
 - [Library API](crates/common/README.md) - Core data structures
 - [Architecture](agents/concepts/) - System design and concepts
 - [Installation](agents/INSTALL.md) - Installation and setup guide

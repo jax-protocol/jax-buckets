@@ -1,4 +1,4 @@
-name: CI 🚀
+name: CI
 
 on:
   push:
@@ -7,15 +7,20 @@ on:
     branches: [ main ]
 
 jobs:
-  # Rust CI
+  # Rust CI (daemon + library crates)
   rust-ci:
     name: Rust CI
     uses: ./.github/workflows/ci-rust.yml
 
+  # Desktop app CI (Tauri + SolidJS)
+  desktop-ci:
+    name: Desktop CI
+    uses: ./.github/workflows/ci-tauri.yml
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [rust-ci]
+    needs: [rust-ci, desktop-ci]
     if: always()
     steps:
       - name: Check if all jobs succeeded
@@ -24,4 +29,4 @@ jobs:
             echo "One or more jobs failed"
             exit 1
           fi
-          echo "All CI checks passed! ✅"
+          echo "All CI checks passed!"

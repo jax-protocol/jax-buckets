@@ -1,0 +1,13 @@
+# Node
+node_modules/
+dist/
+
+# Tauri
+src-tauri/target/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

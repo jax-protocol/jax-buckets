@@ -12,14 +12,14 @@
 #   mv      - Move/rename a file or directory
 
 # =============================================================================
-# FULL NODE: Create and set up test bucket
+# OWNER NODE: Create and set up test bucket
 # =============================================================================
 
-# Create a test bucket on full node
+# Create a test bucket on owner node
 [[fixture]]
 type = "bucket"
 name = "test"
-node = "full"
+node = "owner"
 
 # Upload a file at root level
 [[fixture]]
@@ -27,14 +27,14 @@ type = "file"
 bucket = "test"
 path = "/hello.txt"
 content = "Hello from jax-bucket!\n"
-node = "full"
+node = "owner"
 
 # Create a nested directory
 [[fixture]]
 type = "dir"
 bucket = "test"
 path = "/docs"
-node = "full"
+node = "owner"
 
 # Upload a nested file
 [[fixture]]
@@ -51,45 +51,45 @@ This is a test bucket for demonstrating jax-bucket features.
 
 ## Sharing
 This bucket is shared with:
-- `app` node as **owner** (can read/write)
-- `gw` node as **mirror** (can sync, decrypt after publish)
+- `_owner` node as **owner** (can read/write)
+- `mirror` node as **mirror** (can sync, decrypt after publish)
 """
-node = "full"
+node = "owner"
 
-# Share with app node as owner
+# Share with _owner node as owner
 [[fixture]]
 type = "share"
 bucket = "test"
-peer = "app"
+peer = "_owner"
 role = "owner"
-node = "full"
+node = "owner"
 
-# Share with gateway as mirror
+# Share with mirror as mirror
 [[fixture]]
 type = "share"
 bucket = "test"
-peer = "gw"
+peer = "mirror"
 role = "mirror"
-node = "full"
+node = "owner"
 
 # Publish the bucket (grant decryption to mirrors)
 [[fixture]]
 type = "publish"
 bucket = "test"
-node = "full"
+node = "owner"
 
 # =============================================================================
-# APP NODE: Modify the bucket (as owner)
+# OWNER NODE: Modify the bucket
 # =============================================================================
 
 # Move the original file to a nested directory
-# Note: Running on full node since sync from full->app may not be complete yet
+# Note: Running on owner node since sync from owner->_owner may not be complete yet
 [[fixture]]
 type = "mv"
 bucket = "test"
 from = "/hello.txt"
 to = "/docs/hello.txt"
-node = "full"
+node = "owner"
 
 # =============================================================================
 # EXPECTED END STATE
@@ -103,16 +103,15 @@ node = "full"
 #   /docs/readme.md
 #
 # Node visibility:
-#   - full (8081): Owns bucket, sees latest state
-#   - app (8082):  Owner share, sees latest state after sync
-#   - gw (9093):   Mirror share, sees latest published state
+#   - owner  (API:5002, GW:8081): Owns bucket, sees latest state
+#   - _owner (API:5003, GW:8082): Owner share, sees latest state after sync
+#   - mirror (API:5004, GW:8083): Mirror share, sees latest published state
 #
-# Gateway (http://localhost:9091/, 9092, 9093):
-#   - Bucket "test" listed with "Published" status
-#   - Clicking opens file explorer showing /docs/ directory
-#   - Files readable: /docs/hello.txt, /docs/readme.md
+# Each node runs separate API and gateway servers:
+#   - API:     http://localhost:5002 (owner), 5003 (_owner), 5004 (mirror)
+#   - Gateway: http://localhost:8081 (owner), 8082 (_owner), 8083 (mirror)
 #
 # Verify with:
-#   ./bin/dev api full ls <bucket_id> /docs
-#   ./bin/dev api app ls <bucket_id> /docs
-#   curl http://localhost:9091/gw/<bucket_id>/docs/hello.txt
+#   ./bin/dev api owner ls <bucket_id> /docs
+#   ./bin/dev api _owner ls <bucket_id> /docs
+#   curl http://localhost:8083/gw/<bucket_id>/docs/hello.txt

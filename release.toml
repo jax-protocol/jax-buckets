@@ -28,7 +28,7 @@ changelog-format = "conventional"
 # Commit message template
 release-commit-message = "release"
 
-# Create individual tags for each crate (jax-common-v*, jax-bucket-v*)
+# Create individual tags for each crate (jax-common-v*, jax-daemon-v*)
 # This allows releasing only the crates that changed
 individual-tag-names = true
 

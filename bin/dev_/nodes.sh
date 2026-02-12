@@ -33,17 +33,22 @@ cmd_kill() {
 kill_dev_ports() {
     local killed=0
     for node in $(get_node_names); do
-        local app_port=$(get_app_port "$node")
-        local gw_port=$(get_gateway_port "$node")
+        local api_port=$(get_api_port "$node")
+        local gw_port=$(get_gw_port "$node")
 
-        for port in $app_port $gw_port; do
-            # Find PID using the port (macOS lsof)
-            local pid=$(lsof -ti tcp:$port 2>/dev/null)
-            if [[ -n "$pid" ]]; then
-                echo -e "  Killing process $pid on port $port"
-                kill -9 $pid 2>/dev/null && killed=$((killed + 1))
-            fi
-        done
+        # Find PID using the API port (macOS lsof)
+        local pid=$(lsof -ti tcp:$api_port 2>/dev/null)
+        if [[ -n "$pid" ]]; then
+            echo -e "  Killing process $pid on API port $api_port"
+            kill -9 $pid 2>/dev/null && killed=$((killed + 1))
+        fi
+
+        # Find PID using the gateway port
+        pid=$(lsof -ti tcp:$gw_port 2>/dev/null)
+        if [[ -n "$pid" ]]; then
+            echo -e "  Killing process $pid on gateway port $gw_port"
+            kill -9 $pid 2>/dev/null && killed=$((killed + 1))
+        fi
     done
 
     if [[ $killed -eq 0 ]]; then
@@ -71,19 +76,11 @@ cmd_status() {
     # Check if nodes are responding
     echo "Health checks:"
     for node in $(get_node_names); do
-        local type=$(get_node_type "$node")
-        local port
-
-        if [[ "$type" == "gateway" ]]; then
-            port=$(get_gateway_port "$node")
-        else
-            port=$(get_app_port "$node")
-        fi
-
+        local api_port=$(get_api_port "$node")
         local nick=$(toml_get "$node" "nick")
-        printf "  %-8s %-6s " "$node" "($nick)"
+        printf "  %-8s %-10s " "$node" "($nick)"
 
-        if curl -s --connect-timeout 1 "http://localhost:$port/_status/livez" >/dev/null 2>&1; then
+        if curl -s --connect-timeout 1 "http://localhost:$api_port/_status/livez" >/dev/null 2>&1; then
             echo -e "${GREEN}healthy${NC}"
         else
             echo -e "${RED}not responding${NC}"
@@ -102,18 +99,18 @@ init_node() {
 
     local name=$(get_node_name "$node")
     local blob_store=$(get_blob_store "$node")
-    local app_port=$(get_app_port "$node")
-    local gw_port=$(get_gateway_port "$node")
+    local api_port=$(get_api_port "$node")
+    local gw_port=$(get_gw_port "$node")
     local peer_port=$(toml_get "$node" "peer_port")
 
     echo -e "${YELLOW}Initializing $node ($name)...${NC}"
 
     local init_args="--config-path $data_path init"
-    init_args="$init_args --app-port $app_port"
+    init_args="$init_args --api-port $api_port"
+    init_args="$init_args --gateway-port $gw_port"
     if [[ -n "$peer_port" ]]; then
         init_args="$init_args --peer-port $peer_port"
     fi
-    init_args="$init_args --gateway-port $gw_port"
     init_args="$init_args --blob-store $blob_store"
 
     if [[ "$blob_store" == "s3" ]]; then
@@ -128,17 +125,10 @@ init_node() {
 # Returns just the cargo subcommand (without 'cargo ' prefix)
 get_daemon_cmd() {
     local node="$1"
-    local type=$(get_node_type "$node")
     local data_path="$DATA_DIR/$node"
     local log_dir="$data_path/logs"
 
     local cmd="run --bin jax -- --config-path $data_path daemon --log-dir $log_dir"
-
-    case "$type" in
-        full)    cmd="$cmd --with-gateway" ;;
-        gateway) cmd="$cmd --gateway" ;;
-        # app type needs no extra flags
-    esac
 
     echo "$cmd"
 }
@@ -155,14 +145,8 @@ cmd_run() {
         echo -e "${BLUE}Tmux session already exists, checking nodes...${NC}"
         local all_healthy=true
         for node in $(get_node_names); do
-            local type=$(get_node_type "$node")
-            local port
-            if [[ "$type" == "gateway" ]]; then
-                port=$(get_gateway_port "$node")
-            else
-                port=$(get_app_port "$node")
-            fi
-            if ! curl -s --connect-timeout 1 "http://localhost:$port/_status/livez" >/dev/null 2>&1; then
+            local api_port=$(get_api_port "$node")
+            if ! curl -s --connect-timeout 1 "http://localhost:$api_port/_status/livez" >/dev/null 2>&1; then
                 all_healthy=false
                 break
             fi
@@ -228,18 +212,12 @@ cmd_run() {
     for node in $(get_node_names); do
         local name=$(get_node_name "$node")
         local nick=$(toml_get "$node" "nick")
-        local type=$(get_node_type "$node")
-        local app_port=$(get_app_port "$node")
-        local gw_port=$(get_gateway_port "$node")
+        local api_port=$(get_api_port "$node")
+        local gw_port=$(get_gw_port "$node")
         local daemon_cmd=$(get_daemon_cmd "$node")
 
         # Build info line
-        local info=""
-        case "$type" in
-            full)    info="App: http://localhost:$app_port | Gateway: http://localhost:$gw_port" ;;
-            app)     info="App: http://localhost:$app_port" ;;
-            gateway) info="Gateway: http://localhost:$gw_port" ;;
-        esac
+        local info="API: http://localhost:$api_port  GW: http://localhost:$gw_port"
 
         # Send commands to pane
         tmux send-keys -t "$TMUX_SESSION:0.$pane" "cd $PROJECT_ROOT && echo -e '${GREEN}=== $node ($nick): $name ===${NC}' && echo '$info' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x '$daemon_cmd'" C-m
@@ -253,15 +231,9 @@ cmd_run() {
     for node in $(get_node_names); do
         local nick=$(toml_get "$node" "nick")
         local name=$(get_node_name "$node")
-        local type=$(get_node_type "$node")
-        local app_port=$(get_app_port "$node")
-        local gw_port=$(get_gateway_port "$node")
-
-        case "$type" in
-            full)    echo "  $node ($nick): http://localhost:$app_port (app) / http://localhost:$gw_port (gateway)" ;;
-            app)     echo "  $node ($nick): http://localhost:$app_port (app)" ;;
-            gateway) echo "  $node ($nick): http://localhost:$gw_port (gateway)" ;;
-        esac
+        local api_port=$(get_api_port "$node")
+        local gw_port=$(get_gw_port "$node")
+        echo "  $node ($nick): API http://localhost:$api_port  GW http://localhost:$gw_port"
     done
     echo ""
 
@@ -300,16 +272,9 @@ wait_for_nodes() {
         local all_healthy=true
 
         for node in $(get_node_names); do
-            local type=$(get_node_type "$node")
-            local port
+            local api_port=$(get_api_port "$node")
 
-            if [[ "$type" == "gateway" ]]; then
-                port=$(get_gateway_port "$node")
-            else
-                port=$(get_app_port "$node")
-            fi
-
-            if ! curl -s --connect-timeout 1 "http://localhost:$port/_status/livez" >/dev/null 2>&1; then
+            if ! curl -s --connect-timeout 1 "http://localhost:$api_port/_status/livez" >/dev/null 2>&1; then
                 all_healthy=false
                 break
             fi

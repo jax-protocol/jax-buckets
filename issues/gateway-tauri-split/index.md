@@ -1,61 +1,46 @@
-# Gateway and Local Mode Split
+# Gateway and Tauri Split
 
-## Background
+**Status:** Complete
 
-The current `jax daemon` combines full local client functionality (Askama UI, REST API, P2P sync) with gateway serving. This limits deployment flexibility for edge/CDN use cases.
+## Summary
 
-We added a `--gateway` mode to the daemon that runs a minimal gateway service: P2P peer (mirror role) + gateway content serving. A future ticket will add SQLite/Object Storage backend support.
+Restructured the daemon architecture: separated API (private, port 5001) and gateway (public, port 8080) onto separate ports, removed the Askama web UI, added SQLite + S3 blob storage, pluggable conflict resolution, and built a Tauri 2.0 desktop app with SolidJS replacing the old HTML UI.
 
-## Architecture
+## Architecture (Final)
 
 ```
-jax daemon (full local client - default)
+jax daemon (headless service)
 ├── P2P peer (owner/mirror roles)
-├── Askama web UI
-├── REST API
-└── No gateway
+├── API server on port 5001 (private, mutation/RPC)
+│   ├── REST API at /api/v0/*
+│   └── Health checks at /_status/*
+├── Gateway server on port 8080 (public, read-only)
+│   ├── Content serving at /gw/*
+│   └── Health checks at /_status/*
 
-jax daemon --with-gateway (app + gateway)
-├── P2P peer (owner/mirror roles)
-├── Askama web UI (port 8080)
-├── REST API
-└── Gateway handler (port 9092)
-
-jax daemon --gateway (gateway-only mode)
-├── P2P peer (mirror role)
-├── Gateway handler with read-only HTML file explorer
-└── (Future: SQLite + Object Storage blob backend)
+jax-desktop (Tauri app - separate binary)
+├── SolidJS frontend (Vite)
+├── Tauri IPC → daemon REST API via HTTP
+├── System tray + auto-launch
+└── Full bucket management UI
 ```
 
 ## Tickets
 
-| # | Ticket | Status | Track |
-|---|--------|--------|-------|
-| 0 | [Gateway subcommand](./0-gateway-subcommand.md) | Done | Gateway |
-| 1 | [SQLite blob store](./1-sqlite-blobstore.md) | Done | Gateway |
-| 2 | [Conflict resolution](./2-conflict-resolution.md) | Done | Common |
-| 3 | [FUSE integration](./3-fuse-integration.md) | Planned | Local |
-| 4 | [Desktop integration](./4-desktop-integration.md) | Planned | Local |
-| 5 | [Tauri migration](./5-tauri-migration.md) | Future | Local |
+| # | Ticket | Status |
+|---|--------|--------|
+| 0 | Gateway subcommand | Done |
+| 1 | SQLite blob store | Done |
+| 2 | Conflict resolution | Done |
+| 3 | Daemon simplification | Done |
+| 4 | Tauri desktop app | Done |
 
-## Execution Order
-
-**Stage 1 (Foundation):**
-- Ticket 0: Gateway subcommand (`jax daemon --gateway`) - **Done**
-- Ticket 1: SQLite blob store - **Done**
-
-**Stage 2 (Parallel Tracks):**
-
-| Gateway Track | Common/Local Track |
-|---------------|-------------------|
-| (Complete) | Ticket 2: Conflict resolution |
-| | Ticket 3: FUSE integration |
-| | Ticket 4: Desktop integration |
+FUSE integration (formerly ticket 5) moved to its own epic: [`issues/fuse-integration/`](../fuse-integration/index.md)
 
 ## Reference Branches
 
 | Branch | Reference For |
 |--------|---------------|
 | `amiller68/sqlite-minio-blobs` | SQLite + Object Storage blob backend |
-| `amiller68/fs-over-blobstore-v1` | FUSE implementation |
 | `amiller68/conflict-resolution` | Conflict resolution strategies |
+| `amiller68/tauri-app-explore` | Tauri + SolidJS prototype |

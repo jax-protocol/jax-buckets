@@ -63,7 +63,7 @@ Follow the Linux (Ubuntu/Debian) instructions above within your WSL2 environment
 Once published, you can install JaxBucket directly from crates.io:
 
 ```bash
-cargo install jax-bucket
+cargo install jax-daemon
 ```
 
 This will download, compile, and install the `jax` binary to `~/.cargo/bin/`.
@@ -73,7 +73,7 @@ This will download, compile, and install the `jax` binary to `~/.cargo/bin/`.
 Install the latest development version:
 
 ```bash
-cargo install --git https://github.com/jax-ethdenver-2025/jax-bucket jax-bucket
+cargo install --git https://github.com/jax-ethdenver-2025/jax-bucket jax-daemon
 ```
 
 ### Option 3: Build from Source
@@ -89,7 +89,7 @@ cd jax-bucket
 cargo build --release
 
 # Install to ~/.cargo/bin
-cargo install --path crates/app
+cargo install --path crates/daemon
 
 # Or run directly from the build directory
 ./target/release/jax --help
@@ -328,6 +328,6 @@ jax init
 
 ## Getting Help
 
-- **Documentation**: https://docs.rs/jax-bucket
+- **Documentation**: https://docs.rs/jax-daemon
 - **Issues**: https://github.com/jax-ethdenver-2025/jax-bucket/issues
 - **Discussions**: https://github.com/jax-ethdenver-2025/jax-bucket/discussions
