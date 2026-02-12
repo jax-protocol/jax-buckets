@@ -8,8 +8,7 @@
 use tempfile::TempDir;
 use uuid::Uuid;
 
-use jax_daemon::mount_queries::{CreateMountConfig, MountStatus, UpdateMountConfig};
-use jax_daemon::Database;
+use jax_daemon::{Database, MountStatus};
 
 /// Create a test database
 async fn setup_test_db() -> (Database, TempDir) {
@@ -33,19 +32,12 @@ async fn test_create_and_get_mount() {
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
-    // Create a bucket first (mounts require a bucket)
     let bucket_id = Uuid::new_v4();
 
-    let config = CreateMountConfig {
-        bucket_id,
-        mount_point: mount_point.clone(),
-        auto_mount: false,
-        read_only: false,
-        cache_size_mb: Some(50),
-        cache_ttl_secs: Some(30),
-    };
-
-    let mount = db.create_mount(&config).await.unwrap();
+    let mount = db
+        .create_mount(bucket_id, &mount_point, false, false, Some(50), Some(30))
+        .await
+        .unwrap();
 
     assert_eq!(mount.bucket_id, bucket_id);
     assert_eq!(mount.mount_point, mount_point);
@@ -75,15 +67,16 @@ async fn test_list_mounts() {
             .to_string();
         std::fs::create_dir_all(&mount_point).unwrap();
 
-        let config = CreateMountConfig {
-            bucket_id: Uuid::new_v4(),
-            mount_point,
-            auto_mount: i == 1, // Only middle one is auto-mount
-            read_only: false,
-            cache_size_mb: None,
-            cache_ttl_secs: None,
-        };
-        db.create_mount(&config).await.unwrap();
+        db.create_mount(
+            Uuid::new_v4(),
+            &mount_point,
+            i == 1, // Only middle one is auto-mount
+            false,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
     }
 
     let mounts = db.list_mounts().await.unwrap();
@@ -96,31 +89,24 @@ async fn test_update_mount() {
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
-    let config = CreateMountConfig {
-        bucket_id: Uuid::new_v4(),
-        mount_point,
-        auto_mount: false,
-        read_only: false,
-        cache_size_mb: None,
-        cache_ttl_secs: None,
-    };
-
-    let mount = db.create_mount(&config).await.unwrap();
+    let mount = db
+        .create_mount(Uuid::new_v4(), &mount_point, false, false, None, None)
+        .await
+        .unwrap();
     assert!(!mount.auto_mount);
     assert!(!mount.read_only);
 
     // Update the mount
-    let update = UpdateMountConfig {
-        mount_point: None,
-        enabled: Some(false),
-        auto_mount: Some(true),
-        read_only: Some(true),
-        cache_size_mb: Some(200),
-        cache_ttl_secs: Some(120),
-    };
-
     let updated = db
-        .update_mount(&mount.mount_id, &update)
+        .update_mount(
+            &mount.mount_id,
+            None,
+            Some(false),
+            Some(true),
+            Some(true),
+            Some(200),
+            Some(120),
+        )
         .await
         .unwrap()
         .unwrap();
@@ -137,16 +123,10 @@ async fn test_delete_mount() {
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
-    let config = CreateMountConfig {
-        bucket_id: Uuid::new_v4(),
-        mount_point,
-        auto_mount: false,
-        read_only: false,
-        cache_size_mb: None,
-        cache_ttl_secs: None,
-    };
-
-    let mount = db.create_mount(&config).await.unwrap();
+    let mount = db
+        .create_mount(Uuid::new_v4(), &mount_point, false, false, None, None)
+        .await
+        .unwrap();
 
     // Verify mount exists
     assert!(db.get_mount(&mount.mount_id).await.unwrap().is_some());
@@ -169,16 +149,10 @@ async fn test_update_mount_status() {
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
-    let config = CreateMountConfig {
-        bucket_id: Uuid::new_v4(),
-        mount_point,
-        auto_mount: false,
-        read_only: false,
-        cache_size_mb: None,
-        cache_ttl_secs: None,
-    };
-
-    let mount = db.create_mount(&config).await.unwrap();
+    let mount = db
+        .create_mount(Uuid::new_v4(), &mount_point, false, false, None, None)
+        .await
+        .unwrap();
     assert_eq!(mount.status, MountStatus::Stopped);
 
     // Update to starting
@@ -221,28 +195,16 @@ async fn test_get_auto_mount_list() {
             .to_string();
         std::fs::create_dir_all(&mount_point).unwrap();
 
-        let config = CreateMountConfig {
-            bucket_id: Uuid::new_v4(),
-            mount_point,
-            auto_mount: *auto_mount,
-            read_only: false,
-            cache_size_mb: None,
-            cache_ttl_secs: None,
-        };
-
-        let mount = db.create_mount(&config).await.unwrap();
+        let mount = db
+            .create_mount(Uuid::new_v4(), &mount_point, *auto_mount, false, None, None)
+            .await
+            .unwrap();
 
         // Disable the mount if needed
         if !enabled {
-            db.update_mount(
-                &mount.mount_id,
-                &UpdateMountConfig {
-                    enabled: Some(false),
-                    ..Default::default()
-                },
-            )
-            .await
-            .unwrap();
+            db.update_mount(&mount.mount_id, None, Some(false), None, None, None, None)
+                .await
+                .unwrap();
         }
     }
 
@@ -267,15 +229,9 @@ async fn test_get_mounts_by_bucket() {
             .to_string();
         std::fs::create_dir_all(&mount_point).unwrap();
 
-        let config = CreateMountConfig {
-            bucket_id,
-            mount_point,
-            auto_mount: false,
-            read_only: false,
-            cache_size_mb: None,
-            cache_ttl_secs: None,
-        };
-        db.create_mount(&config).await.unwrap();
+        db.create_mount(bucket_id, &mount_point, false, false, None, None)
+            .await
+            .unwrap();
     }
 
     // Create a mount for a different bucket
@@ -287,15 +243,9 @@ async fn test_get_mounts_by_bucket() {
         .to_string();
     std::fs::create_dir_all(&other_mount_point).unwrap();
 
-    let config = CreateMountConfig {
-        bucket_id: other_bucket,
-        mount_point: other_mount_point,
-        auto_mount: false,
-        read_only: false,
-        cache_size_mb: None,
-        cache_ttl_secs: None,
-    };
-    db.create_mount(&config).await.unwrap();
+    db.create_mount(other_bucket, &other_mount_point, false, false, None, None)
+        .await
+        .unwrap();
 
     // Get mounts by bucket
     let bucket_mounts = db.get_mounts_by_bucket(&bucket_id).await.unwrap();

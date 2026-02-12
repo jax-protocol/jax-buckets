@@ -207,8 +207,6 @@ pub async fn create_mount(
     state: State<'_, AppState>,
     request: CreateMountRequest,
 ) -> Result<MountInfo, String> {
-    use jax_daemon::mount_queries::CreateMountConfig;
-
     let inner = state.inner.read().await;
     let daemon = inner.as_ref().ok_or("Daemon not started")?;
 
@@ -220,17 +218,15 @@ pub async fn create_mount(
         .as_ref()
         .ok_or("Mount manager not available")?;
 
-    let config = CreateMountConfig {
-        bucket_id,
-        mount_point: request.mount_point,
-        auto_mount: request.auto_mount,
-        read_only: request.read_only,
-        cache_size_mb: request.cache_size_mb,
-        cache_ttl_secs: request.cache_ttl_secs,
-    };
-
     let mount = manager
-        .create_mount(config)
+        .create_mount(
+            bucket_id,
+            &request.mount_point,
+            request.auto_mount,
+            request.read_only,
+            request.cache_size_mb,
+            request.cache_ttl_secs,
+        )
         .await
         .map_err(|e| format!("Failed to create mount: {}", e))?;
 
@@ -289,8 +285,6 @@ pub async fn update_mount(
     mount_id: String,
     request: UpdateMountRequest,
 ) -> Result<MountInfo, String> {
-    use jax_daemon::mount_queries::UpdateMountConfig;
-
     let inner = state.inner.read().await;
     let daemon = inner.as_ref().ok_or("Daemon not started")?;
 
@@ -301,17 +295,16 @@ pub async fn update_mount(
         .as_ref()
         .ok_or("Mount manager not available")?;
 
-    let config = UpdateMountConfig {
-        mount_point: request.mount_point,
-        enabled: request.enabled,
-        auto_mount: request.auto_mount,
-        read_only: request.read_only,
-        cache_size_mb: request.cache_size_mb,
-        cache_ttl_secs: request.cache_ttl_secs,
-    };
-
     let mount = manager
-        .update_mount(&id, config)
+        .update_mount(
+            &id,
+            request.mount_point.as_deref(),
+            request.enabled,
+            request.auto_mount,
+            request.read_only,
+            request.cache_size_mb,
+            request.cache_ttl_secs,
+        )
         .await
         .map_err(|e| format!("Failed to update mount: {}", e))?
         .ok_or("Mount not found")?;
@@ -448,7 +441,7 @@ fn check_fuse_installed() -> bool {
 }
 
 #[cfg(feature = "fuse")]
-fn fuse_mount_to_info(m: jax_daemon::mount_queries::FuseMount) -> MountInfo {
+fn fuse_mount_to_info(m: jax_daemon::FuseMount) -> MountInfo {
     MountInfo {
         mount_id: m.mount_id.to_string(),
         bucket_id: m.bucket_id.to_string(),
@@ -458,7 +451,7 @@ fn fuse_mount_to_info(m: jax_daemon::mount_queries::FuseMount) -> MountInfo {
         read_only: m.read_only,
         cache_size_mb: m.cache_size_mb,
         cache_ttl_secs: m.cache_ttl_secs,
-        status: m.status.as_str().to_string(),
+        status: m.status.to_string(),
         error_message: m.error_message,
         created_at: m.created_at.to_string(),
         updated_at: m.updated_at.to_string(),
@@ -479,8 +472,6 @@ pub async fn mount_bucket(
     state: State<'_, AppState>,
     bucket_id: String,
 ) -> Result<MountInfo, String> {
-    use jax_daemon::mount_queries::CreateMountConfig;
-
     let inner = state.inner.read().await;
     let daemon = inner.as_ref().ok_or("Daemon not started")?;
 
@@ -518,18 +509,9 @@ pub async fn mount_bucket(
     // Create mount point directory (with privilege escalation if needed)
     create_mount_point(&mount_point).await?;
 
-    // Create mount config
-    let config = CreateMountConfig {
-        bucket_id: bucket_uuid,
-        mount_point: mount_point_str,
-        auto_mount: false,
-        read_only: false,
-        cache_size_mb: None,
-        cache_ttl_secs: None,
-    };
-
+    // Create mount
     let mount = manager
-        .create_mount(config)
+        .create_mount(bucket_uuid, &mount_point_str, false, false, None, None)
         .await
         .map_err(|e| format!("Failed to create mount: {}", e))?;
 

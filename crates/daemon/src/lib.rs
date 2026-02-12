@@ -20,7 +20,5 @@ pub use service_config::Config as ServiceConfig;
 pub use service_state::State as ServiceState;
 pub use state::{AppConfig, AppState, BlobStoreConfig, StateError};
 
-// Re-exports for testing and mount management
-pub mod mount_queries {
-    pub use crate::database::mount_queries::*;
-}
+// Re-exports for mount management
+pub use database::models::{FuseMount, MountStatus};

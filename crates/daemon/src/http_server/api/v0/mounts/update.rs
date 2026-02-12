@@ -15,8 +15,6 @@ use axum::Json;
 use super::create::MountInfo;
 use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
-use crate::database::mount_queries::UpdateMountConfig;
-#[cfg(feature = "fuse")]
 use crate::ServiceState;
 
 /// Request body for updating a mount (used by handler)
@@ -55,17 +53,16 @@ pub async fn handler(
         .as_ref()
         .ok_or(UpdateMountError::MountManagerUnavailable)?;
 
-    let config = UpdateMountConfig {
-        mount_point: req.mount_point,
-        enabled: req.enabled,
-        auto_mount: req.auto_mount,
-        read_only: req.read_only,
-        cache_size_mb: req.cache_size_mb,
-        cache_ttl_secs: req.cache_ttl_secs,
-    };
-
     let mount = mount_manager
-        .update_mount(&id, config)
+        .update_mount(
+            &id,
+            req.mount_point.as_deref(),
+            req.enabled,
+            req.auto_mount,
+            req.read_only,
+            req.cache_size_mb,
+            req.cache_ttl_secs,
+        )
         .await?
         .ok_or(UpdateMountError::NotFound(id))?;
 

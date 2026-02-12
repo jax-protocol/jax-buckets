@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::http_server::api::client::ApiRequest;
 #[cfg(feature = "fuse")]
-use crate::database::mount_queries::{CreateMountConfig, FuseMount};
+use crate::database::models::FuseMount;
 #[cfg(feature = "fuse")]
 use crate::ServiceState;
 
@@ -79,16 +79,16 @@ pub async fn handler(
         .as_ref()
         .ok_or(CreateMountError::MountManagerUnavailable)?;
 
-    let config = CreateMountConfig {
-        bucket_id: req.bucket_id,
-        mount_point: req.mount_point,
-        auto_mount: req.auto_mount,
-        read_only: req.read_only,
-        cache_size_mb: req.cache_size_mb,
-        cache_ttl_secs: req.cache_ttl_secs,
-    };
-
-    let mount = mount_manager.create_mount(config).await?;
+    let mount = mount_manager
+        .create_mount(
+            req.bucket_id,
+            &req.mount_point,
+            req.auto_mount,
+            req.read_only,
+            req.cache_size_mb,
+            req.cache_ttl_secs,
+        )
+        .await?;
 
     Ok((
         http::StatusCode::CREATED,

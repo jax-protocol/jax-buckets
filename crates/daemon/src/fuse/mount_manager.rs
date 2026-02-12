@@ -11,9 +11,7 @@ use fuser::BackgroundSession;
 use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 
-use crate::database::mount_queries::{
-    CreateMountConfig, FuseMount, MountStatus, UpdateMountConfig,
-};
+use crate::database::models::{FuseMount, MountStatus};
 use crate::database::Database;
 use crate::fuse::cache::FileCacheConfig;
 use crate::fuse::jax_fs::JaxFs;
@@ -130,40 +128,49 @@ impl MountManager {
     }
 
     /// Create a new mount configuration
-    pub async fn create_mount(&self, config: CreateMountConfig) -> Result<FuseMount, MountError> {
+    pub async fn create_mount(
+        &self,
+        bucket_id: Uuid,
+        mount_point: &str,
+        auto_mount: bool,
+        read_only: bool,
+        cache_size_mb: Option<u32>,
+        cache_ttl_secs: Option<u32>,
+    ) -> Result<FuseMount, MountError> {
         // Validate bucket exists
         let bucket_info = self
             .db
-            .get_bucket_info(&config.bucket_id)
+            .get_bucket_info(&bucket_id)
             .await
             .map_err(MountError::Database)?;
 
         if bucket_info.is_none() {
-            return Err(MountError::BucketNotFound(config.bucket_id));
+            return Err(MountError::BucketNotFound(bucket_id));
         }
 
         // Validate or create mount point
-        let mount_point = PathBuf::from(&config.mount_point);
-        if !mount_point.exists() {
-            // Try to create the mount point directory
-            std::fs::create_dir_all(&mount_point).map_err(|e| {
-                MountError::MountPointNotFound(format!(
-                    "{} (failed to create: {})",
-                    config.mount_point, e
-                ))
+        let mount_path = PathBuf::from(mount_point);
+        if !mount_path.exists() {
+            std::fs::create_dir_all(&mount_path).map_err(|e| {
+                MountError::MountPointNotFound(format!("{} (failed to create: {})", mount_point, e))
             })?;
         }
 
-        if !mount_point.is_dir() {
-            return Err(MountError::MountPointNotDirectory(
-                config.mount_point.clone(),
-            ));
+        if !mount_path.is_dir() {
+            return Err(MountError::MountPointNotDirectory(mount_point.to_string()));
         }
 
         // Create in database
         let mount = self
             .db
-            .create_mount(&config)
+            .create_mount(
+                bucket_id,
+                mount_point,
+                auto_mount,
+                read_only,
+                cache_size_mb,
+                cache_ttl_secs,
+            )
             .await
             .map_err(MountError::Database)?;
 
@@ -191,13 +198,27 @@ impl MountManager {
     }
 
     /// Update a mount configuration
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_mount(
         &self,
         mount_id: &Uuid,
-        config: UpdateMountConfig,
+        mount_point: Option<&str>,
+        enabled: Option<bool>,
+        auto_mount: Option<bool>,
+        read_only: Option<bool>,
+        cache_size_mb: Option<u32>,
+        cache_ttl_secs: Option<u32>,
     ) -> Result<Option<FuseMount>, MountError> {
         self.db
-            .update_mount(mount_id, &config)
+            .update_mount(
+                mount_id,
+                mount_point,
+                enabled,
+                auto_mount,
+                read_only,
+                cache_size_mb,
+                cache_ttl_secs,
+            )
             .await
             .map_err(MountError::Database)
     }
