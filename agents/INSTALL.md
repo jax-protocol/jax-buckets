@@ -31,6 +31,16 @@ sudo apt install build-essential pkg-config libssl-dev libsqlite3-dev
 sudo dnf install gcc pkg-config openssl-devel sqlite-devel
 ```
 
+#### Linux (Gentoo)
+```bash
+emerge -av dev-lang/rust dev-libs/openssl dev-db/sqlite sys-fs/fuse:3
+```
+
+**Kernel note:** Ensure your kernel has FUSE support enabled (`CONFIG_FUSE_FS=y` or `CONFIG_FUSE_FS=m`). If built as a module, load it with `modprobe fuse`. Your user must also be in the `fuse` group:
+```bash
+gpasswd -a YOUR_USERNAME fuse
+```
+
 #### macOS
 ```bash
 # Install Homebrew if not already installed
@@ -97,6 +107,12 @@ The built installer will be in `target/release/bundle/`:
 - macOS: `dmg/*.dmg`
 - Linux: `deb/*.deb` or `appimage/*.AppImage`
 - Windows: `nsis/*.exe` or `msi/*.msi`
+
+**Gentoo desktop build dependencies:** The Tauri build requires WebKit, tray icon support, and SVG rendering:
+```bash
+emerge -av net-libs/webkit-gtk:4.1 dev-libs/libappindicator gnome-base/librsvg dev-util/patchelf
+```
+You will also need Node.js 20+ and pnpm. Install via your preferred method (e.g., `emerge -av net-libs/nodejs` or use [nvm](https://github.com/nvm-sh/nvm)), then `npm install -g pnpm`.
 
 ### CLI Installation
 
@@ -288,6 +304,48 @@ systemctl --user status jaxbucket
 journalctl --user -u jaxbucket -f
 ```
 
+### Linux (OpenRC / Gentoo)
+
+Create an init script at `/etc/init.d/jax-daemon`:
+
+```bash
+#!/sbin/openrc-run
+
+description="JaxBucket P2P Storage Daemon"
+
+command="/home/YOUR_USERNAME/.cargo/bin/jax"
+command_args="daemon"
+command_user="YOUR_USERNAME:YOUR_USERNAME"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+
+output_log="/var/log/${RC_SVCNAME}.log"
+error_log="/var/log/${RC_SVCNAME}.err"
+
+depend() {
+    need net
+    after firewall
+}
+```
+
+Install and start the service:
+```bash
+# Make the script executable
+chmod +x /etc/init.d/jax-daemon
+
+# Add to default runlevel
+rc-update add jax-daemon default
+
+# Start the service
+rc-service jax-daemon start
+
+# Check status
+rc-service jax-daemon status
+
+# View logs
+tail -f /var/log/jax-daemon.log
+```
+
 ### macOS (launchd)
 
 Create a launch agent at `~/Library/LaunchAgents/com.jaxbucket.daemon.plist`:
@@ -353,6 +411,24 @@ pkill -f "jax daemon"
 ### "Failed to bind address"
 
 The HTTP port is already in use. Change it in `config.toml` or stop the conflicting service.
+
+### FUSE: "Permission denied" or "Transport endpoint is not connected"
+
+Ensure the FUSE kernel module is loaded and your user is in the `fuse` group:
+```bash
+# Load the FUSE module (if built as a module)
+modprobe fuse
+
+# Add your user to the fuse group
+gpasswd -a YOUR_USERNAME fuse
+
+# Log out and back in for the group change to take effect
+```
+
+On Gentoo, also verify your kernel config includes `CONFIG_FUSE_FS=y` or `CONFIG_FUSE_FS=m`. You can check with:
+```bash
+zgrep FUSE /proc/config.gz
+```
 
 ### Reset Configuration
 
