@@ -455,3 +455,40 @@ If `#[allow(dead_code)]` is needed, the code probably shouldn't exist yet.
 | Public export | `pub use module::Type;` |
 | Method order | constructors → `/* Getters */` → `/* Setters */` |
 | Predicate names | `is_*`, `can_*`, `has_*` |
+
+---
+
+## Tauri Desktop Patterns
+
+### Embedding Resources
+
+When bundling a Tauri app, relative file paths don't work from the installed location. Use `include_bytes!` to embed resources at compile time:
+
+**Bad** - Relative path fails when app is installed:
+```rust
+// This looks for icons/tray-icon.png relative to CWD, not the app bundle
+let icon = Image::from_path("icons/tray-icon.png")?;
+```
+
+**Good** - Embed at compile time:
+```rust
+// Embeds the icon bytes directly into the binary
+let icon = Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+```
+
+This works because:
+- `include_bytes!` reads the file at compile time
+- The bytes become part of the binary
+- No filesystem lookup needed at runtime
+
+### Tauri Setup Errors
+
+If the app crashes during setup with "No such file or directory", check:
+1. System tray icon paths
+2. Any `from_path()` calls in `setup()` hook
+3. Resource files that need bundling
+
+Debug by running the binary directly:
+```bash
+/Applications/Jax.app/Contents/MacOS/jax-desktop
+```

@@ -29,8 +29,8 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     // Build menu
     let menu = Menu::with_items(app, &[&open, &status, &quit])?;
 
-    // Load tray icon from bundled resources
-    let icon = Image::from_path("icons/tray-icon.png")?;
+    // Load tray icon embedded at compile time
+    let icon = Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
 
     // Build tray icon
     let _tray = TrayIconBuilder::with_id("main")
