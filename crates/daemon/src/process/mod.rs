@@ -21,11 +21,25 @@ pub struct ShutdownHandle {
     graceful_waiter: tokio::task::JoinHandle<()>,
     handles: Vec<tokio::task::JoinHandle<()>>,
     shutdown_tx: watch::Sender<()>,
+    #[cfg(feature = "fuse")]
+    state: ServiceState,
 }
 
 impl ShutdownHandle {
     /// Block until the service shuts down (via signal or explicit shutdown).
     pub async fn wait(self) {
+        // Stop all FUSE mounts before shutting down
+        #[cfg(feature = "fuse")]
+        {
+            tracing::info!("Stopping all FUSE mounts...");
+            let mount_manager = self.state.mount_manager().read().await;
+            if let Some(manager) = mount_manager.as_ref() {
+                if let Err(e) = manager.stop_all().await {
+                    tracing::error!("Failed to stop FUSE mounts: {}", e);
+                }
+            }
+        }
+
         shutdown_and_join(self.graceful_waiter, self.handles).await;
     }
 
@@ -179,10 +193,29 @@ pub async fn start_service(service_config: &ServiceConfig) -> (ServiceState, Shu
         gw_port
     );
 
+    // Start auto-mounts (with fuse feature)
+    #[cfg(feature = "fuse")]
+    {
+        let mount_state = state.clone();
+        tokio::spawn(async move {
+            // Small delay to ensure services are ready
+            tokio::time::sleep(Duration::from_millis(500)).await;
+
+            let mount_manager = mount_state.mount_manager().read().await;
+            if let Some(manager) = mount_manager.as_ref() {
+                if let Err(e) = manager.start_auto().await {
+                    tracing::error!("Failed to start auto-mounts: {}", e);
+                }
+            }
+        });
+    }
+
     let handle = ShutdownHandle {
         graceful_waiter,
         handles,
         shutdown_tx,
+        #[cfg(feature = "fuse")]
+        state: state.clone(),
     };
 
     (state.clone(), handle)

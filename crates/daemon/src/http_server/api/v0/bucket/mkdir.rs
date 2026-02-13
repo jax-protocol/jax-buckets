@@ -1,12 +1,14 @@
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
+use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
 use common::prelude::{Link, MountError};
 
+use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,5 +61,14 @@ impl IntoResponse for MkdirError {
             "Unexpected error".to_string(),
         )
             .into_response()
+    }
+}
+
+impl ApiRequest for MkdirRequest {
+    type Response = MkdirResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url.join("/api/v0/bucket/mkdir").unwrap();
+        client.post(full_url).json(&self)
     }
 }

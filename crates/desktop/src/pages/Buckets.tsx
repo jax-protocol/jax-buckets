@@ -1,6 +1,6 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { A } from '@solidjs/router';
-import { listBuckets, createBucket, BucketInfo } from '../lib/api';
+import { listBuckets, createBucket, BucketInfo, isFuseAvailable, isBucketMounted, mountBucket, unmountBucket, MountInfo } from '../lib/api';
 
 const Buckets: Component = () => {
   const [buckets, setBuckets] = createSignal<BucketInfo[]>([]);
@@ -8,6 +8,9 @@ const Buckets: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [newBucketName, setNewBucketName] = createSignal('');
   const [creating, setCreating] = createSignal(false);
+  const [fuseAvailable, setFuseAvailable] = createSignal(false);
+  const [mountStatus, setMountStatus] = createSignal<Record<string, MountInfo | null>>({});
+  const [mountingBucket, setMountingBucket] = createSignal<string | null>(null);
 
   const fetchBuckets = async () => {
     try {
@@ -15,10 +18,55 @@ const Buckets: Component = () => {
       const result = await listBuckets();
       setBuckets(result);
       setError(null);
+
+      // Check mount status for each bucket if FUSE is available
+      if (fuseAvailable()) {
+        const statuses: Record<string, MountInfo | null> = {};
+        for (const bucket of result) {
+          try {
+            statuses[bucket.bucket_id] = await isBucketMounted(bucket.bucket_id);
+          } catch {
+            statuses[bucket.bucket_id] = null;
+          }
+        }
+        setMountStatus(statuses);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMount = async (bucketId: string, e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      setMountingBucket(bucketId);
+      setError(null);
+      const mount = await mountBucket(bucketId);
+      setMountStatus(prev => ({ ...prev, [bucketId]: mount }));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setMountingBucket(null);
+    }
+  };
+
+  const handleUnmount = async (bucketId: string, e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      setMountingBucket(bucketId);
+      setError(null);
+      await unmountBucket(bucketId);
+      setMountStatus(prev => ({ ...prev, [bucketId]: null }));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setMountingBucket(null);
     }
   };
 
@@ -39,8 +87,10 @@ const Buckets: Component = () => {
     }
   };
 
-  onMount(() => {
-    fetchBuckets();
+  onMount(async () => {
+    const fuse = await isFuseAvailable();
+    setFuseAvailable(fuse);
+    await fetchBuckets();
   });
 
   return (
@@ -188,10 +238,83 @@ const Buckets: Component = () => {
                     </Show>
                   </div>
 
+                  {/* Mount status and button */}
+                  <Show when={fuseAvailable()}>
+                    <div style={{
+                      'margin-top': '0.75rem',
+                      'padding-top': '0.75rem',
+                      'border-top': '1px solid var(--border)',
+                      display: 'flex',
+                      'justify-content': 'space-between',
+                      'align-items': 'center',
+                    }}>
+                      <Show when={mountStatus()[bucket.bucket_id]} fallback={
+                        <span style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)' }}>
+                          Not mounted
+                        </span>
+                      }>
+                        <span style={{
+                          'font-size': '0.75rem',
+                          color: 'var(--accent-green)',
+                          display: 'flex',
+                          'align-items': 'center',
+                          gap: '0.25rem',
+                        }}>
+                          <span style={{
+                            width: '6px',
+                            height: '6px',
+                            'border-radius': '50%',
+                            background: 'var(--accent-green)',
+                          }} />
+                          Mounted
+                        </span>
+                      </Show>
+                      <Show when={mountStatus()[bucket.bucket_id]} fallback={
+                        <button
+                          onClick={(e) => handleMount(bucket.bucket_id, e)}
+                          disabled={mountingBucket() === bucket.bucket_id}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            'border-radius': '6px',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg)',
+                            color: 'var(--fg)',
+                            cursor: mountingBucket() === bucket.bucket_id ? 'not-allowed' : 'pointer',
+                            'font-size': '0.6875rem',
+                            'font-weight': '500',
+                            'font-family': 'inherit',
+                            opacity: mountingBucket() === bucket.bucket_id ? '0.5' : '1',
+                          }}
+                        >
+                          {mountingBucket() === bucket.bucket_id ? 'Mounting...' : 'Mount'}
+                        </button>
+                      }>
+                        <button
+                          onClick={(e) => handleUnmount(bucket.bucket_id, e)}
+                          disabled={mountingBucket() === bucket.bucket_id}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            'border-radius': '6px',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg)',
+                            color: 'var(--accent-red)',
+                            cursor: mountingBucket() === bucket.bucket_id ? 'not-allowed' : 'pointer',
+                            'font-size': '0.6875rem',
+                            'font-weight': '500',
+                            'font-family': 'inherit',
+                            opacity: mountingBucket() === bucket.bucket_id ? '0.5' : '1',
+                          }}
+                        >
+                          {mountingBucket() === bucket.bucket_id ? 'Unmounting...' : 'Unmount'}
+                        </button>
+                      </Show>
+                    </div>
+                  </Show>
+
                   <div style={{
-                    'margin-top': '1rem',
-                    'padding-top': '0.75rem',
-                    'border-top': '1px solid var(--border)',
+                    'margin-top': fuseAvailable() ? '0.5rem' : '1rem',
+                    'padding-top': fuseAvailable() ? '0' : '0.75rem',
+                    'border-top': fuseAvailable() ? 'none' : '1px solid var(--border)',
                     display: 'flex',
                     'justify-content': 'space-between',
                     'align-items': 'center',

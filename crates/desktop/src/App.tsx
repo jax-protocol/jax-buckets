@@ -6,6 +6,7 @@ import Explorer from './pages/Explorer';
 import Viewer from './pages/Viewer';
 import Editor from './pages/Editor';
 import History from './pages/History';
+import Mounts from './pages/Mounts';
 import Settings from './pages/Settings';
 
 const Layout: Component<{ children?: any }> = (props) => {
@@ -66,6 +67,7 @@ const Layout: Component<{ children?: any }> = (props) => {
 
         {navLink('/', 'Home', '\u2302')}
         {navLink('/buckets', 'Buckets', '\u2750')}
+        {navLink('/mounts', 'Mounts', '\u26C1')}
 
         <div style={{ 'margin-top': 'auto' }}>
           {navLink('/settings', 'Settings', '\u2699')}
@@ -88,6 +90,7 @@ const App: Component = () => {
       <Route path="/buckets/:bucketId/view" component={Viewer} />
       <Route path="/buckets/:bucketId/edit" component={Editor} />
       <Route path="/buckets/:bucketId/history" component={History} />
+      <Route path="/mounts" component={Mounts} />
       <Route path="/settings" component={Settings} />
     </Router>
   );

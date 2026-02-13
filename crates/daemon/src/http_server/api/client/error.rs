@@ -8,4 +8,6 @@ pub enum ApiError {
     UrlParse(#[from] url::ParseError),
     #[error("HTTP status {0}: {1}")]
     HttpStatus(StatusCode, String),
+    #[error("{0}")]
+    Other(String),
 }

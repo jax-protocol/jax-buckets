@@ -147,3 +147,83 @@ export interface ConfigInfo {
 export async function getConfigInfo(): Promise<ConfigInfo> {
   return invoke('get_config_info');
 }
+
+// Mount types
+export interface MountInfo {
+  mount_id: string;
+  bucket_id: string;
+  mount_point: string;
+  enabled: boolean;
+  auto_mount: boolean;
+  read_only: boolean;
+  cache_size_mb: number;
+  cache_ttl_secs: number;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateMountRequest {
+  bucket_id: string;
+  mount_point: string;
+  auto_mount?: boolean;
+  read_only?: boolean;
+  cache_size_mb?: number;
+  cache_ttl_secs?: number;
+}
+
+export interface UpdateMountRequest {
+  mount_point?: string;
+  enabled?: boolean;
+  auto_mount?: boolean;
+  read_only?: boolean;
+  cache_size_mb?: number;
+  cache_ttl_secs?: number;
+}
+
+// Mount operations
+export async function listMounts(): Promise<MountInfo[]> {
+  return invoke('list_mounts');
+}
+
+export async function createMount(request: CreateMountRequest): Promise<MountInfo> {
+  return invoke('create_mount', { request });
+}
+
+export async function getMount(mountId: string): Promise<MountInfo> {
+  return invoke('get_mount', { mountId });
+}
+
+export async function updateMount(mountId: string, request: UpdateMountRequest): Promise<MountInfo> {
+  return invoke('update_mount', { mountId, request });
+}
+
+export async function deleteMount(mountId: string): Promise<boolean> {
+  return invoke('delete_mount', { mountId });
+}
+
+export async function startMount(mountId: string): Promise<boolean> {
+  return invoke('start_mount', { mountId });
+}
+
+export async function stopMount(mountId: string): Promise<boolean> {
+  return invoke('stop_mount', { mountId });
+}
+
+export async function isFuseAvailable(): Promise<boolean> {
+  return invoke('is_fuse_available');
+}
+
+// Simplified mount API (auto mount point selection)
+export async function mountBucket(bucketId: string): Promise<MountInfo> {
+  return invoke('mount_bucket', { bucketId });
+}
+
+export async function unmountBucket(bucketId: string): Promise<boolean> {
+  return invoke('unmount_bucket', { bucketId });
+}
+
+export async function isBucketMounted(bucketId: string): Promise<MountInfo | null> {
+  return invoke('is_bucket_mounted', { bucketId });
+}
