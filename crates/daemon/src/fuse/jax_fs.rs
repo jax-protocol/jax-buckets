@@ -18,8 +18,9 @@ use uuid::Uuid;
 
 use crate::fuse::cache::{CachedAttr, CachedContent, CachedDirEntry, FileCache, FileCacheConfig};
 use crate::fuse::inode_table::InodeTable;
-use crate::fuse::sync_events::SyncEvent;
+use crate::fuse::sync_events::{SaveRequest, SyncEvent};
 use common::mount::Mount;
+use tokio::sync::mpsc;
 
 /// Write buffer for pending writes
 #[derive(Debug)]
@@ -47,6 +48,8 @@ pub struct JaxFs {
     /// Sync event receiver (used when sync listener is spawned)
     #[allow(dead_code)]
     sync_rx: Option<broadcast::Receiver<SyncEvent>>,
+    /// Save request sender - sends requests to MountManager when flush succeeds
+    save_tx: Option<mpsc::Sender<SaveRequest>>,
     /// Read-only mode
     read_only: bool,
     /// Next file handle
@@ -61,6 +64,7 @@ impl JaxFs {
     const BLOCK_SIZE: u32 = 512;
 
     /// Create a new JaxFs
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rt: Handle,
         mount: Arc<RwLock<Mount>>,
@@ -69,6 +73,7 @@ impl JaxFs {
         cache_config: FileCacheConfig,
         read_only: bool,
         sync_rx: Option<broadcast::Receiver<SyncEvent>>,
+        save_tx: Option<mpsc::Sender<SaveRequest>>,
     ) -> Self {
         Self {
             rt,
@@ -79,6 +84,7 @@ impl JaxFs {
             write_buffers: RwLock::new(HashMap::new()),
             cache: FileCache::new(cache_config),
             sync_rx,
+            save_tx,
             read_only,
             next_fh: std::sync::atomic::AtomicU64::new(1),
         }
@@ -639,6 +645,18 @@ impl Filesystem for JaxFs {
                     }
                     // Invalidate cache
                     self.cache.invalidate(&path);
+
+                    // Request save to persist changes
+                    if let Some(ref save_tx) = self.save_tx {
+                        let mount_id = self.mount_id;
+                        let tx = save_tx.clone();
+                        self.rt.spawn(async move {
+                            if let Err(e) = tx.send(SaveRequest { mount_id }).await {
+                                tracing::error!("Failed to send save request: {}", e);
+                            }
+                        });
+                    }
+
                     reply.ok();
                 }
                 Err(e) => {

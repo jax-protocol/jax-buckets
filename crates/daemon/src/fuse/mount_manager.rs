@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use fuser::BackgroundSession;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use uuid::Uuid;
 
 use crate::database::models::FuseMount;
@@ -16,9 +16,9 @@ use crate::database::types::MountStatus;
 use crate::database::Database;
 use crate::fuse::cache::FileCacheConfig;
 use crate::fuse::jax_fs::JaxFs;
-use crate::fuse::sync_events::SyncEvent;
+use crate::fuse::sync_events::{SaveRequest, SyncEvent};
 use crate::fuse::FileCache;
-use common::mount::Mount;
+use common::mount::{ConflictFile, Mount};
 use common::peer::Peer;
 
 /// Configuration for mount manager
@@ -95,19 +95,91 @@ impl MountManager {
     }
 
     /// Called when a bucket sync completes - refresh affected mounts
+    ///
+    /// If the live mount has unsaved local changes (ops_log non-empty), merges them
+    /// with incoming changes using conflict resolution. Otherwise, simply reloads
+    /// from the new head.
     pub async fn on_bucket_synced(&self, bucket_id: Uuid) -> Result<(), MountError> {
         let mounts = self.mounts.read().await;
 
         for (mount_id, live_mount) in mounts.iter() {
             if *live_mount.config.bucket_id == bucket_id {
-                // Reload mount from updated log head
-                let new_mount = self
-                    .peer
-                    .mount(bucket_id)
-                    .await
-                    .map_err(|e| MountError::MountLoad(e.into()))?;
+                // Check if mount has unsaved local changes
+                let has_local_changes = {
+                    let mount_guard = live_mount.mount.read().await;
+                    let inner = mount_guard.inner().await;
+                    !inner.ops_log().is_empty()
+                };
 
-                *live_mount.mount.write().await = new_mount;
+                if has_local_changes {
+                    tracing::info!(
+                        "Mount {} has local changes, merging with incoming sync",
+                        mount_id
+                    );
+
+                    // Load the incoming mount from the new head
+                    let incoming = self
+                        .peer
+                        .mount(bucket_id)
+                        .await
+                        .map_err(|e| MountError::MountLoad(e.into()))?;
+
+                    // Use ConflictFile resolver to create conflict copies for concurrent edits
+                    let resolver = ConflictFile::new();
+
+                    // Merge incoming changes into local mount
+                    let mut mount_guard = live_mount.mount.write().await;
+                    match mount_guard
+                        .merge_from(&incoming, &resolver, self.peer.blobs())
+                        .await
+                    {
+                        Ok((result, link)) => {
+                            // Log any conflicts that were resolved
+                            for resolved in &result.conflicts_resolved {
+                                tracing::info!(
+                                    "Resolved conflict for {:?}: {:?}",
+                                    resolved.conflict.path,
+                                    resolved.resolution
+                                );
+                            }
+
+                            tracing::info!(
+                                "Merged {} operations, {} conflicts resolved, new link: {}",
+                                result.operations_added,
+                                result.conflicts_resolved.len(),
+                                link.hash()
+                            );
+
+                            // Save the merged result
+                            if let Err(e) = self.peer.save_mount(&mount_guard, false).await {
+                                tracing::error!("Failed to save merged mount {}: {}", mount_id, e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to merge mount {} with incoming changes: {}",
+                                mount_id,
+                                e
+                            );
+                            // Fall back to simple reload
+                            let new_mount = self
+                                .peer
+                                .mount(bucket_id)
+                                .await
+                                .map_err(|e| MountError::MountLoad(e.into()))?;
+                            *mount_guard = new_mount;
+                        }
+                    }
+                } else {
+                    // No local changes - simple reload from updated head
+                    let new_mount = self
+                        .peer
+                        .mount(bucket_id)
+                        .await
+                        .map_err(|e| MountError::MountLoad(e.into()))?;
+
+                    *live_mount.mount.write().await = new_mount;
+                }
 
                 // Invalidate cache
                 live_mount.cache.invalidate_all();
@@ -288,6 +360,9 @@ impl MountManager {
         let mount_arc = Arc::new(RwLock::new(bucket_mount));
         let sync_rx = self.subscribe_sync_events();
 
+        // Create save channel for persistence requests from FUSE
+        let (save_tx, save_rx) = mpsc::channel::<SaveRequest>(32);
+
         let fs = JaxFs::new(
             tokio::runtime::Handle::current(),
             mount_arc.clone(),
@@ -299,7 +374,11 @@ impl MountManager {
             },
             *mount_config.read_only,
             Some(sync_rx),
+            Some(save_tx),
         );
+
+        // Spawn save handler task
+        self.spawn_save_handler(save_rx, mount_arc.clone());
 
         // Mount options
         #[cfg(target_os = "linux")]
@@ -447,6 +526,38 @@ impl MountManager {
     pub async fn get_mount_cache(&self, mount_id: &Uuid) -> Option<FileCache> {
         let mounts = self.mounts.read().await;
         mounts.get(mount_id).map(|m| m.cache.clone())
+    }
+
+    /// Spawn a background task to handle save requests from FUSE
+    fn spawn_save_handler(
+        &self,
+        mut save_rx: mpsc::Receiver<SaveRequest>,
+        mount: Arc<RwLock<Mount>>,
+    ) {
+        let peer = self.peer.clone();
+
+        tokio::spawn(async move {
+            while let Some(request) = save_rx.recv().await {
+                tracing::debug!("Received save request for mount {}", request.mount_id);
+
+                // Get the current mount state and save it
+                let mount_guard = mount.read().await;
+                match peer.save_mount(&mount_guard, false).await {
+                    Ok(link) => {
+                        tracing::info!(
+                            "Successfully saved mount {} to {}",
+                            request.mount_id,
+                            link.hash()
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to save mount {}: {}", request.mount_id, e);
+                    }
+                }
+            }
+
+            tracing::debug!("Save handler shutting down");
+        });
     }
 
     /// Platform-specific unmount

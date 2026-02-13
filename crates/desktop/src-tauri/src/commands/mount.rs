@@ -187,7 +187,7 @@ pub async fn list_mounts(state: State<'_, AppState>) -> Result<Vec<MountInfo>, S
         .ok_or("Mount manager not available")?;
 
     let mounts = manager
-        .list_mounts()
+        .list()
         .await
         .map_err(|e| format!("Failed to list mounts: {}", e))?;
 
@@ -260,7 +260,7 @@ pub async fn get_mount(
         .ok_or("Mount manager not available")?;
 
     let mount = manager
-        .get_mount(&id)
+        .get(&id)
         .await
         .map_err(|e| format!("Failed to get mount: {}", e))?
         .ok_or("Mount not found")?;
@@ -296,7 +296,7 @@ pub async fn update_mount(
         .ok_or("Mount manager not available")?;
 
     let mount = manager
-        .update_mount(
+        .update(
             &id,
             request.mount_point.as_deref(),
             request.enabled,
@@ -337,7 +337,7 @@ pub async fn delete_mount(state: State<'_, AppState>, mount_id: String) -> Resul
         .ok_or("Mount manager not available")?;
 
     manager
-        .delete_mount(&id)
+        .delete(&id)
         .await
         .map_err(|e| format!("Failed to delete mount: {}", e))
 }
@@ -363,7 +363,7 @@ pub async fn start_mount(state: State<'_, AppState>, mount_id: String) -> Result
         .ok_or("Mount manager not available")?;
 
     manager
-        .start_mount(&id)
+        .start(&id)
         .await
         .map_err(|e| format!("Failed to start mount: {}", e))?;
 
@@ -391,7 +391,7 @@ pub async fn stop_mount(state: State<'_, AppState>, mount_id: String) -> Result<
         .ok_or("Mount manager not available")?;
 
     manager
-        .stop_mount(&id)
+        .stop(&id)
         .await
         .map_err(|e| format!("Failed to stop mount: {}", e))?;
 
@@ -446,11 +446,11 @@ fn fuse_mount_to_info(m: jax_daemon::FuseMount) -> MountInfo {
         mount_id: m.mount_id.to_string(),
         bucket_id: m.bucket_id.to_string(),
         mount_point: m.mount_point,
-        enabled: m.enabled,
-        auto_mount: m.auto_mount,
-        read_only: m.read_only,
-        cache_size_mb: m.cache_size_mb,
-        cache_ttl_secs: m.cache_ttl_secs,
+        enabled: *m.enabled,
+        auto_mount: *m.auto_mount,
+        read_only: *m.read_only,
+        cache_size_mb: m.cache_size_mb as u32,
+        cache_ttl_secs: m.cache_ttl_secs as u32,
         status: m.status.to_string(),
         error_message: m.error_message,
         created_at: m.created_at.to_string(),
@@ -495,7 +495,7 @@ pub async fn mount_bucket(
         .ok_or("Mount manager not available")?;
 
     let existing_mounts: Vec<String> = manager
-        .list_mounts()
+        .list()
         .await
         .map_err(|e| format!("Failed to list mounts: {}", e))?
         .into_iter()
@@ -519,13 +519,13 @@ pub async fn mount_bucket(
 
     // Start the mount
     manager
-        .start_mount(&mount_id)
+        .start(&mount_id)
         .await
         .map_err(|e| format!("Failed to start mount: {}", e))?;
 
     // Get updated mount info
     let mount = manager
-        .get_mount(&mount_id)
+        .get(&mount_id)
         .await
         .map_err(|e| format!("Failed to get mount: {}", e))?
         .ok_or("Mount not found after creation")?;
@@ -559,24 +559,24 @@ pub async fn unmount_bucket(state: State<'_, AppState>, bucket_id: String) -> Re
 
     // Find mount for this bucket
     let mounts = manager
-        .list_mounts()
+        .list()
         .await
         .map_err(|e| format!("Failed to list mounts: {}", e))?;
 
     let mount = mounts
         .into_iter()
-        .find(|m| m.bucket_id == bucket_uuid)
+        .find(|m| *m.bucket_id == bucket_uuid)
         .ok_or("No mount found for this bucket")?;
 
     // Stop the mount
     manager
-        .stop_mount(&mount.mount_id)
+        .stop(&mount.mount_id)
         .await
         .map_err(|e| format!("Failed to stop mount: {}", e))?;
 
     // Optionally delete the mount config
     manager
-        .delete_mount(&mount.mount_id)
+        .delete(&mount.mount_id)
         .await
         .map_err(|e| format!("Failed to delete mount: {}", e))?;
 
@@ -611,13 +611,13 @@ pub async fn is_bucket_mounted(
         .ok_or("Mount manager not available")?;
 
     let mounts = manager
-        .list_mounts()
+        .list()
         .await
         .map_err(|e| format!("Failed to list mounts: {}", e))?;
 
     let mount = mounts
         .into_iter()
-        .find(|m| m.bucket_id == bucket_uuid && m.status.as_str() == "running");
+        .find(|m| *m.bucket_id == bucket_uuid && m.status.as_str() == "running");
 
     Ok(mount.map(fuse_mount_to_info))
 }
