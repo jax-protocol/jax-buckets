@@ -51,9 +51,7 @@ fn generate_mount_point(bucket_name: &str, existing_mounts: &[String]) -> std::p
 
     // Check if base name is available
     let base_path = base_dir.join(&sanitized_name);
-    if !existing_mounts.contains(&base_path.to_string_lossy().to_string())
-        && !base_path.exists()
-    {
+    if !existing_mounts.contains(&base_path.to_string_lossy().to_string()) && !base_path.exists() {
         return base_path;
     }
 
@@ -76,7 +74,13 @@ fn generate_mount_point(bucket_name: &str, existing_mounts: &[String]) -> std::p
 #[cfg(feature = "fuse")]
 fn sanitize_mount_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()
@@ -210,8 +214,8 @@ pub async fn create_mount(
     let inner = state.inner.read().await;
     let daemon = inner.as_ref().ok_or("Daemon not started")?;
 
-    let bucket_id = Uuid::parse_str(&request.bucket_id)
-        .map_err(|e| format!("Invalid bucket ID: {}", e))?;
+    let bucket_id =
+        Uuid::parse_str(&request.bucket_id).map_err(|e| format!("Invalid bucket ID: {}", e))?;
 
     let mount_manager = daemon.service.mount_manager().read().await;
     let manager = mount_manager
@@ -245,10 +249,7 @@ pub async fn create_mount(
 /// Get a mount by ID
 #[tauri::command]
 #[cfg(feature = "fuse")]
-pub async fn get_mount(
-    state: State<'_, AppState>,
-    mount_id: String,
-) -> Result<MountInfo, String> {
+pub async fn get_mount(state: State<'_, AppState>, mount_id: String) -> Result<MountInfo, String> {
     let inner = state.inner.read().await;
     let daemon = inner.as_ref().ok_or("Daemon not started")?;
 
