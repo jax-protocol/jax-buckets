@@ -58,7 +58,51 @@ Follow the Linux (Ubuntu/Debian) instructions above within your WSL2 environment
 
 ## Installation
 
-### Option 1: Install from Crates.io (Recommended)
+### Desktop App (Recommended for most users)
+
+Download pre-built binaries from GitHub releases:
+
+1. Go to [GitHub Releases](https://github.com/jax-protocol/jax-fs/releases)
+2. Find the latest `jax-desktop-v*` release
+3. Download the installer for your platform:
+
+| Platform | File | Install |
+|----------|------|---------|
+| macOS (Apple Silicon) | `Jax_*_aarch64.dmg` | Open DMG, drag to Applications |
+| macOS (Intel) | `Jax_*_x64.dmg` | Open DMG, drag to Applications |
+| Linux (Debian/Ubuntu) | `jax-desktop_*_amd64.deb` | `sudo dpkg -i jax-desktop_*.deb` |
+| Linux (portable) | `jax-desktop_*_amd64.AppImage` | `chmod +x *.AppImage && ./*.AppImage` |
+| Windows | `Jax_*_x64-setup.exe` | Run installer |
+| Windows (MSI) | `Jax_*_x64_en-US.msi` | Run installer |
+
+**macOS note:** On first launch, you may need to right-click and select "Open" to bypass Gatekeeper, or go to System Preferences > Security & Privacy to allow the app.
+
+#### Building Desktop App from Source
+
+If you prefer to build from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/jax-protocol/jax-fs.git
+cd jax-fs/crates/desktop
+
+# Install frontend dependencies
+pnpm install
+
+# Build the app
+pnpm tauri build
+```
+
+The built installer will be in `target/release/bundle/`:
+- macOS: `dmg/*.dmg`
+- Linux: `deb/*.deb` or `appimage/*.AppImage`
+- Windows: `nsis/*.exe` or `msi/*.msi`
+
+### CLI Installation
+
+For headless servers or if you prefer the command line:
+
+##### Option 1: Install from Crates.io
 
 Once published, you can install JaxBucket directly from crates.io:
 
@@ -68,22 +112,22 @@ cargo install jax-daemon
 
 This will download, compile, and install the `jax` binary to `~/.cargo/bin/`.
 
-### Option 2: Install from Git Repository
+##### Option 2: Install from Git Repository
 
 Install the latest development version:
 
 ```bash
-cargo install --git https://github.com/jax-ethdenver-2025/jax-bucket jax-daemon
+cargo install --git https://github.com/jax-protocol/jax-fs jax-daemon
 ```
 
-### Option 3: Build from Source
+##### Option 3: Build from Source
 
 Clone and build manually for development or customization:
 
 ```bash
 # Clone the repository
-git clone https://github.com/jax-ethdenver-2025/jax-bucket.git
-cd jax-bucket
+git clone https://github.com/jax-protocol/jax-fs.git
+cd jax-fs
 
 # Build in release mode
 cargo build --release
@@ -329,5 +373,5 @@ jax init
 ## Getting Help
 
 - **Documentation**: https://docs.rs/jax-daemon
-- **Issues**: https://github.com/jax-ethdenver-2025/jax-bucket/issues
-- **Discussions**: https://github.com/jax-ethdenver-2025/jax-bucket/discussions
+- **Issues**: https://github.com/jax-protocol/jax-fs/issues
+- **Discussions**: https://github.com/jax-protocol/jax-fs/discussions

@@ -56,21 +56,25 @@ jobs:
           COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
           DAEMON_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
           OBJECT_STORE_VERSION=$(grep "^version" crates/object-store/Cargo.toml | cut -d'"' -f2)
+          DESKTOP_VERSION=$(grep "^version" crates/desktop/src-tauri/Cargo.toml | cut -d'"' -f2)
 
           echo "Creating tags for:"
           echo "  jax-common v$COMMON_VERSION"
           echo "  jax-daemon v$DAEMON_VERSION"
           echo "  jax-object-store v$OBJECT_STORE_VERSION"
+          echo "  jax-desktop v$DESKTOP_VERSION"
 
           # Create annotated tags
           git tag -a "jax-common-v$COMMON_VERSION" -m "Release jax-common v$COMMON_VERSION"
           git tag -a "jax-daemon-v$DAEMON_VERSION" -m "Release jax-daemon v$DAEMON_VERSION"
           git tag -a "jax-object-store-v$OBJECT_STORE_VERSION" -m "Release jax-object-store v$OBJECT_STORE_VERSION"
+          git tag -a "jax-desktop-v$DESKTOP_VERSION" -m "Release jax-desktop v$DESKTOP_VERSION"
 
-          # Push tags to remote
+          # Push tags to remote (desktop tag triggers release-desktop.yml workflow)
           git push origin "jax-common-v$COMMON_VERSION"
           git push origin "jax-daemon-v$DAEMON_VERSION"
           git push origin "jax-object-store-v$OBJECT_STORE_VERSION"
+          git push origin "jax-desktop-v$DESKTOP_VERSION"
 
           echo "Tags pushed successfully"
 

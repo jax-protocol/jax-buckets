@@ -118,6 +118,7 @@ jobs:
           COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
           DAEMON_VERSION=$(grep "^version" crates/daemon/Cargo.toml | cut -d'"' -f2)
           OBJECT_STORE_VERSION=$(grep "^version" crates/object-store/Cargo.toml | cut -d'"' -f2)
+          DESKTOP_VERSION=$(grep "^version" crates/desktop/src-tauri/Cargo.toml | cut -d'"' -f2)
 
           PR_BODY="## Release Updates
 
@@ -127,10 +128,12 @@ jobs:
           - jax-common v$COMMON_VERSION
           - jax-object-store v$OBJECT_STORE_VERSION
           - jax-daemon v$DAEMON_VERSION
+          - jax-desktop v$DESKTOP_VERSION
 
           ### What happens when merged:
           1. Tags will be created automatically
           2. Crates will be published to crates.io
+          3. Desktop app binaries will be built and released to GitHub
 
           ### What to review:
           - Version bumps in \`Cargo.toml\` files
