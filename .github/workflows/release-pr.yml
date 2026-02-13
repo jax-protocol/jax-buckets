@@ -89,25 +89,32 @@ jobs:
           git checkout -b release-automation
 
       - name: Run cargo smart-release (NO TAGS)
+        id: smart-release
         if: steps.check.outputs.needs_release == 'true'
         run: |
           # Execute release: updates files, creates commits, but NO TAGS
           # Tags will be created by publish workflow after PR is merged
-          cargo smart-release jax-daemon \
+          # May exit non-zero if no crates actually changed (e.g., only docs/CI changes)
+          if cargo smart-release jax-daemon \
             --execute \
             --no-publish \
             --no-tag \
             --allow-dirty \
-            --update-crates-index
+            --update-crates-index; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "smart-release found no crate changes to release"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Push release branch
-        if: steps.check.outputs.needs_release == 'true'
+        if: steps.check.outputs.needs_release == 'true' && steps.smart-release.outputs.has_changes == 'true'
         run: |
           # Push branch (no tags to push)
           git push -u origin release-automation --force
 
       - name: Create or update PR
-        if: steps.check.outputs.needs_release == 'true'
+        if: steps.check.outputs.needs_release == 'true' && steps.smart-release.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
