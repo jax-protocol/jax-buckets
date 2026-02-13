@@ -56,7 +56,7 @@ jobs:
           # Check if any crates are unpublished on crates.io using the API
           UNPUBLISHED=""
           for crate in jax-daemon jax-object-store jax-common; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://crates.io/api/v1/crates/$crate")
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "User-Agent: jax-release-workflow" "https://crates.io/api/v1/crates/$crate")
             if [ "$HTTP_STATUS" = "404" ]; then
               echo "Crate $crate is not published on crates.io"
               UNPUBLISHED="$UNPUBLISHED $crate"
