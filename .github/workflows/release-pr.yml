@@ -53,12 +53,15 @@ jobs:
       - name: Check if release is needed
         id: check
         run: |
-          # Check if any crates are unpublished on crates.io
+          # Check if any crates are unpublished on crates.io using the API
           UNPUBLISHED=""
           for crate in jax-daemon jax-object-store jax-common; do
-            if ! cargo search "$crate" 2>/dev/null | grep -q "^$crate = "; then
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://crates.io/api/v1/crates/$crate")
+            if [ "$HTTP_STATUS" = "404" ]; then
               echo "Crate $crate is not published on crates.io"
               UNPUBLISHED="$UNPUBLISHED $crate"
+            else
+              echo "Crate $crate exists on crates.io (HTTP $HTTP_STATUS)"
             fi
           done
 
@@ -66,6 +69,7 @@ jobs:
             echo "Unpublished crates found:$UNPUBLISHED"
             echo "needs_release=true" >> $GITHUB_OUTPUT
             echo "reason=unpublished_crates" >> $GITHUB_OUTPUT
+            echo "unpublished=$UNPUBLISHED" >> $GITHUB_OUTPUT
             exit 0
           fi
 

@@ -9,8 +9,8 @@ jobs:
   publish:
     name: Publish Crates
     runs-on: ubuntu-latest
-    # Run when release PR is merged (version bump or initial publish)
-    if: "contains(github.event.head_commit.message, 'Bump jax-') || contains(github.event.head_commit.message, 'initial publish')"
+    # Run when release PR is merged (version bump or initial publish of new crates)
+    if: "contains(github.event.head_commit.message, 'Bump jax-') || contains(github.event.head_commit.message, 'chore: initial publish of jax-')"
 
     steps:
       - name: Checkout code
@@ -64,19 +64,18 @@ jobs:
           echo "  jax-object-store v$OBJECT_STORE_VERSION"
           echo "  jax-desktop v$DESKTOP_VERSION"
 
-          # Create annotated tags
-          git tag -a "jax-common-v$COMMON_VERSION" -m "Release jax-common v$COMMON_VERSION"
-          git tag -a "jax-daemon-v$DAEMON_VERSION" -m "Release jax-daemon v$DAEMON_VERSION"
-          git tag -a "jax-object-store-v$OBJECT_STORE_VERSION" -m "Release jax-object-store v$OBJECT_STORE_VERSION"
-          git tag -a "jax-desktop-v$DESKTOP_VERSION" -m "Release jax-desktop v$DESKTOP_VERSION"
+          # Create and push tags (skip if already exists)
+          for tag in "jax-common-v$COMMON_VERSION" "jax-daemon-v$DAEMON_VERSION" "jax-object-store-v$OBJECT_STORE_VERSION" "jax-desktop-v$DESKTOP_VERSION"; do
+            if git rev-parse "$tag" >/dev/null 2>&1; then
+              echo "Tag $tag already exists, skipping"
+            else
+              git tag -a "$tag" -m "Release $tag"
+              git push origin "$tag"
+              echo "Created and pushed $tag"
+            fi
+          done
 
-          # Push tags to remote (desktop tag triggers release-desktop.yml workflow)
-          git push origin "jax-common-v$COMMON_VERSION"
-          git push origin "jax-daemon-v$DAEMON_VERSION"
-          git push origin "jax-object-store-v$OBJECT_STORE_VERSION"
-          git push origin "jax-desktop-v$DESKTOP_VERSION"
-
-          echo "Tags pushed successfully"
+          echo "Tags processed successfully"
 
       - name: Publish jax-common
         run: |
