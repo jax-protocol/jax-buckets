@@ -759,6 +759,35 @@ pub async fn get_bucket_shares(
         .collect())
 }
 
+/// Export a file to the native filesystem
+#[tauri::command]
+pub async fn export_file(
+    state: State<'_, AppState>,
+    bucket_id: String,
+    path: String,
+    dest_path: String,
+) -> Result<(), String> {
+    let service = get_service(&state).await?;
+    let bucket_uuid = parse_bucket_id(&bucket_id)?;
+
+    let mount = service
+        .peer()
+        .mount_for_read(bucket_uuid)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let content = mount
+        .cat(&PathBuf::from(&path))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tokio::fs::write(&dest_path, &content)
+        .await
+        .map_err(|e| format!("Failed to write file '{}': {}", dest_path, e))?;
+
+    Ok(())
+}
+
 /// Read file contents at a specific version
 #[tauri::command]
 pub async fn cat_at_version(

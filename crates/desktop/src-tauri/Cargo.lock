@@ -3619,7 +3619,7 @@ dependencies = [
 
 [[package]]
 name = "jax-common"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "aes-gcm",
  "aes-kw",
@@ -3662,7 +3662,7 @@ dependencies = [
 
 [[package]]
 name = "jax-daemon"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "askama",
@@ -3731,7 +3731,7 @@ dependencies = [
 
 [[package]]
 name = "jax-object-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bao-tree",

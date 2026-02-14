@@ -1,6 +1,6 @@
 import { Component, createSignal, onMount, For, Show, createMemo } from 'solid-js';
 import { useParams, useSearchParams, useNavigate } from '@solidjs/router';
-import { ls, lsAtVersion, mkdir, deletePath, renamePath, uploadNativeFiles, addFile, publishBucket, isPublished as checkPublished, FileEntry } from '../lib/api';
+import { ls, lsAtVersion, mkdir, deletePath, renamePath, uploadNativeFiles, addFile, publishBucket, isPublished as checkPublished, exportFile, FileEntry } from '../lib/api';
 import { pathToBreadcrumbs } from '../lib/utils';
 import Breadcrumb from '../components/Breadcrumb';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -669,6 +669,22 @@ const Explorer: Component = () => {
                       style={actionBtnStyle()}
                     >
                       View
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const { save } = await import('@tauri-apps/plugin-dialog');
+                          const dest = await save({ defaultPath: entry.name });
+                          if (!dest) return;
+                          setError(null);
+                          await exportFile(params.bucketId, entry.path, dest);
+                        } catch (e) {
+                          setError(String(e));
+                        }
+                      }}
+                      style={actionBtnStyle()}
+                    >
+                      Export
                     </button>
                   </Show>
                   <Show when={!isHistoryView()}>

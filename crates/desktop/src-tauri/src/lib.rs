@@ -96,6 +96,7 @@ pub fn run() {
             commands::bucket::publish_bucket,
             commands::bucket::ping_peer,
             commands::bucket::upload_native_files,
+            commands::bucket::export_file,
             commands::bucket::mkdir,
             commands::bucket::delete_path,
             // History commands
