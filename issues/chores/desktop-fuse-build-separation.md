@@ -34,7 +34,11 @@ Update the release body template to list all four variants with platform and FUS
 
 Add a "Building Without FUSE" section explaining `--no-default-features`, what's lost (mount commands), and when to use it. Update the desktop download table to show all four variants (macOS aarch64, macOS aarch64 FUSE, macOS x64, Linux amd64). Note FUSE mount support is only available on macOS Apple Silicon currently.
 
-### 5. Docs: Update README.md
+### 5. E2E tests: FUSE-conditional test gating
+
+Update e2e tests so FUSE-dependent tests are gated behind `#[cfg(feature = "fuse")]`. When FUSE tests are skipped (non-FUSE build or unsupported platform), emit a warning explaining why (e.g., "Skipping FUSE tests: built without `fuse` feature" or "Skipping FUSE tests: platform not supported"). This ensures `cargo test` passes cleanly on all build variants without silently hiding test coverage gaps.
+
+### 6. Docs: Update README.md
 
 Add a Downloads section linking to releases, noting standard and `_fuse` variants.
 
@@ -49,6 +53,7 @@ Add a Downloads section linking to releases, noting standard and `_fuse` variant
 
 - CI builds desktop app both with and without FUSE feature
 - Non-FUSE CI build does NOT require libfuse3-dev / macFUSE
+- E2E tests gate FUSE-dependent tests behind feature flag and emit a warning on unsupported builds/platforms
 - Release workflow produces four artifacts: macOS aarch64, macOS aarch64 FUSE, macOS x64, Linux amd64
 - All variants available on GitHub releases page
 - INSTALL.md documents building with/without FUSE, lists which platforms support FUSE (macOS Apple Silicon only)
