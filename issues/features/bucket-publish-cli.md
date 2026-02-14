@@ -59,13 +59,24 @@ Verify the publish endpoint checks that the caller is the bucket owner before pu
 
 During sync, peers must validate that publish operations originate from a bucket owner. Reject publish events from non-owners and log the unauthorized attempt.
 
-### 6. Tests
+### 6. Unit tests
 
-Add tests covering:
+Add unit tests covering:
 - **Owner can publish** — owner publishes, verify manifest has plaintext secret and `is_published()` returns true
 - **Non-owner publish is rejected** — non-owner attempts publish, verify error returned
-- **Peers reject non-owner publish during sync** — simulate sync with unauthorized publish, verify peer rejects it
 - **Idempotent publish** — publishing an already-published bucket succeeds without error
+
+### 7. E2E tests
+
+**File:** `crates/common/tests/bucket_publish.rs` (new)
+
+Using `common::setup_test_env()` and `common::fork_mount()` patterns, add end-to-end tests that exercise the full publish flow across peers:
+
+- **Owner publishes and mirror can decrypt** — owner creates bucket, adds mirror, publishes; mirror syncs and successfully decrypts content using the plaintext secret
+- **Mirror cannot publish** — mirror attempts to publish a bucket it doesn't own; verify the operation is rejected with an appropriate error
+- **Peer rejects non-owner publish during sync** — owner shares with two peers; non-owner peer fabricates a publish event; syncing peer rejects the unauthorized publish and retains the unpublished state
+- **Publish then unpublish round-trip** — owner publishes, verifies mirrors can decrypt, then saves without publish flag; verify the plaintext secret is removed from the manifest on next sync
+- **CLI round-trip** — spin up a daemon, create a bucket, run `jax bucket publish`, verify `jax bucket is-published` reports published status, verify the bucket link is returned
 
 ## Files to Modify
 
@@ -76,6 +87,7 @@ Add tests covering:
 | `crates/daemon/src/cli/ops/bucket/mod.rs` | Wire up new subcommands |
 | `crates/daemon/src/http_server/api/v0/bucket/publish.rs` | Add owner-only validation if missing |
 | `crates/common/src/peer.rs` | Validate publish origin during sync |
+| `crates/common/tests/bucket_publish.rs` | New: E2E tests for publish flow |
 
 ## Acceptance Criteria
 
@@ -83,7 +95,8 @@ Add tests covering:
 - [ ] `jax bucket is-published --bucket-id <UUID>` prints the publication status
 - [ ] Only the bucket owner can publish; non-owners get an error
 - [ ] Peers reject publish operations from non-owners during sync
-- [ ] Tests cover owner publish, non-owner rejection, peer sync rejection, and idempotent publish
+- [ ] Unit tests cover owner publish, non-owner rejection, and idempotent publish
+- [ ] E2E tests cover mirror decryption after publish, non-owner rejection, peer sync rejection, publish/unpublish round-trip, and CLI round-trip
 - [ ] `cargo build` compiles
 - [ ] `cargo test` passes
 - [ ] `cargo clippy` has no warnings
