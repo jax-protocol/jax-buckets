@@ -43,8 +43,12 @@ pub struct CachedDirEntry {
 pub struct FileCacheConfig {
     /// Maximum cache size in megabytes
     pub max_size_mb: u32,
-    /// TTL for cached entries in seconds
+    /// TTL for metadata (attrs, dirs) in seconds
     pub ttl_secs: u32,
+    /// TTL for content cache in seconds (defaults to 5x metadata TTL)
+    pub content_ttl_secs: u32,
+    /// TTL for negative cache (non-existent paths) in seconds
+    pub negative_ttl_secs: u32,
 }
 
 impl Default for FileCacheConfig {
@@ -52,6 +56,20 @@ impl Default for FileCacheConfig {
         Self {
             max_size_mb: 100,
             ttl_secs: 60,
+            content_ttl_secs: 300,
+            negative_ttl_secs: 10,
+        }
+    }
+}
+
+impl FileCacheConfig {
+    /// Create config from basic parameters, deriving content and negative TTLs
+    pub fn from_basic(max_size_mb: u32, ttl_secs: u32) -> Self {
+        Self {
+            max_size_mb,
+            ttl_secs,
+            content_ttl_secs: ttl_secs.saturating_mul(5),
+            negative_ttl_secs: 10,
         }
     }
 }
@@ -65,6 +83,8 @@ pub struct FileCache {
     attrs: Cache<String, CachedAttr>,
     /// Directory listing cache: path → entries
     dirs: Cache<String, Vec<CachedDirEntry>>,
+    /// Negative cache: paths confirmed not to exist
+    negative: Cache<String, ()>,
     /// Configuration
     config: FileCacheConfig,
 }
@@ -72,22 +92,28 @@ pub struct FileCache {
 impl FileCache {
     /// Create a new file cache with the given configuration
     pub fn new(config: FileCacheConfig) -> Self {
-        let ttl = Duration::from_secs(config.ttl_secs as u64);
+        let metadata_ttl = Duration::from_secs(config.ttl_secs as u64);
+        let content_ttl = Duration::from_secs(config.content_ttl_secs as u64);
+        let negative_ttl = Duration::from_secs(config.negative_ttl_secs as u64);
         // Estimate ~1KB average per entry for size calculation
         let max_capacity = (config.max_size_mb as u64) * 1024;
 
         Self {
             content: Cache::builder()
-                .time_to_live(ttl)
+                .time_to_live(content_ttl)
                 .max_capacity(max_capacity)
                 .build(),
             attrs: Cache::builder()
-                .time_to_live(ttl)
+                .time_to_live(metadata_ttl)
                 .max_capacity(max_capacity * 10) // Attrs are smaller
                 .build(),
             dirs: Cache::builder()
-                .time_to_live(ttl)
+                .time_to_live(metadata_ttl)
                 .max_capacity(max_capacity)
+                .build(),
+            negative: Cache::builder()
+                .time_to_live(negative_ttl)
+                .max_capacity(10_000) // Non-existent paths are tiny
                 .build(),
             config,
         }
@@ -123,12 +149,23 @@ impl FileCache {
         self.dirs.insert(Self::normalize_key(path), entries);
     }
 
+    /// Check if a path is in the negative cache (known not to exist)
+    pub fn is_negative(&self, path: &str) -> bool {
+        self.negative.contains_key(&Self::normalize_key(path))
+    }
+
+    /// Add a path to the negative cache (mark as non-existent)
+    pub fn put_negative(&self, path: &str) {
+        self.negative.insert(Self::normalize_key(path), ());
+    }
+
     /// Invalidate a specific path from all caches
     pub fn invalidate(&self, path: &str) {
         let key = Self::normalize_key(path);
         self.content.invalidate(&key);
         self.attrs.invalidate(&key);
         self.dirs.invalidate(&key);
+        self.negative.invalidate(&key);
     }
 
     /// Invalidate all entries under a path prefix
@@ -150,6 +187,7 @@ impl FileCache {
         self.content.invalidate_all();
         self.attrs.invalidate_all();
         self.dirs.invalidate_all();
+        self.negative.invalidate_all();
     }
 
     /// Get current cache statistics
@@ -158,8 +196,11 @@ impl FileCache {
             content_count: self.content.entry_count(),
             attr_count: self.attrs.entry_count(),
             dir_count: self.dirs.entry_count(),
+            negative_count: self.negative.entry_count(),
             max_size_mb: self.config.max_size_mb,
-            ttl_secs: self.config.ttl_secs,
+            metadata_ttl_secs: self.config.ttl_secs,
+            content_ttl_secs: self.config.content_ttl_secs,
+            negative_ttl_secs: self.config.negative_ttl_secs,
         }
     }
 
@@ -191,6 +232,7 @@ impl std::fmt::Debug for FileCache {
             .field("content_count", &self.content.entry_count())
             .field("attr_count", &self.attrs.entry_count())
             .field("dir_count", &self.dirs.entry_count())
+            .field("negative_count", &self.negative.entry_count())
             .finish()
     }
 }
@@ -201,8 +243,11 @@ pub struct CacheStats {
     pub content_count: u64,
     pub attr_count: u64,
     pub dir_count: u64,
+    pub negative_count: u64,
     pub max_size_mb: u32,
-    pub ttl_secs: u32,
+    pub metadata_ttl_secs: u32,
+    pub content_ttl_secs: u32,
+    pub negative_ttl_secs: u32,
 }
 
 #[cfg(test)]
@@ -304,6 +349,34 @@ mod tests {
 
         assert!(cache.get_content("/a.txt").is_none());
         assert!(cache.get_content("/b.txt").is_none());
+    }
+
+    #[test]
+    fn test_negative_cache() {
+        let cache = FileCache::new(FileCacheConfig::default());
+
+        assert!(!cache.is_negative("/nonexistent"));
+
+        cache.put_negative("/nonexistent");
+        assert!(cache.is_negative("/nonexistent"));
+
+        // Invalidate should clear negative cache too
+        cache.invalidate("/nonexistent");
+        assert!(!cache.is_negative("/nonexistent"));
+    }
+
+    #[test]
+    fn test_negative_cache_invalidate_all() {
+        let cache = FileCache::new(FileCacheConfig::default());
+
+        cache.put_negative("/a");
+        cache.put_negative("/b");
+        assert!(cache.is_negative("/a"));
+        assert!(cache.is_negative("/b"));
+
+        cache.invalidate_all();
+        assert!(!cache.is_negative("/a"));
+        assert!(!cache.is_negative("/b"));
     }
 
     #[test]

@@ -22,7 +22,7 @@ mod jax_fs;
 mod mount_manager;
 mod sync_events;
 
-pub use cache::{FileCache, FileCacheConfig};
+pub use cache::{CacheStats, FileCache, FileCacheConfig};
 pub use inode_table::InodeTable;
 pub use jax_fs::JaxFs;
 pub use mount_manager::{LiveMount, MountError, MountManager, MountManagerConfig};

@@ -1,6 +1,6 @@
 # Daemon Local Cache for FUSE Performance
 
-**Status:** Planned
+**Status:** Done
 **Related:** FUSE Integration epic
 
 ## Objective
