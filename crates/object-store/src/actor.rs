@@ -613,7 +613,12 @@ async fn import_path(cmd: ImportPathMsg) -> anyhow::Result<ImportEntry> {
 }
 
 /// Maximum blob size we're willing to import (1 GB).
-/// This prevents memory exhaustion attacks from malformed or malicious size values.
+///
+/// This prevents memory exhaustion from garbage size values in BAO stream headers.
+/// iroh-blobs reads the blob size as raw 8 little-endian bytes from the peer's BAO
+/// stream without framing or checksums. During P2P discovery, stream corruption or
+/// misaligned reads can produce garbage u64 values (e.g. petabyte-scale sizes).
+/// These rejections are transient — retries succeed once a clean stream arrives.
 const MAX_IMPORT_SIZE: u64 = 1024 * 1024 * 1024;
 
 async fn import_bao(
@@ -626,9 +631,10 @@ async fn import_bao(
     let size = size.get();
     debug!("ImportBao: starting import for hash {} size {}", hash, size);
 
-    // Sanity check: reject absurdly large sizes to prevent OOM
+    // Reject absurdly large sizes to prevent OOM. Garbage sizes are a known transient
+    // issue caused by BAO stream framing in iroh-blobs (see MAX_IMPORT_SIZE docs).
     if size > MAX_IMPORT_SIZE {
-        error!(
+        warn!(
             "ImportBao: rejecting import of hash {} with unreasonable size {} (max is {})",
             hash, size, MAX_IMPORT_SIZE
         );
