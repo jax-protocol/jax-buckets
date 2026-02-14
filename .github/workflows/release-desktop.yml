@@ -66,6 +66,12 @@ jobs:
           projectPath: crates/desktop
           tauriScript: pnpm tauri
 
+      - name: Build CLI binary
+        run: cargo build --release -p jax-daemon --bin jax
+
+      - name: Package CLI binary
+        run: tar -czf jax-cli-macos-aarch64.tar.gz -C target/release jax
+
       - name: Find and list DMG files
         id: find-dmg
         run: |
@@ -80,16 +86,105 @@ jobs:
             exit 1
           fi
 
-      - name: Upload artifact
+      - name: Upload desktop artifact
         uses: actions/upload-artifact@v4
         with:
           name: jax-desktop-macos
           path: crates/desktop/src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jax-cli-macos
+          path: jax-cli-macos-aarch64.tar.gz
+          if-no-files-found: error
+
+  build-cli-linux:
+    name: Build CLI Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse3-dev pkg-config
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cli-release-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cli-release-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cli-release-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cli-release-build-
+
+      - name: Build CLI binary
+        run: cargo build --release -p jax-daemon --bin jax
+
+      - name: Package CLI binary
+        run: tar -czf jax-cli-linux-x86_64.tar.gz -C target/release jax
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jax-cli-linux
+          path: jax-cli-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  build-cli-windows:
+    name: Build CLI Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cli-release-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cli-release-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cli-release-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cli-release-build-
+
+      - name: Build CLI binary
+        run: cargo build --release -p jax-daemon --bin jax
+
+      - name: Package CLI binary
+        shell: pwsh
+        run: Compress-Archive -Path target\release\jax.exe -DestinationPath jax-cli-windows-x86_64.zip
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jax-cli-windows
+          path: jax-cli-windows-x86_64.zip
+          if-no-files-found: error
+
   release:
     name: Create Release
-    needs: build
+    needs: [build, build-cli-linux, build-cli-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -124,17 +219,33 @@ jobs:
           prerelease: false
           files: |
             artifacts/**/*.dmg
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
           body: |
             ## Jax Desktop v${{ steps.version.outputs.version }}
 
-            ### Downloads
+            ### Desktop App
             | Platform | File |
             |----------|------|
             | macOS (Apple Silicon) | `.dmg` |
 
+            ### CLI Binary
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon) | `jax-cli-macos-aarch64.tar.gz` |
+            | Linux (x86_64) | `jax-cli-linux-x86_64.tar.gz` |
+            | Windows (x86_64) | `jax-cli-windows-x86_64.zip` |
+
             ### Installation
+
+            **Desktop App:**
             1. Download the `.dmg` file
             2. Open it and drag Jax to Applications
             3. **Requires [macFUSE](https://osxfuse.github.io/)** for FUSE mount support
+
+            **CLI Only:**
+            1. Download the archive for your platform
+            2. Extract: `tar -xzf jax-cli-*.tar.gz` (or unzip on Windows)
+            3. Move `jax` to a directory in your PATH
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
