@@ -101,6 +101,8 @@ impl Database {
     }
 
     /// Close the database connection pool.
+    #[allow(dead_code)]
+    #[cfg(test)]
     pub async fn close(&self) {
         self.pool.close().await;
     }

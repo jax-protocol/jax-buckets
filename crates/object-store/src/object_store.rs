@@ -62,6 +62,8 @@ impl BlobStore {
     }
 
     /// Close the database connection pool.
+    #[allow(dead_code)]
+    #[cfg(test)]
     pub async fn close(&self) {
         self.db.close().await;
     }
