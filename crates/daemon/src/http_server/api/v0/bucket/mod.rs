@@ -18,6 +18,7 @@ pub mod publish;
 pub mod rename;
 pub mod share;
 pub mod shares;
+pub mod unshare;
 pub mod update;
 
 // Re-export for convenience
@@ -25,6 +26,7 @@ pub use create::CreateRequest;
 pub use list::ListRequest;
 pub use share::ShareRequest;
 pub use shares::SharesRequest;
+pub use unshare::UnshareRequest;
 
 pub fn router(state: ServiceState) -> Router<ServiceState> {
     Router::new()
@@ -41,6 +43,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/ping", post(ping::handler))
         .route("/share", post(share::handler))
         .route("/shares", post(shares::handler))
+        .route("/unshare", post(unshare::handler))
         .route("/publish", post(publish::handler))
         .route("/export", post(export::handler))
         .route("/latest-published", post(latest_published::handler))

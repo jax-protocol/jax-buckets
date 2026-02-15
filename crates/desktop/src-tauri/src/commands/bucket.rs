@@ -441,6 +441,44 @@ pub async fn share_bucket(
     Ok(())
 }
 
+/// Remove a share from a bucket (uses HTTP — needs API flow with owner verification)
+#[tauri::command]
+pub async fn remove_share(
+    state: State<'_, AppState>,
+    bucket_id: String,
+    peer_public_key: String,
+) -> Result<(), String> {
+    let base_url = get_daemon_url(&state).await?;
+    let url = format!("{}/api/v0/bucket/unshare", base_url);
+
+    let bucket_uuid = parse_bucket_id(&bucket_id)?;
+
+    #[derive(Serialize)]
+    struct UnshareRequest {
+        bucket_id: Uuid,
+        peer_public_key: String,
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .json(&UnshareRequest {
+            bucket_id: bucket_uuid,
+            peer_public_key,
+        })
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to daemon: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Failed to remove share ({}): {}", status, body));
+    }
+
+    Ok(())
+}
+
 /// Check if the current HEAD of a bucket is published
 #[tauri::command]
 pub async fn is_published(state: State<'_, AppState>, bucket_id: String) -> Result<bool, String> {

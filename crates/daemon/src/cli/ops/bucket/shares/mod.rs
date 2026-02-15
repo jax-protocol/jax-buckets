@@ -2,13 +2,15 @@ use clap::{Args, Subcommand};
 
 pub mod create;
 pub mod ls;
+pub mod remove;
 
 use crate::cli::op::Op;
-use jax_daemon::http_server::api::v0::bucket::{ShareRequest, SharesRequest};
+use jax_daemon::http_server::api::v0::bucket::{ShareRequest, SharesRequest, UnshareRequest};
 
 crate::command_enum! {
     (Create, ShareRequest),
     (Ls, SharesRequest),
+    (Remove, UnshareRequest),
 }
 
 // Rename the generated Command to SharesCommand for clarity

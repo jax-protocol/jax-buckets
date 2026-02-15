@@ -1,5 +1,5 @@
 import { Component, createSignal, onMount, Show, For } from 'solid-js';
-import { getBucketShares, shareBucket, pingPeer, ShareInfo } from '../lib/api';
+import { getBucketShares, shareBucket, pingPeer, removeShare, ShareInfo } from '../lib/api';
 
 interface SharePanelProps {
   bucketId: string;
@@ -17,6 +17,9 @@ const SharePanel: Component<SharePanelProps> = (props) => {
   const [role, setRole] = createSignal('owner');
   const [sharing, setSharing] = createSignal(false);
   const [shareSuccess, setShareSuccess] = createSignal<string | null>(null);
+
+  // Remove
+  const [removingKey, setRemovingKey] = createSignal<string | null>(null);
 
   // Ping
   const [pingKey, setPingKey] = createSignal<string | null>(null);
@@ -62,6 +65,20 @@ const SharePanel: Component<SharePanelProps> = (props) => {
       setError(String(e));
     } finally {
       setSharing(false);
+    }
+  };
+
+  const handleRemove = async (publicKey: string) => {
+    if (!confirm(`Remove peer ${publicKey.substring(0, 16)}... from this bucket?`)) return;
+    setRemovingKey(publicKey);
+    setError(null);
+    try {
+      await removeShare(props.bucketId, publicKey);
+      await loadShares();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRemovingKey(null);
     }
   };
 
@@ -227,6 +244,24 @@ const SharePanel: Component<SharePanelProps> = (props) => {
                         }}
                       >
                         {pinging() && pingKey() === share.public_key ? '...' : 'Ping'}
+                      </button>
+                      <button
+                        onClick={() => handleRemove(share.public_key)}
+                        disabled={removingKey() === share.public_key}
+                        style={{
+                          background: 'none',
+                          border: '1px solid hsl(0 84% 60% / 0.3)',
+                          color: 'var(--accent-red)',
+                          cursor: removingKey() === share.public_key ? 'not-allowed' : 'pointer',
+                          'font-size': '0.625rem',
+                          'font-family': 'inherit',
+                          padding: '0.125rem 0.375rem',
+                          'border-radius': '4px',
+                          'flex-shrink': '0',
+                          opacity: removingKey() === share.public_key ? '0.4' : '1',
+                        }}
+                      >
+                        {removingKey() === share.public_key ? '...' : 'Remove'}
                       </button>
                     </Show>
                   </div>

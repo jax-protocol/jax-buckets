@@ -105,6 +105,7 @@ pub fn run() {
             commands::bucket::cat_at_version,
             // Share commands
             commands::bucket::get_bucket_shares,
+            commands::bucket::remove_share,
             // Daemon commands
             commands::daemon::get_status,
             commands::daemon::get_identity,

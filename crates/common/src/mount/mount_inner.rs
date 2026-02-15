@@ -104,6 +104,8 @@ pub enum MountError {
     ShareNotFound,
     #[error("mirror cannot mount: bucket is not published")]
     MirrorCannotMount,
+    #[error("unauthorized: only owners can perform this operation")]
+    Unauthorized,
 }
 
 impl Mount {
@@ -363,6 +365,32 @@ impl Mount {
     pub async fn add_mirror(&mut self, peer: PublicKey) {
         let mut inner = self.0.lock().await;
         inner.manifest.add_share(Share::new_mirror(peer));
+    }
+
+    /// Remove a share from the bucket.
+    ///
+    /// Only owners can remove shares. Returns an error if the caller is not an owner
+    /// or if the specified peer is not in the shares.
+    pub async fn remove_share(&self, peer_public_key: PublicKey) -> Result<(), MountError> {
+        let mut inner = self.0.lock().await;
+
+        // Verify caller is an owner
+        let our_key = inner.secret_key.public();
+        let our_share = inner
+            .manifest
+            .get_share(&our_key)
+            .ok_or(MountError::ShareNotFound)?;
+        if *our_share.role() != PrincipalRole::Owner {
+            return Err(MountError::Unauthorized);
+        }
+
+        // Verify the target share exists
+        let key_hex = peer_public_key.to_hex();
+        if inner.manifest.shares_mut().remove(&key_hex).is_none() {
+            return Err(MountError::ShareNotFound);
+        }
+
+        Ok(())
     }
 
     /// Check if this bucket is published (mirrors can decrypt).

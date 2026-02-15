@@ -21,6 +21,8 @@ pub enum ProvenanceError {
     AuthorNotWriter,
     #[error("invalid manifest in chain at {link}: {reason}")]
     InvalidManifestInChain { link: Link, reason: String },
+    #[error("unauthorized share removal: only owners can remove shares")]
+    UnauthorizedShareRemoval,
     #[error("{0}")]
     Other(#[from] anyhow::Error),
 }
