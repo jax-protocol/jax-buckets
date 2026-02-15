@@ -9,6 +9,7 @@ use axum::Router;
 
 use crate::ServiceState;
 
+mod cache_stats;
 mod create;
 mod delete_mount;
 mod get;
@@ -37,5 +38,6 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         )
         .route("/:id/start", post(start::handler))
         .route("/:id/stop", post(stop::handler))
+        .route("/:id/cache-stats", get(cache_stats::handler))
         .with_state(state)
 }

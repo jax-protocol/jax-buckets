@@ -377,10 +377,10 @@ impl MountManager {
             .map_err(|e| MountError::MountLoad(e.into()))?;
 
         // Create cache
-        let cache = FileCache::new(crate::fuse::cache::FileCacheConfig {
-            max_size_mb: mount_config.cache_size_mb as u32,
-            ttl_secs: mount_config.cache_ttl_secs as u32,
-        });
+        let cache = FileCache::new(FileCacheConfig::from_basic(
+            mount_config.cache_size_mb as u32,
+            mount_config.cache_ttl_secs as u32,
+        ));
 
         // Create the FUSE filesystem with direct Mount reference
         let mount_arc = Arc::new(RwLock::new(bucket_mount));
@@ -394,10 +394,10 @@ impl MountManager {
             mount_arc.clone(),
             *mount_id,
             *mount_config.bucket_id,
-            FileCacheConfig {
-                max_size_mb: mount_config.cache_size_mb as u32,
-                ttl_secs: mount_config.cache_ttl_secs as u32,
-            },
+            FileCacheConfig::from_basic(
+                mount_config.cache_size_mb as u32,
+                mount_config.cache_ttl_secs as u32,
+            ),
             *mount_config.read_only,
             Some(sync_rx),
             Some(save_tx),

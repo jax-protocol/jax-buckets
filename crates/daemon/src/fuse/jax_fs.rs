@@ -177,6 +177,11 @@ impl JaxFs {
             return Some(attr);
         }
 
+        // Check negative cache - path is known not to exist
+        if self.cache.is_negative(path) {
+            return None;
+        }
+
         let mount = self.mount.clone();
         let path_str = path.to_string();
         let cache_path = path_str.clone();
@@ -232,6 +237,8 @@ impl JaxFs {
 
         if let Some(ref attr) = result {
             self.cache.put_attr(&cache_path, attr.clone());
+        } else {
+            self.cache.put_negative(&cache_path);
         }
 
         result
