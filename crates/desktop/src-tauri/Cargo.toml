@@ -16,7 +16,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # Workspace crates
-jax-daemon = { path = "../../daemon" }
+jax-daemon = { path = "../../daemon", default-features = false }
 common = { package = "jax-common", path = "../../common" }
 
 # Tauri
