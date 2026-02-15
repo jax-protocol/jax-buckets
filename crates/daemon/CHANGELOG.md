@@ -15,41 +15,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
+## v0.1.9 (2026-02-15)
+
+### New Features
+
+ - <csr-id-e7a06101d010e4065849d8feef0ea82edf7a61c0/> add negative cache and separate TTLs for FUSE performance
+   Add a negative cache to avoid repeated lookups for non-existent paths
+   (common with macOS resource forks like ._* files). Separate metadata and
+   content TTLs so directory listings expire faster while file content stays
+   cached longer. Add GET /api/v0/mounts/:id/cache-stats endpoint for
+   debugging cache behavior.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 1 commit contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#80](https://github.com/jax-protocol/jax-fs/issues/80)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#80](https://github.com/jax-protocol/jax-fs/issues/80)**
+    - Add negative cache and separate TTLs for FUSE performance ([`e7a0610`](https://github.com/jax-protocol/jax-fs/commit/e7a06101d010e4065849d8feef0ea82edf7a61c0))
+</details>
+
 ## v0.1.8 (2026-02-14)
 
 ### New Features
 
+<csr-id-63712a7a66ce843e31c3a300ed3159b3a9042e2f/>
+
  - <csr-id-c63681313cfb66b28eec389c1e7147bdfafad39d/> fix port default, add health/shares commands, gate mount behind fuse
    * feat(cli): fix port default, add health/shares commands, gate mount behind fuse
-   
-   - Fix --remote default: derive from config api_port (fallback 5001)
+- Fix --remote default: derive from config api_port (fallback 5001)
      instead of hardcoded port 3000
-   - Add `jax health` command: checks config dir, livez, readyz endpoints
-   - Add `jax bucket shares` subcommand group:
+- Add `jax health` command: checks config dir, livez, readyz endpoints
+- Add `jax bucket shares` subcommand group:
      - `shares create` to share a bucket with a peer
      - `shares ls` to list shares on a bucket
-   - Add POST /api/v0/bucket/shares endpoint for listing shares
-   - Gate mount CLI commands behind #[cfg(feature = "fuse")]
-   - Remove untested `bucket sync` command
-   - Update PROJECT_LAYOUT.md with new commands and structure
- - <csr-id-63712a7a66ce843e31c3a300ed3159b3a9042e2f/> implement missing FUSE operations for Unix command compatibility
-   * feat(fuse): implement setattr and xattr stubs for FUSE compatibility
-   
-   Add missing FUSE operations that were causing "Function not implemented"
-   errors for standard Unix commands (touch, mv, echo > file, truncate):
-   
-   - setattr: handles truncate (size) and mtime changes
-   - handle_truncate helper: resizes files via write buffers or Mount
-   - xattr stubs (setxattr, getxattr, listxattr, removexattr): return
+- `shares ls` to list shares on a bucket
+* feat(fuse): implement setattr and xattr stubs for FUSE compatibility
+- setattr: handles truncate (size) and mtime changes
+- handle_truncate helper: resizes files via write buffers or Mount
+- xattr stubs (setxattr, getxattr, listxattr, removexattr): return
      ENOTSUP for macOS compatibility
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
- - 2 commits contributed to the release.
+ - 3 commits contributed to the release.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#73](https://github.com/jax-protocol/jax-fs/issues/73), [#77](https://github.com/jax-protocol/jax-fs/issues/77)
+ - 3 unique issues were worked on: [#73](https://github.com/jax-protocol/jax-fs/issues/73), [#77](https://github.com/jax-protocol/jax-fs/issues/77), [#78](https://github.com/jax-protocol/jax-fs/issues/78)
 
 ### Commit Details
 
@@ -61,7 +83,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Implement missing FUSE operations for Unix command compatibility ([`63712a7`](https://github.com/jax-protocol/jax-fs/commit/63712a7a66ce843e31c3a300ed3159b3a9042e2f))
  * **[#77](https://github.com/jax-protocol/jax-fs/issues/77)**
     - Fix port default, add health/shares commands, gate mount behind fuse ([`c636813`](https://github.com/jax-protocol/jax-fs/commit/c63681313cfb66b28eec389c1e7147bdfafad39d))
+ * **[#78](https://github.com/jax-protocol/jax-fs/issues/78)**
+    - Bump jax-object-store v0.1.1, jax-daemon v0.1.8 ([`4311b03`](https://github.com/jax-protocol/jax-fs/commit/4311b03c6cb012b0e35a018750bbf03e6b574282))
 </details>
+
+<csr-unknown>
+Add POST /api/v0/bucket/shares endpoint for listing sharesGate mount CLI commands behind #[cfg(feature = “fuse”)]Remove untested bucket sync commandUpdate PROJECT_LAYOUT.md with new commands and structure implement missing FUSE operations for Unix command compatibilityAdd missing FUSE operations that were causing “Function not implemented”errors for standard Unix commands (touch, mv, echo > file, truncate):<csr-unknown/>
 
 ## v0.1.7 (2026-02-13)
 
@@ -71,30 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - <csr-id-ec12a4b6731782a787a29c90a440417916c26157/> add FUSE filesystem for mounting buckets as local directories
    * feat!: add FUSE filesystem for mounting buckets as local directories
-- JaxFs: FUSE filesystem using fuser with all 10 core operations
-- MountManager: Lifecycle management (start, stop, auto-mount)
-- InodeTable: Bidirectional inode ↔ path mapping
-- FileCache: LRU cache with TTL for content and metadata
-- SyncEvents: Cache invalidation on peer sync
-- SQLite fuse_mounts table for mount persistence
-- mount_queries.rs for CRUD + status operations
-- REST API at /api/v0/mounts/ (create, list, get, update, delete, start, stop)
-- CLI commands: jax mount list|add|remove|start|stop|set
-- Auto-mount on daemon startup, graceful unmount on shutdown
-- Platform-specific unmount (macOS umount, Linux fusermount -u)
-- IPC commands for full mount management
-- Simplified mountBucket/unmountBucket API with auto mount point selection
-- One-click Mount/Unmount buttons on Buckets page
-- Advanced Mounts page for manual mount point configuration
-- macOS: /Volumes/<bucket-name> with Finder sidebar integration
-- Linux: /media/$USER/<bucket-name>
-- Privilege escalation: AppleScript (macOS), pkexec (Linux)
-- Naming conflict resolution with numeric suffixes
-- Direct Mount access (not HTTP) to avoid self-call deadlock
-- macOS mount options: volname, local, noappledouble for Finder
-- macOS resource fork filtering (._* files)
-- Write buffering with sync-on-first-write for pending files
-- fuse feature enabled by default (runtime detection for availability)
 * feat!: restructure daemon, add Tauri desktop app with full UI
 - Remove Askama HTML UI (replaced by Tauri desktop app)
 - Split HTTP server into run_api (private) and run_gateway (public)
@@ -143,7 +146,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 </details>
 
 <csr-unknown>
-Implement complete FUSE integration allowing buckets to be mounted asnative filesystems. Mounts appear in macOS Finder sidebar under Locationsand support standard file operations (read, write, create, delete, rename).Daemon FUSE module (crates/daemon/src/fuse/):Daemon infrastructure:Desktop app integration:Technical details: restructure daemon, add Tauri desktop app with full UIRename crates/app → crates/daemon (lib+bin) and create crates/desktop(Tauri 2.0 + SolidJS). The daemon becomes a headless service withseparate API and gateway ports for security isolation. The desktop appembeds the daemon in-process with direct ServiceState access for IPC.Daemon changes:Desktop app (crates/desktop):<csr-unknown/>
+JaxFs: FUSE filesystem using fuser with all 10 core operationsMountManager: Lifecycle management (start, stop, auto-mount)InodeTable: Bidirectional inode ↔ path mappingFileCache: LRU cache with TTL for content and metadataSyncEvents: Cache invalidation on peer syncSQLite fuse_mounts table for mount persistencemount_queries.rs for CRUD + status operationsREST API at /api/v0/mounts/ (create, list, get, update, delete, start, stop)CLI commands: jax mount list|add|remove|start|stop|setAuto-mount on daemon startup, graceful unmount on shutdownPlatform-specific unmount (macOS umount, Linux fusermount -u)IPC commands for full mount managementSimplified mountBucket/unmountBucket API with auto mount point selectionOne-click Mount/Unmount buttons on Buckets pageAdvanced Mounts page for manual mount point configurationmacOS: /Volumes/<bucket-name> with Finder sidebar integrationLinux: /media/$USER/<bucket-name>Privilege escalation: AppleScript (macOS), pkexec (Linux)Naming conflict resolution with numeric suffixesDirect Mount access (not HTTP) to avoid self-call deadlockmacOS mount options: volname, local, noappledouble for FindermacOS resource fork filtering (._* files)Write buffering with sync-on-first-write for pending filesfuse feature enabled by default (runtime detection for availability)<csr-unknown/>
 
 ## v0.1.6 (2025-11-18)
 

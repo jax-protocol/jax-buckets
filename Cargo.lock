@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "jax-daemon"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "askama",
