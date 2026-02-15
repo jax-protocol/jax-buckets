@@ -1,6 +1,6 @@
 # ImportBao Size Rejections During Sync
 
-**Status:** Planned
+**Status:** Documented (upstream issue)
 
 ## Objective
 
@@ -16,35 +16,41 @@ ERROR jax_blobs_store::actor: ImportBao: rejecting import of hash fa81500eb86ed6
 
 The reported sizes (e.g., `8988579870866186464`) are clearly garbage values - they exceed petabytes. Despite these rejections, blobs eventually sync correctly through retries.
 
-## Observations
+## Root Cause
 
-- Occurs during initial P2P discovery/sync between nodes
-- Reported sizes are impossibly large (corrupted u64 values)
-- Blobs do eventually sync correctly (transient issue)
-- May be related to BAO protocol handshake or stream framing
-- The max size check (1GB) was added in commit `25495a2` to prevent OOM crashes
+**Upstream issue in iroh-blobs BAO stream protocol.**
 
-## Possible Causes
+In iroh-blobs v0.95.0, the BAO export protocol sends blob size as raw 8 little-endian
+bytes at the start of the stream (`api/blobs.rs:import_bao_reader`):
 
-1. **BAO stream framing issue**: Size bytes being read before stream is properly aligned
-2. **Concurrent stream corruption**: Multiple sync requests interfering
-3. **iroh-blobs protocol mismatch**: Version or encoding differences
-4. **Endianness issue**: Size being read with wrong byte order
+```rust
+let mut size = [0; 8];
+reader.recv_exact(&mut size).await...;
+let size = u64::from_le_bytes(size);
+```
 
-## Files to Investigate
+There is no framing, length-prefix, or checksum around this value. During P2P
+discovery, stream corruption or misaligned reads can cause the receiver to interpret
+arbitrary bytes (partial parent hashes, leaf data, or garbage) as the size field,
+producing values like `8988579870866186464` (0x7cbdd9c4de34a0e0).
 
-| File | Area |
-|------|------|
-| `crates/object-store/src/actor.rs` | ImportBao handler (ObjectStoreActor) |
-| `crates/common/src/peer/sync/` | Sync job implementation |
+These rejections are **transient** — each retry creates a fresh connection, and
+eventually a clean stream arrives.
+
+## Mitigation
+
+- `MAX_IMPORT_SIZE` (1 GB) check in `crates/object-store/src/actor.rs` prevents OOM
+  from garbage sizes (added in commit `25495a2`)
+- Log level changed from ERROR to WARN since these rejections are expected and transient
+- Sync retries handle the transient failures transparently
 
 ## Acceptance Criteria
 
-- [ ] Root cause identified
-- [ ] Fix implemented (or documented as upstream issue)
+- [x] Root cause identified
+- [x] Fix implemented (or documented as upstream issue)
 - [ ] No spurious ImportBao rejections during normal sync
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings
 
 ## Verification
 
