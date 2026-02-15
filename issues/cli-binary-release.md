@@ -1,6 +1,7 @@
 # Bundle CLI Binary with Desktop Release
 
-**Status:** Planned
+**Status:** In Review
+**PR:** #90
 
 ## Objective
 
@@ -45,7 +46,14 @@ Include installation instructions for both:
 
 ## Acceptance Criteria
 
-- [ ] `jax` CLI binary built for all three platforms (macOS, Windows, Linux)
-- [ ] CLI binary attached to GitHub release as `.tar.gz` (macOS/Linux) or `.zip` (Windows)
-- [ ] Release includes both Tauri bundles and CLI binaries
-- [ ] CLI binary works standalone (no desktop app required)
+- [x] `jax` CLI binary built for all three platforms (macOS, Windows, Linux)
+- [x] CLI binary attached to GitHub release as `.tar.gz` (macOS/Linux) or `.zip` (Windows)
+- [x] Release includes both Tauri bundles and CLI binaries
+- [x] CLI binary works standalone (no desktop app required)
+
+### 2026-02-15 - Ready for Review
+- Added CLI build steps to macOS build job in release-desktop.yml
+- Added new `build-cli-linux` job (ubuntu-latest with FUSE deps)
+- Added new `build-cli-windows` job (windows-latest, .zip packaging)
+- Updated release job to depend on all three build jobs
+- Updated release notes with CLI download table and installation instructions
