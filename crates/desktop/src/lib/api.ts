@@ -103,6 +103,10 @@ export async function uploadNativeFiles(bucketId: string, mountPath: string, fil
   return invoke('upload_native_files', { bucketId, mountPath, filePaths });
 }
 
+export async function exportFile(bucketId: string, path: string, destPath: string): Promise<void> {
+  return invoke('export_file', { bucketId, path, destPath });
+}
+
 export async function mkdir(bucketId: string, path: string): Promise<void> {
   return invoke('mkdir', { bucketId, path });
 }

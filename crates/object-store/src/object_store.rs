@@ -61,6 +61,13 @@ impl BlobStore {
         Self::in_memory(ObjectStoreConfig::Memory).await
     }
 
+    /// Close the database connection pool.
+    #[allow(dead_code)]
+    #[cfg(test)]
+    pub async fn close(&self) {
+        self.db.close().await;
+    }
+
     /// Store data and return its content hash.
     pub async fn put(&self, data: Vec<u8>) -> Result<Hash> {
         let size = data.len();
@@ -471,6 +478,7 @@ mod tests {
             let store = BlobStore::new_local(temp_dir.path()).await.unwrap();
             hash1 = store.put(b"blob one".to_vec()).await.unwrap();
             hash2 = store.put(b"blob two".to_vec()).await.unwrap();
+            store.close().await;
         }
 
         tokio::fs::remove_file(temp_dir.path().join("blobs.db"))

@@ -100,6 +100,13 @@ impl Database {
         Ok(db)
     }
 
+    /// Close the database connection pool.
+    #[allow(dead_code)]
+    #[cfg(test)]
+    pub async fn close(&self) {
+        self.pool.close().await;
+    }
+
     /// Run database migrations.
     async fn run_migrations(&self) -> Result<()> {
         sqlx::migrate!("./migrations").run(&self.pool).await?;

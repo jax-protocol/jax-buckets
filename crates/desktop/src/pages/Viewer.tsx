@@ -1,6 +1,6 @@
 import { Component, createSignal, onMount, onCleanup, Show, createMemo } from 'solid-js';
 import { useParams, useSearchParams, useNavigate } from '@solidjs/router';
-import { cat, catAtVersion, CatResult } from '../lib/api';
+import { cat, catAtVersion, exportFile, CatResult } from '../lib/api';
 import {
   bytesToString, bytesToDataUrl, bytesToBlobUrl, bytesToHexDump,
   isTextMime, isImageMime, isVideoMime, isAudioMime, formatFileSize, pathToBreadcrumbs,
@@ -211,6 +211,32 @@ const Viewer: Component = () => {
             Edit
           </button>
         </Show>
+        <button
+          onClick={async () => {
+            try {
+              const { save } = await import('@tauri-apps/plugin-dialog');
+              const dest = await save({ defaultPath: fileName() });
+              if (!dest) return;
+              setError(null);
+              await exportFile(params.bucketId, filePath(), dest);
+            } catch (e) {
+              setError(String(e));
+            }
+          }}
+          style={{
+            padding: '0.5rem 0.75rem',
+            'border-radius': '8px',
+            border: '1px solid var(--border)',
+            background: 'var(--muted)',
+            color: 'var(--fg)',
+            cursor: 'pointer',
+            'font-size': '0.8125rem',
+            'font-weight': '500',
+            'font-family': 'inherit',
+          }}
+        >
+          Save As
+        </button>
         <Show when={result()}>
           <span style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)', 'margin-left': 'auto' }}>
             {result()!.mime_type} &middot; {formatFileSize(result()!.size)}
