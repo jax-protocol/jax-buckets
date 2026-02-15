@@ -76,14 +76,15 @@ Download pre-built binaries from GitHub releases:
 2. Find the latest `jax-desktop-v*` release
 3. Download the installer for your platform:
 
-| Platform | File | Install |
-|----------|------|---------|
-| macOS (Apple Silicon) | `Jax_*_aarch64.dmg` | Open DMG, drag to Applications |
-| macOS (Intel) | `Jax_*_x64.dmg` | Open DMG, drag to Applications |
-| Linux (Debian/Ubuntu) | `jax-desktop_*_amd64.deb` | `sudo dpkg -i jax-desktop_*.deb` |
-| Linux (portable) | `jax-desktop_*_amd64.AppImage` | `chmod +x *.AppImage && ./*.AppImage` |
-| Windows | `Jax_*_x64-setup.exe` | Run installer |
-| Windows (MSI) | `Jax_*_x64_en-US.msi` | Run installer |
+| Platform | File | FUSE Mount Support | Install |
+|----------|------|--------------------|---------|
+| macOS (Apple Silicon) | `Jax_*_aarch64.dmg` | No | Open DMG, drag to Applications |
+| macOS (Apple Silicon + FUSE) | `Jax_*_aarch64_fuse.dmg` | Yes | Open DMG, drag to Applications |
+| macOS (Intel) | `Jax_*_x64.dmg` | No | Open DMG, drag to Applications |
+| Linux (Debian/Ubuntu) | `jax-desktop_*_amd64.deb` | No | `sudo dpkg -i jax-desktop_*.deb` |
+| Linux (portable) | `jax-desktop_*_amd64.AppImage` | No | `chmod +x *.AppImage && ./*.AppImage` |
+
+The `_fuse` variant includes FUSE mount support, which lets you mount buckets as local filesystem directories. FUSE mount support is currently only available on macOS Apple Silicon and requires [macFUSE](https://osxfuse.github.io/) to be installed. All other builds work without any FUSE dependencies.
 
 **macOS note:** On first launch, you may need to right-click and select "Open" to bypass Gatekeeper, or go to System Preferences > Security & Privacy to allow the app.
 
@@ -106,7 +107,29 @@ pnpm tauri build
 The built installer will be in `target/release/bundle/`:
 - macOS: `dmg/*.dmg`
 - Linux: `deb/*.deb` or `appimage/*.AppImage`
-- Windows: `nsis/*.exe` or `msi/*.msi`
+
+#### Building Without FUSE
+
+The default desktop build includes FUSE support and requires FUSE libraries (macFUSE on macOS, libfuse3-dev on Linux). To build without FUSE:
+
+```bash
+cd jax-fs/crates/desktop
+pnpm tauri build -- --no-default-features --features custom-protocol
+```
+
+Or for the daemon CLI only:
+```bash
+cargo build --release --no-default-features
+```
+
+**What's different without FUSE:** The `mount` command and FUSE filesystem features are unavailable. All other functionality (bucket creation, file operations, encryption, P2P sync) works normally.
+
+**When to use a non-FUSE build:**
+- Your system doesn't support FUSE (Windows, some Linux configurations)
+- You don't need to mount buckets as local filesystem directories
+- You want to avoid installing FUSE dependencies
+
+**FUSE platform support:** FUSE mount support is currently only offered on macOS Apple Silicon. Pre-built FUSE binaries are not provided for other platforms.
 
 **Gentoo desktop build dependencies:** The Tauri build requires WebKit, tray icon support, and SVG rendering:
 ```bash
