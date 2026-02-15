@@ -15,8 +15,44 @@ permissions:
 
 jobs:
   build:
-    name: Build macOS
-    runs-on: macos-latest
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            fuse: false
+            features: "--no-default-features --features custom-protocol"
+            artifact-suffix: ""
+            artifact-name: jax-desktop-macos-aarch64
+
+          - name: macOS Apple Silicon (FUSE)
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            fuse: true
+            features: ""
+            artifact-suffix: "_fuse"
+            artifact-name: jax-desktop-macos-aarch64-fuse
+
+          - name: macOS Intel
+            runner: macos-13
+            target: x86_64-apple-darwin
+            fuse: false
+            features: "--no-default-features --features custom-protocol"
+            artifact-suffix: ""
+            artifact-name: jax-desktop-macos-x64
+
+          - name: Linux x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            fuse: false
+            features: "--no-default-features --features custom-protocol"
+            artifact-suffix: ""
+            artifact-name: jax-desktop-linux-amd64
+
     steps:
       - uses: actions/checkout@v4
 
@@ -24,7 +60,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install macFUSE
+        if: matrix.fuse && startsWith(matrix.runner, 'macos')
         run: brew install --cask macfuse
+
+      - name: Install Linux system dependencies
+        if: startsWith(matrix.runner, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -42,17 +89,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-tauri-release-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-tauri-release-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-tauri-release-registry-
+            ${{ runner.os }}-${{ matrix.target }}-tauri-release-registry-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-tauri-release-build-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-tauri-release-build-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-tauri-release-build-
+            ${{ runner.os }}-${{ matrix.target }}-tauri-release-build-
 
       - name: Install frontend dependencies
         working-directory: crates/desktop
@@ -62,29 +109,36 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_FEATURES: ${{ matrix.features }}
         with:
           projectPath: crates/desktop
           tauriScript: pnpm tauri
+          args: ${{ matrix.features }}
 
-      - name: Find and list DMG files
-        id: find-dmg
+      - name: Rename artifacts with FUSE suffix
+        if: matrix.artifact-suffix != ''
         run: |
-          echo "Looking for DMG files..."
-          find crates/desktop/src-tauri/target -name "*.dmg" -type f 2>/dev/null || true
-          DMG_PATH=$(find crates/desktop/src-tauri/target -name "*.dmg" -type f 2>/dev/null | head -1)
-          if [ -n "$DMG_PATH" ]; then
-            echo "Found DMG: $DMG_PATH"
-            echo "dmg_path=$DMG_PATH" >> $GITHUB_OUTPUT
-          else
-            echo "No DMG found!"
-            exit 1
-          fi
+          # Rename DMG files
+          for f in crates/desktop/src-tauri/target/release/bundle/dmg/*.dmg; do
+            [ -f "$f" ] && mv "$f" "${f%.dmg}${{ matrix.artifact-suffix }}.dmg"
+          done
 
-      - name: Upload artifact
+      - name: Upload macOS artifacts
+        if: startsWith(matrix.runner, 'macos')
         uses: actions/upload-artifact@v4
         with:
-          name: jax-desktop-macos
+          name: ${{ matrix.artifact-name }}
           path: crates/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: Upload Linux artifacts
+        if: startsWith(matrix.runner, 'ubuntu')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: |
+            crates/desktop/src-tauri/target/release/bundle/deb/*.deb
+            crates/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
   release:
@@ -124,17 +178,27 @@ jobs:
           prerelease: false
           files: |
             artifacts/**/*.dmg
+            artifacts/**/*.deb
+            artifacts/**/*.AppImage
           body: |
             ## Jax Desktop v${{ steps.version.outputs.version }}
 
             ### Downloads
-            | Platform | File |
-            |----------|------|
-            | macOS (Apple Silicon) | `.dmg` |
+
+            | Platform | File | FUSE Mount Support |
+            |----------|------|--------------------|
+            | macOS (Apple Silicon) | `Jax_*_aarch64.dmg` | No |
+            | macOS (Apple Silicon + FUSE) | `Jax_*_aarch64_fuse.dmg` | Yes (requires [macFUSE](https://osxfuse.github.io/)) |
+            | macOS (Intel) | `Jax_*_x64.dmg` | No |
+            | Linux (Debian/Ubuntu) | `jax-desktop_*_amd64.deb` | No |
+            | Linux (portable) | `jax-desktop_*_amd64.AppImage` | No |
 
             ### Installation
-            1. Download the `.dmg` file
-            2. Open it and drag Jax to Applications
-            3. **Requires [macFUSE](https://osxfuse.github.io/)** for FUSE mount support
+
+            **macOS**: Download the `.dmg` file for your architecture, open it, and drag Jax to Applications.
+
+            **Linux**: Install the `.deb` package with `sudo dpkg -i jax-desktop_*.deb`, or run the `.AppImage` directly.
+
+            **FUSE variant** (macOS Apple Silicon only): Install [macFUSE](https://osxfuse.github.io/) first, then use the `_fuse` DMG. This enables mounting buckets as local filesystems.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

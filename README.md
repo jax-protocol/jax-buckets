@@ -27,6 +27,20 @@ JaxBucket is a local-first, encrypted storage system built on [Iroh](https://iro
 - **Cryptographic Access Control**: ECDH + AES Key Wrap for secure multi-device access
 - **Local-First**: Works offline, syncs when connected
 
+## Downloads
+
+Pre-built desktop binaries are available on the [GitHub Releases](https://github.com/jax-protocol/jax-fs/releases) page:
+
+| Platform | File | FUSE Mount Support |
+|----------|------|--------------------|
+| macOS (Apple Silicon) | `Jax_*_aarch64.dmg` | No |
+| macOS (Apple Silicon + FUSE) | `Jax_*_aarch64_fuse.dmg` | Yes (requires [macFUSE](https://osxfuse.github.io/)) |
+| macOS (Intel) | `Jax_*_x64.dmg` | No |
+| Linux (Debian/Ubuntu) | `jax-desktop_*_amd64.deb` | No |
+| Linux (portable) | `jax-desktop_*_amd64.AppImage` | No |
+
+The `_fuse` variant enables mounting buckets as local filesystem directories. See the [Installation Guide](agents/INSTALL.md) for details.
+
 ## Quick Start
 
 ```bash

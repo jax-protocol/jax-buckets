@@ -5,8 +5,18 @@ on:
 
 jobs:
   check:
-    name: Desktop App Check
+    name: Desktop App Check (${{ matrix.variant }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: fuse
+            features: ""
+            install-fuse: true
+          - variant: no-fuse
+            features: "--no-default-features --features custom-protocol"
+            install-fuse: false
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +32,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            libfuse3-dev \
+            ${{ matrix.install-fuse && 'libfuse3-dev' || '' }} \
             patchelf
 
       - name: Install pnpm
@@ -41,17 +51,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-tauri-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-tauri-${{ matrix.variant }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-tauri-cargo-registry-
+            ${{ runner.os }}-tauri-${{ matrix.variant }}-cargo-registry-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-tauri-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-tauri-${{ matrix.variant }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-tauri-cargo-build-
+            ${{ runner.os }}-tauri-${{ matrix.variant }}-cargo-build-
 
       - name: Install frontend dependencies
         working-directory: crates/desktop
@@ -67,8 +77,8 @@ jobs:
 
       - name: Run clippy
         working-directory: crates/desktop/src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets ${{ matrix.features }} -- -D warnings
 
       - name: Build desktop app
         working-directory: crates/desktop/src-tauri
-        run: cargo build
+        run: cargo build ${{ matrix.features }}
