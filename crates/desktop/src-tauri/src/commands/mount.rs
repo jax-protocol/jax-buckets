@@ -410,7 +410,7 @@ pub async fn stop_mount(_state: State<'_, AppState>, _mount_id: String) -> Resul
 pub async fn is_fuse_available() -> Result<bool, String> {
     #[cfg(not(feature = "fuse"))]
     {
-        return Ok(false);
+        Ok(false)
     }
 
     #[cfg(feature = "fuse")]
