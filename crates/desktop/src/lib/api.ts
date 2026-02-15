@@ -115,6 +115,10 @@ export async function getBucketShares(bucketId: string): Promise<ShareInfo[]> {
   return invoke('get_bucket_shares', { bucketId });
 }
 
+export async function removeShare(bucketId: string, peerPublicKey: string): Promise<void> {
+  return invoke('remove_share', { bucketId, peerPublicKey });
+}
+
 // History operations
 export async function getHistory(bucketId: string, page?: number): Promise<HistoryEntry[]> {
   return invoke('get_history', { bucketId, page: page ?? null });
