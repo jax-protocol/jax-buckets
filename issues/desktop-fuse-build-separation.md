@@ -1,6 +1,6 @@
 # Desktop App FUSE/Non-FUSE Build Separation
 
-- **Status:** In Progress
+- **Status:** In Review
 - **Priority:** High
 
 ## Objective
@@ -71,3 +71,9 @@ Add a Downloads section linking to releases, noting standard and `_fuse` variant
 - INSTALL.md updated with download table, "Building Without FUSE" section, platform support notes
 - E2E tests gated behind #[cfg(feature = "fuse")] with warning in mount_feature_gate.rs
 - README.md updated with Downloads section
+
+### 2026-02-15 - Ready for Review
+- Implementation complete
+- All 6 implementation steps done: CI matrix, release workflow, release notes, INSTALL.md, e2e test gating, README.md
+- Local checks pass: build, test (178 passed), fmt
+- PR: #93
