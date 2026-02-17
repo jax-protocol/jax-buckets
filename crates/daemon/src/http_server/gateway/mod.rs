@@ -15,11 +15,13 @@ pub mod index;
 
 /// Bucket metadata passed to sub-handlers.
 pub struct BucketMeta<'a> {
+    pub id: &'a Uuid,
     pub id_str: &'a str,
     pub id_short: &'a str,
     pub name: &'a str,
     pub link: &'a str,
     pub link_short: &'a str,
+    pub host: &'a str,
 }
 
 // Lazy static regex patterns for URL rewriting
@@ -166,11 +168,13 @@ pub async fn handler(
     );
 
     let meta = BucketMeta {
+        id: &bucket_id,
         id_str: &bucket_id_str,
         id_short: &bucket_id_short,
         name: &bucket_name,
         link: &bucket_link,
         link_short: &bucket_link_short,
+        host: &host,
     };
 
     if is_directory {
@@ -178,16 +182,7 @@ pub async fn handler(
             deep: query.deep,
             json: query.json,
         };
-        directory::handler(
-            &mount,
-            &path_buf,
-            &absolute_path,
-            &dir_query,
-            &host,
-            &bucket_id,
-            &meta,
-        )
-        .await
+        directory::handler(&mount, &path_buf, &absolute_path, &dir_query, &meta).await
     } else {
         let file_query = file::FileQuery {
             download: query.download,
@@ -198,8 +193,6 @@ pub async fn handler(
             &path_buf,
             &absolute_path,
             &file_query,
-            &host,
-            &bucket_id,
             &meta,
             node_link.unwrap(),
         )

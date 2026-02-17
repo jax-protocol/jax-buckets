@@ -1,9 +1,7 @@
 use askama::Template;
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
-use uuid::Uuid;
-
 use common::mount::{Mount, NodeLink};
+use serde::Deserialize;
 
 /// Query parameters for file requests.
 #[derive(Debug, Deserialize)]
@@ -38,8 +36,6 @@ pub async fn handler(
     path_buf: &std::path::Path,
     absolute_path: &str,
     query: &FileQuery,
-    host: &str,
-    bucket_id: &Uuid,
     meta: &super::BucketMeta<'_>,
     node_link: NodeLink,
 ) -> Response {
@@ -115,12 +111,12 @@ pub async fn handler(
         let (final_content, final_mime_type) = if is_markdown {
             let content_str = String::from_utf8_lossy(&file_data);
             let html = super::markdown_to_html(&content_str);
-            let rewritten = super::rewrite_relative_urls(&html, absolute_path, bucket_id, host);
+            let rewritten = super::rewrite_relative_urls(&html, absolute_path, meta.id, meta.host);
             (rewritten.into_bytes(), "text/html; charset=utf-8")
         } else {
             let content_str = String::from_utf8_lossy(&file_data);
             let rewritten =
-                super::rewrite_relative_urls(&content_str, absolute_path, bucket_id, host);
+                super::rewrite_relative_urls(&content_str, absolute_path, meta.id, meta.host);
             (rewritten.into_bytes(), "text/html; charset=utf-8")
         };
 
@@ -149,7 +145,7 @@ pub async fn handler(
         to_hex_dump(&file_data, 1024)
     };
 
-    let back_url = format!("/gw/{}{}", bucket_id, get_parent_path(absolute_path));
+    let back_url = format!("/gw/{}{}", meta.id, get_parent_path(absolute_path));
 
     let template = GatewayViewerTemplate {
         bucket_id: meta.id_str.to_string(),

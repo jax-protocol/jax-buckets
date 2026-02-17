@@ -1,9 +1,7 @@
 use askama::Template;
 use axum::response::{IntoResponse, Response};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
 use common::mount::{Mount, NodeLink};
+use serde::{Deserialize, Serialize};
 
 /// Query parameters for directory listing requests.
 #[derive(Debug, Deserialize)]
@@ -65,8 +63,6 @@ pub async fn handler(
     path_buf: &std::path::Path,
     absolute_path: &str,
     query: &DirectoryQuery,
-    host: &str,
-    bucket_id: &Uuid,
     meta: &super::BucketMeta<'_>,
 ) -> Response {
     let wants_json = query.json.unwrap_or(false);
@@ -88,12 +84,12 @@ pub async fn handler(
                 let content_str = String::from_utf8_lossy(&file_data);
                 let html = super::markdown_to_html(&content_str);
                 let rewritten =
-                    super::rewrite_relative_urls(&html, index_path_str, bucket_id, host);
+                    super::rewrite_relative_urls(&html, index_path_str, meta.id, meta.host);
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
             } else if index_mime_type == "text/html" {
                 let content_str = String::from_utf8_lossy(&file_data);
                 let rewritten =
-                    super::rewrite_relative_urls(&content_str, index_path_str, bucket_id, host);
+                    super::rewrite_relative_urls(&content_str, index_path_str, meta.id, meta.host);
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
             } else {
                 (file_data, "text/plain; charset=utf-8")
