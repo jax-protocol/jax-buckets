@@ -1,6 +1,6 @@
 # Desktop App FUSE/Non-FUSE Build Separation
 
-- **Status:** Planned
+- **Status:** Done
 - **Priority:** High
 
 ## Objective
@@ -51,11 +51,11 @@ Add a Downloads section linking to releases, noting standard and `_fuse` variant
 
 ## Acceptance Criteria
 
-- CI builds desktop app both with and without FUSE feature
-- Non-FUSE CI build does NOT require libfuse3-dev / macFUSE
-- E2E tests gate FUSE-dependent tests behind feature flag and emit a warning on unsupported builds/platforms
-- Release workflow produces four artifacts: macOS aarch64, macOS aarch64 FUSE, macOS x64, Linux amd64
-- All variants available on GitHub releases page
-- INSTALL.md documents building with/without FUSE, lists which platforms support FUSE (macOS Apple Silicon only)
-- README references download variants and links to releases page
-- `cargo build` / `cargo test` / `cargo clippy` / `cargo fmt --check` pass
+- [x] CI builds desktop app both with and without FUSE feature
+- [x] Non-FUSE CI build does NOT require libfuse3-dev / macFUSE
+- [x] E2E tests gate FUSE-dependent tests behind feature flag and emit a warning on unsupported builds/platforms
+- [x] Release workflow produces four artifacts: macOS aarch64, macOS aarch64 FUSE, macOS x64, Linux amd64
+- [x] All variants available on GitHub releases page
+- [x] INSTALL.md documents building with/without FUSE, lists which platforms support FUSE (macOS Apple Silicon only)
+- [x] README references download variants and links to releases page
+- [x] `cargo build` / `cargo test` / `cargo clippy` / `cargo fmt --check` pass
