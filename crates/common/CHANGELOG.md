@@ -15,108 +15,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
-## v0.1.6 (2026-02-13)
+## v0.1.7 (2026-02-17)
 
 ### New Features
 
- - <csr-id-30f511b983bf98d49081ef6aa6ad6e99b5c82c8f/> complete SQLite + S3 blob store with iroh-blobs integration
-   * feat: implement iroh-blobs Store backend for S3 blob store
-   
-   - Add S3Actor to handle all ~20 proto::Request command variants
-   - Add S3Store wrapper implementing iroh-blobs Store API
-   - Add bucket existence check on S3 initialization (fail-fast)
-   - Add ensure_bucket to bin/minio for auto-creation in dev
-   - Update e2e skill with sync timing guidance (60s wait)
-   
-   The S3 blob store now fully integrates with iroh-blobs protocol,
-   enabling P2P sync with blobs stored in S3/MinIO.
- - <csr-id-0a6d4fe6379ad7b96bf2f2169fb70d4e7d05f5bc/> add sync validation for signed manifests
-   * feat: add sync validation for signed manifests
-   
-   Validate incoming manifests during bucket sync:
-   - Check signature is valid
-   - Check author was in previous manifest's shares (prevents self-authorization)
-   - Validate entire manifest chain, not just the latest
-   - Accept unsigned manifests with warning (migration mode)
-   
-   Add SyncError enum with variants for validation failures.
-   Add ProvenanceResult enum for internal validation results.
- - <csr-id-b62a25cf7f6b86d18a262281127fa16d94d6ed58/> add pluggable conflict resolution for PathOpLog merges
-   * feat: add pluggable conflict resolution for PathOpLog merges
-   
-   Add ConflictResolver trait with three built-in strategies:
-   - LastWriteWins: Higher timestamp wins (default CRDT behavior)
-   - BaseWins: Local operations always win
-   - ForkOnConflict: Keep both, return unresolved conflicts
-   
-   Add merge_with_resolver() to PathOpLog for conflict-aware merging.
-   Export conflict types from mount module.
-   
-   Includes 23 new tests for conflict detection and resolution.
- - <csr-id-cabccaca7a0cbd91b294d5d96a1cc9992c8ffef3/> add SQLite + object storage blob store backend
-   * feat: add jax-blobs-store crate with SQLite + object storage backend
-   
-   New crate providing blob storage with:
-   - SQLite for metadata (hash, size, state, timestamps)
-   - Pluggable object storage backends (S3/MinIO/local/memory)
-   - Content-addressed storage using BLAKE3 hashes (iroh-blobs compatible)
-   - Recovery support to rebuild metadata from object storage
- - <csr-id-7f4dcb71a245455d6818b117bcea4ac76ac677c8/> add author and signature fields to Manifest
-   - Add ManifestError type for signing/verification errors
-   - Add sign() and verify_signature() methods to Manifest
-   - Sign manifests automatically in Mount::init() and Mount::save()
-   - Store SecretKey in MountInner for signing
-   - Enable serde feature for ed25519-dalek
-   - Add comprehensive unit tests for signing and tamper detection
-   
-   Implements signed-manifest-authorization ticket 0.
- - <csr-id-7af5ca16a8e0748a922a39e3e8fecb1a7411e3db/> add mirror principal role and bucket publishing workflow
-   * feat: add mirror principal role and bucket publishing workflow
-   
-   Implement polymorphic principal roles (Owner and Mirror) with publishing:
-   - Mirror principals can sync buckets but cannot decrypt until published
-   - Extended /share endpoint with role parameter (defaults to owner)
-   - Added /publish endpoint to grant mirrors decryption access
-   - Mirrors start with Option<SecretShare> None until bucket is published
-   - MirrorCannotMount error when unpublished mirror tries to load bucket
- - <csr-id-75f36dfd89913f4296dc1e9e8f0dd4b24d903fe7/> add path operation CRDT for conflict-free sync
-   * feat: add path operation CRDT for conflict-free sync
-   
-   Introduce a lightweight Conflict-free Replicated Data Type (CRDT) to track
-   filesystem path operations (add, remove, mkdir, mv) across peers. The operation
-   log is stored as a separate encrypted blob (not in the manifest) to avoid
-   leaking directory structure information. Enables deterministic conflict
-   resolution during peer sync using Lamport timestamps and peer IDs.
-   
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
- - <csr-id-b30cb13139cc12ec1d4f31e2e8d14cfcfbf00865/> add mv operation to Mount
-   * feat: add mv operation to Mount for moving/renaming files and directories
-   
-   Adds a new `mv` method to the Mount struct that allows moving or renaming
-   files and directories. The operation preserves the existing NodeLink (no
-   re-encryption of content needed), creates intermediate directories if
-   needed, and properly tracks all new node hashes in pins.
-   
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-### Bug Fixes
-
- - <csr-id-2edfaf0ccb6fd91c08e5676385a5e2ec732040b8/> sync from available peers instead of failing if one is offline
-   * fix: sync from available peers instead of failing if one is offline
-   
-   Allow sync operations to work with multiple peers from bucket shares,
-   falling back to other peers if the preferred one is unreachable. This
-   fixes the bug where sync fails entirely if not all peers are online.
-   
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+ - <csr-id-c3abb856836a0e904cd487170abea4a37cf15a54/> add bucket publish CLI command
+   - Add `jax bucket publish --bucket-id <UUID>` subcommand
+   - Add owner-only validation to publish endpoint (HTTP 403 for non-owners)
+   - Add integration tests for owner publish and publish/unpublish round-trip
+   - Update PROJECT_LAYOUT.md and issue ticket
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
- - 9 commits contributed to the release.
+ - 1 commit contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#85](https://github.com/jax-protocol/jax-fs/issues/85)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#85](https://github.com/jax-protocol/jax-fs/issues/85)**
+    - Add bucket publish CLI command ([`c3abb85`](https://github.com/jax-protocol/jax-fs/commit/c3abb856836a0e904cd487170abea4a37cf15a54))
+</details>
+
+## v0.1.6 (2026-02-13)
+
+### New Features
+
+<csr-id-0a6d4fe6379ad7b96bf2f2169fb70d4e7d05f5bc/>
+<csr-id-b62a25cf7f6b86d18a262281127fa16d94d6ed58/>
+<csr-id-cabccaca7a0cbd91b294d5d96a1cc9992c8ffef3/>
+<csr-id-7f4dcb71a245455d6818b117bcea4ac76ac677c8/>
+<csr-id-7af5ca16a8e0748a922a39e3e8fecb1a7411e3db/>
+<csr-id-75f36dfd89913f4296dc1e9e8f0dd4b24d903fe7/>
+<csr-id-b30cb13139cc12ec1d4f31e2e8d14cfcfbf00865/>
+
+ - <csr-id-30f511b983bf98d49081ef6aa6ad6e99b5c82c8f/> complete SQLite + S3 blob store with iroh-blobs integration
+   * feat: implement iroh-blobs Store backend for S3 blob store
+- Add S3Actor to handle all ~20 proto::Request command variants
+- Add S3Store wrapper implementing iroh-blobs Store API
+- Add bucket existence check on S3 initialization (fail-fast)
+- Add ensure_bucket to bin/minio for auto-creation in dev
+- Update e2e skill with sync timing guidance (60s wait)
+* feat: add sync validation for signed manifests
+- Check signature is valid
+- Check author was in previous manifest's shares (prevents self-authorization)
+- Validate entire manifest chain, not just the latest
+- Accept unsigned manifests with warning (migration mode)
+* feat: add pluggable conflict resolution for PathOpLog merges
+- LastWriteWins: Higher timestamp wins (default CRDT behavior)
+- BaseWins: Local operations always win
+- ForkOnConflict: Keep both, return unresolved conflicts
+* feat: add jax-blobs-store crate with SQLite + object storage backend
+- SQLite for metadata (hash, size, state, timestamps)
+- Pluggable object storage backends (S3/MinIO/local/memory)
+- Content-addressed storage using BLAKE3 hashes (iroh-blobs compatible)
+- Recovery support to rebuild metadata from object storage
+- Add ManifestError type for signing/verification errors
+- Add sign() and verify_signature() methods to Manifest
+- Sign manifests automatically in Mount::init() and Mount::save()
+- Store SecretKey in MountInner for signing
+- Enable serde feature for ed25519-dalek
+- Add comprehensive unit tests for signing and tamper detection
+* feat: add mirror principal role and bucket publishing workflow
+- Mirror principals can sync buckets but cannot decrypt until published
+- Extended /share endpoint with role parameter (defaults to owner)
+- Added /publish endpoint to grant mirrors decryption access
+- Mirrors start with Option<SecretShare> None until bucket is published
+- MirrorCannotMount error when unpublished mirror tries to load bucket
+* feat: add path operation CRDT for conflict-free sync
+* feat: add mv operation to Mount for moving/renaming files and directories
+
+### Bug Fixes
+
+ - <csr-id-2edfaf0ccb6fd91c08e5676385a5e2ec732040b8/> sync from available peers instead of failing if one is offline
+   * fix: sync from available peers instead of failing if one is offline
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 10 commits contributed to the release.
  - 9 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 9 unique issues were worked on: [#24](https://github.com/jax-protocol/jax-fs/issues/24), [#27](https://github.com/jax-protocol/jax-fs/issues/27), [#32](https://github.com/jax-protocol/jax-fs/issues/32), [#36](https://github.com/jax-protocol/jax-fs/issues/36), [#49](https://github.com/jax-protocol/jax-fs/issues/49), [#50](https://github.com/jax-protocol/jax-fs/issues/50), [#52](https://github.com/jax-protocol/jax-fs/issues/52), [#57](https://github.com/jax-protocol/jax-fs/issues/57), [#58](https://github.com/jax-protocol/jax-fs/issues/58)
+ - 10 unique issues were worked on: [#24](https://github.com/jax-protocol/jax-fs/issues/24), [#27](https://github.com/jax-protocol/jax-fs/issues/27), [#32](https://github.com/jax-protocol/jax-fs/issues/32), [#36](https://github.com/jax-protocol/jax-fs/issues/36), [#49](https://github.com/jax-protocol/jax-fs/issues/49), [#50](https://github.com/jax-protocol/jax-fs/issues/50), [#52](https://github.com/jax-protocol/jax-fs/issues/52), [#57](https://github.com/jax-protocol/jax-fs/issues/57), [#58](https://github.com/jax-protocol/jax-fs/issues/58), [#65](https://github.com/jax-protocol/jax-fs/issues/65)
 
 ### Commit Details
 
@@ -142,7 +128,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Add sync validation for signed manifests ([`0a6d4fe`](https://github.com/jax-protocol/jax-fs/commit/0a6d4fe6379ad7b96bf2f2169fb70d4e7d05f5bc))
  * **[#58](https://github.com/jax-protocol/jax-fs/issues/58)**
     - Complete SQLite + S3 blob store with iroh-blobs integration ([`30f511b`](https://github.com/jax-protocol/jax-fs/commit/30f511b983bf98d49081ef6aa6ad6e99b5c82c8f))
+ * **[#65](https://github.com/jax-protocol/jax-fs/issues/65)**
+    - Bump jax-object-store v0.1.0, jax-common v0.1.6, jax-daemon v0.1.7 ([`f0219f2`](https://github.com/jax-protocol/jax-fs/commit/f0219f2d882d65272b5cbe81a39680a06006a0d3))
 </details>
+
+<csr-unknown>
+The S3 blob store now fully integrates with iroh-blobs protocol,enabling P2P sync with blobs stored in S3/MinIO. add sync validation for signed manifestsValidate incoming manifests during bucket sync:Add SyncError enum with variants for validation failures.Add ProvenanceResult enum for internal validation results. add pluggable conflict resolution for PathOpLog mergesAdd ConflictResolver trait with three built-in strategies:Add merge_with_resolver() to PathOpLog for conflict-aware merging.Export conflict types from mount module.Includes 23 new tests for conflict detection and resolution. add SQLite + object storage blob store backendNew crate providing blob storage with: add author and signature fields to ManifestImplements signed-manifest-authorization ticket 0. add mirror principal role and bucket publishing workflowImplement polymorphic principal roles (Owner and Mirror) with publishing: add path operation CRDT for conflict-free syncIntroduce a lightweight Conflict-free Replicated Data Type (CRDT) to trackfilesystem path operations (add, remove, mkdir, mv) across peers. The operationlog is stored as a separate encrypted blob (not in the manifest) to avoidleaking directory structure information. Enables deterministic conflictresolution during peer sync using Lamport timestamps and peer IDs.🤖 Generated with https://claude.com/claude-codeClaude Code add mv operation to MountAdds a new mv method to the Mount struct that allows moving or renamingfiles and directories. The operation preserves the existing NodeLink (nore-encryption of content needed), creates intermediate directories ifneeded, and properly tracks all new node hashes in pins.🤖 Generated with https://claude.com/claude-codeClaude CodeAllow sync operations to work with multiple peers from bucket shares,falling back to other peers if the preferred one is unreachable. Thisfixes the bug where sync fails entirely if not all peers are online.🤖 Generated with https://claude.com/claude-codeClaude Code<csr-unknown/>
 
 ## v0.1.5 (2025-11-18)
 

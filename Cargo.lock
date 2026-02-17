@@ -2742,7 +2742,7 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "jax-common"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "aes-gcm",
  "aes-kw",
@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "jax-daemon"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "askama",
@@ -2833,7 +2833,7 @@ dependencies = [
 
 [[package]]
 name = "jax-object-store"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "bao-tree",
