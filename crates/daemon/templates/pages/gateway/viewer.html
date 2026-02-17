@@ -33,6 +33,9 @@
             <a href="/gw/{{ bucket_id }}{{ file_path }}?download=true" class="button" title="Download">
                 <i class="fas fa-download"></i>
             </a>
+            <button class="button" onclick="copyShareLink(this)" title="Copy link">
+                <i class="fas fa-share-alt"></i>
+            </button>
             <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">{{ file_name }}</div>
                 <span class="text-xs text-muted-foreground">{{ size_formatted }}</span>
@@ -135,6 +138,14 @@ function copyToClipboard(text, element) {
             element.classList.remove('copied');
             icon.className = originalClass;
         }, 2000);
+    });
+}
+
+function copyShareLink(element) {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+        const icon = element.querySelector('i');
+        icon.className = 'fas fa-check';
+        setTimeout(() => { icon.className = 'fas fa-share-alt'; }, 2000);
     });
 }
 </script>

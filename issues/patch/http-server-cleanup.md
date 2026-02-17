@@ -95,3 +95,8 @@ All links in gateway HTML templates (index, explorer, file viewer) include
   - Template links propagate `?viewer=true`
 - Cross-node sync verified: mirror node sees bucket, serves files via S3 gateway
 - MinIO blob storage confirmed
+
+### 2026-02-17 - Documentation and share button
+- Added share button to viewer and explorer templates (copies current URL)
+- Added query parameter documentation to gateway index page
+- Added TODO comments in directory.rs and file.rs linking to docs

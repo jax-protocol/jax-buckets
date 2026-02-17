@@ -31,6 +31,7 @@ pub struct GatewayViewerTemplate {
     pub back_url: String,
 }
 
+// TODO: Query param behavior is documented in templates/pages/gateway/index.html - keep in sync
 pub async fn handler(
     mount: &Mount,
     path_buf: &std::path::Path,
@@ -85,8 +86,42 @@ pub async fn handler(
             .into_response();
     }
 
-    // Default: serve raw file inline
-    if !wants_viewer {
+    // When viewer is NOT explicitly set, act like a web server:
+    // - Render HTML/Markdown with URL rewriting
+    // - Serve other files raw inline
+    if query.viewer.is_none() {
+        let is_html = mime_type == "text/html";
+        let is_markdown = mime_type == "text/markdown";
+
+        if is_html || is_markdown {
+            let (final_content, final_mime_type) = if is_markdown {
+                let content_str = String::from_utf8_lossy(&file_data);
+                let html = super::markdown_to_html(&content_str);
+                let rewritten =
+                    super::rewrite_relative_urls(&html, absolute_path, meta.id, meta.host);
+                (rewritten.into_bytes(), "text/html; charset=utf-8")
+            } else {
+                let content_str = String::from_utf8_lossy(&file_data);
+                let rewritten =
+                    super::rewrite_relative_urls(&content_str, absolute_path, meta.id, meta.host);
+                (rewritten.into_bytes(), "text/html; charset=utf-8")
+            };
+
+            return (
+                axum::http::StatusCode::OK,
+                [
+                    (axum::http::header::CONTENT_TYPE, final_mime_type),
+                    (
+                        axum::http::header::CONTENT_DISPOSITION,
+                        &format!("inline; filename=\"{}\"", filename),
+                    ),
+                ],
+                final_content,
+            )
+                .into_response();
+        }
+
+        // Non-HTML/Markdown: serve raw
         return (
             axum::http::StatusCode::OK,
             [
@@ -101,34 +136,18 @@ pub async fn handler(
             .into_response();
     }
 
-    // Viewer mode: render HTML UI
-    let is_html = mime_type == "text/html";
-    let is_markdown = mime_type == "text/markdown";
-
-    // For HTML and Markdown files in viewer mode, render directly
-    if is_html || is_markdown {
-        let (final_content, final_mime_type) = if is_markdown {
-            let content_str = String::from_utf8_lossy(&file_data);
-            let html = super::markdown_to_html(&content_str);
-            let rewritten = super::rewrite_relative_urls(&html, absolute_path, meta.id, meta.host);
-            (rewritten.into_bytes(), "text/html; charset=utf-8")
-        } else {
-            let content_str = String::from_utf8_lossy(&file_data);
-            let rewritten =
-                super::rewrite_relative_urls(&content_str, absolute_path, meta.id, meta.host);
-            (rewritten.into_bytes(), "text/html; charset=utf-8")
-        };
-
+    // viewer=false: serve raw file inline
+    if !wants_viewer {
         return (
             axum::http::StatusCode::OK,
             [
-                (axum::http::header::CONTENT_TYPE, final_mime_type),
+                (axum::http::header::CONTENT_TYPE, mime_type.as_str()),
                 (
                     axum::http::header::CONTENT_DISPOSITION,
                     &format!("inline; filename=\"{}\"", filename),
                 ),
             ],
-            final_content,
+            file_data,
         )
             .into_response();
     }

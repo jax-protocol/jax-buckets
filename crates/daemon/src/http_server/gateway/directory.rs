@@ -58,6 +58,7 @@ pub struct GatewayExplorerTemplate {
     pub items: Vec<FileDisplayInfo>,
 }
 
+// TODO: Query param behavior is documented in templates/pages/gateway/index.html - keep in sync
 pub async fn handler(
     mount: &Mount,
     path_buf: &std::path::Path,
@@ -67,8 +68,9 @@ pub async fn handler(
 ) -> Response {
     let wants_viewer = query.viewer.unwrap_or(false);
 
-    // In viewer mode, check for index file first
-    if wants_viewer {
+    // When viewer is NOT explicitly set, act like a web server and auto-serve index files.
+    // When viewer=true, the user wants to see the directory listing, not the index file.
+    if query.viewer.is_none() {
         if let Some((index_path, index_mime_type)) = find_index_file(mount, path_buf).await {
             let file_data = match mount.cat(&index_path).await {
                 Ok(data) => data,
