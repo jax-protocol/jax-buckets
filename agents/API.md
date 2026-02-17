@@ -347,5 +347,5 @@ curl http://localhost:8080/gw/550e8400-.../path/to/file.txt
 
 Query parameters:
 - `download=true` - Force download with Content-Disposition: attachment
-- `view=true` - Show file in viewer UI instead of rendering HTML/Markdown
 - `deep=true` - Recursively list all files (for directories)
+- `json` - Return JSON instead of HTML (directory listing or file metadata)

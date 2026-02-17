@@ -73,8 +73,6 @@ pub async fn handle(
                 }
             };
 
-            let index_path_str = index_path.to_str().unwrap_or(absolute_path);
-
             let (final_content, final_mime_type) = if index_mime_type == "text/markdown" {
                 let content_str = String::from_utf8_lossy(&file_data);
                 let html = super::file::markdown_to_html(&content_str);
@@ -84,10 +82,6 @@ pub async fn handle(
             } else {
                 (file_data, "text/plain; charset=utf-8")
             };
-
-            // Suppress unused variable warning - index_path_str was used for URL
-            // rewriting which has been simplified
-            let _ = index_path_str;
 
             return (
                 axum::http::StatusCode::OK,
