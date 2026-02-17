@@ -21,7 +21,7 @@
             {% else %}
             <div class="space-y-2">
                 {% for bucket in buckets %}
-                <a href="/gw/{{ bucket.id }}" class="bucket-row">
+                <a href="/gw/{{ bucket.id }}?viewer=true" class="bucket-row">
                     <div class="bucket-info">
                         <span class="bucket-name">{{ bucket.name }}</span>
                         <div class="bucket-ids">
@@ -59,6 +59,7 @@
         </div>
 
         <!-- Endpoints -->
+        <!-- TODO: Keep in sync with gateway handlers in src/http_server/gateway/ -->
         <div class="card p-6">
             <h3 class="text-lg font-semibold mb-4">API Endpoints</h3>
             <div class="space-y-3">
@@ -73,6 +74,30 @@
                 <div class="endpoint-row">
                     <code class="endpoint-path">/_status/livez</code>
                     <span class="endpoint-desc">Liveness check</span>
+                </div>
+            </div>
+
+            <h4 class="text-md font-semibold mt-6 mb-3">Query Parameters</h4>
+            <div class="space-y-2">
+                <div class="param-row">
+                    <code class="param-name">?viewer=true</code>
+                    <span class="param-desc">Show explorer/viewer UI</span>
+                </div>
+                <div class="param-row">
+                    <code class="param-name">?viewer=false</code>
+                    <span class="param-desc">Return raw JSON (directories) or binary (files)</span>
+                </div>
+                <div class="param-row">
+                    <code class="param-name">?download=true</code>
+                    <span class="param-desc">Download file as attachment</span>
+                </div>
+                <div class="param-row">
+                    <code class="param-name">?at=&lt;hash&gt;</code>
+                    <span class="param-desc">Access specific version by content hash</span>
+                </div>
+                <div class="param-row">
+                    <code class="param-name">?deep=true</code>
+                    <span class="param-desc">Recursive directory listing</span>
                 </div>
             </div>
         </div>
@@ -236,6 +261,28 @@
     text-align: right;
 }
 
+.param-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: hsl(var(--muted) / 0.15);
+    border-radius: 6px;
+    gap: 1rem;
+}
+
+.param-name {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: hsl(var(--primary));
+}
+
+.param-desc {
+    font-size: 0.8rem;
+    color: hsl(var(--muted-foreground));
+    text-align: right;
+}
+
 @media (max-width: 640px) {
     .endpoint-row {
         flex-direction: column;
@@ -243,6 +290,14 @@
         gap: 0.25rem;
     }
     .endpoint-desc {
+        text-align: left;
+    }
+    .param-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+    .param-desc {
         text-align: left;
     }
 }

@@ -37,9 +37,12 @@ Move gateway-specific code under a properly named module.
 - `at` - version hash (keep)
 - `download` - force download (keep)
 - `deep` - recursive listing (keep)
-- `json` - JSON output (new, replaces Accept header requirement)
+- `viewer` - opt-in HTML viewer UI (new)
 
-Remove `view` (redundant).
+Default behavior (no flags): raw JSON for directories, raw file bytes for files.
+With `?viewer=true`: HTML explorer UI for directories, HTML viewer UI for files.
+
+Remove `view` and `json` (superseded by `viewer` flag with inverted defaults).
 
 ### 4. Self-contained handler files
 
@@ -49,18 +52,51 @@ Each handler file contains everything it needs - no shared types module:
 - Helper functions (inline)
 - Error responses (inline)
 
+### 5. Template links include `?viewer=true`
+
+All links in gateway HTML templates (index, explorer, file viewer) include
+`?viewer=true` so navigation stays within the viewer experience.
+
 ## Acceptance Criteria
 
-- [ ] `cargo build` passes
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` passes
-- [ ] `?json` returns JSON for directories (listing) and files (metadata)
-- [ ] HTML explorer works without `?json`
-- [ ] `?download` still forces file download
+- [x] `cargo build` passes
+- [x] `cargo test` passes
+- [x] `cargo clippy` passes
+- [x] Default (no flags) returns JSON for directories, raw file for files
+- [x] `?viewer=true` shows HTML explorer/viewer UI
+- [x] `?download` still forces file download
+- [x] All viewer template links include `?viewer=true`
 
 ## Status
 
-**CLOSED** - Duplicate workers created PRs #96 and #97, both closed 2026-02-17.
-Work was completed but PRs were not merged due to duplication.
+**In Progress** - PR #102, design revised 2026-02-17.
 
-Issue remains open for potential re-implementation if needed.
+### 2026-02-17 - Initial implementation
+- Renamed html/ → gateway/ module
+- Split 881-line monolith into mod.rs, index.rs, directory.rs, file.rs
+- PR: #102
+
+### 2026-02-17 - Design change: ?viewer flag
+- Removed `?json` flag (was added in initial implementation)
+- Added `?viewer=true` flag with inverted defaults
+- Default: raw JSON for directories, raw file bytes for files
+- `?viewer=true`: HTML explorer/viewer UI
+- Updated all gateway templates to include `?viewer=true` in links
+- Decision: API-first design — programmatic access is the default, human browsing is opt-in
+
+### 2026-02-17 - E2E verification
+- Updated `bin/dev_/api.sh`: removed `Accept: application/json` header from `api_fetch()` (no longer needed since directories return JSON by default)
+- E2E gateway verification confirmed all behaviors:
+  - Default dir → JSON listing
+  - `?viewer=true` dir → HTML explorer
+  - Default file → raw bytes
+  - `?viewer=true` file → HTML viewer
+  - `?download=true` → attachment disposition
+  - Template links propagate `?viewer=true`
+- Cross-node sync verified: mirror node sees bucket, serves files via S3 gateway
+- MinIO blob storage confirmed
+
+### 2026-02-17 - Documentation and share button
+- Added share button to viewer and explorer templates (copies current URL)
+- Added query parameter documentation to gateway index page
+- Added TODO comments in directory.rs and file.rs linking to docs

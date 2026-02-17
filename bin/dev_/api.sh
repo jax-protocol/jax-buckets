@@ -249,9 +249,9 @@ api_fetch() {
     local url="$base/gw/$bucket_id$path"
     echo -e "${BLUE}GET $url${NC}"
 
-    # Use Accept: application/json for directory listings
+    # Gateway returns JSON for directories by default (no Accept header needed)
     local response
-    response=$(curl -s -H "Accept: application/json" "$url")
+    response=$(curl -s "$url")
 
     # Try to parse as JSON, otherwise show raw
     if echo "$response" | jq . 2>/dev/null; then
