@@ -57,3 +57,8 @@ Each handler file contains everything it needs - no shared types module:
 - [ ] `?json` returns JSON for directories (listing) and files (metadata)
 - [ ] HTML explorer works without `?json`
 - [ ] `?download` still forces file download
+
+## Progress Log
+
+### 2026-02-17 - Started
+- Beginning implementation
