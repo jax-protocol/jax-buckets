@@ -1,5 +1,6 @@
 use axum::extract::{Json, State};
 use axum::response::{IntoResponse, Response};
+use common::mount::PrincipalRole;
 use common::prelude::MountError;
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
@@ -30,6 +31,17 @@ pub async fn handler(
 
     // Load mount at current head
     let mount = state.peer().mount(req.bucket_id).await?;
+
+    // Check that the caller is the bucket owner
+    let our_key = state.peer().secret().public();
+    let manifest = mount.inner().await;
+    let our_share = manifest
+        .manifest()
+        .get_share(&our_key)
+        .ok_or(PublishError::NotOwner)?;
+    if *our_share.role() != PrincipalRole::Owner {
+        return Err(PublishError::NotOwner);
+    }
 
     // Check if already published
     if mount.is_published().await {
@@ -62,6 +74,8 @@ pub async fn handler(
 pub enum PublishError {
     #[error("Mount error: {0}")]
     Mount(#[from] MountError),
+    #[error("Only the bucket owner can publish")]
+    NotOwner,
 }
 
 impl IntoResponse for PublishError {
@@ -70,6 +84,11 @@ impl IntoResponse for PublishError {
             PublishError::Mount(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected error".to_string(),
+            )
+                .into_response(),
+            PublishError::NotOwner => (
+                http::StatusCode::FORBIDDEN,
+                "Only the bucket owner can publish".to_string(),
             )
                 .into_response(),
         }
