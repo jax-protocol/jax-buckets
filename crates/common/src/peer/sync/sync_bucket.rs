@@ -465,6 +465,25 @@ fn verify_author(
         return Err(ProvenanceError::AuthorNotWriter);
     }
 
+    // 5. If shares were removed, verify the author was an owner in the previous manifest
+    if let Some(prev) = previous {
+        let prev_keys: std::collections::HashSet<&String> = prev.shares().keys().collect();
+        let current_keys: std::collections::HashSet<&String> = manifest.shares().keys().collect();
+
+        let removed_keys: Vec<&&String> = prev_keys.difference(&current_keys).collect();
+
+        if !removed_keys.is_empty() {
+            // Author must have been an owner in the previous manifest to remove shares
+            let author_prev_share = prev
+                .shares()
+                .get(&author_hex)
+                .ok_or(ProvenanceError::UnauthorizedShareRemoval)?;
+            if *author_prev_share.role() != PrincipalRole::Owner {
+                return Err(ProvenanceError::UnauthorizedShareRemoval);
+            }
+        }
+    }
+
     tracing::debug!(
         "Author verified: bucket={}, author={}",
         manifest.id(),

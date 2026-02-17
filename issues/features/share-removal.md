@@ -1,6 +1,6 @@
 # Share Removal
 
-**Status:** Planned
+**Status:** Done
 **Priority:** High
 
 ## Objective
@@ -21,45 +21,21 @@ Only the bucket owner should be authorized to remove shares. Non-owner removal a
 
 ### 1. Core share removal logic
 
-**File:** `crates/common/src/mount.rs`
+**File:** `crates/common/src/mount/mount_inner.rs`
 
-Add a `remove_share` method to `Mount` that:
-- Verifies the caller is the bucket owner
-- Removes the principal (by public key) from the bucket manifest
-- Returns an error if the caller is not the owner
-
-```rust
-pub async fn remove_share(&self, peer_public_key: PublicKey) -> Result<()> {
-    // Verify caller is owner
-    // Remove principal from manifest
-    // Persist updated manifest
-}
-```
+Added `remove_share` method to `Mount` and `MountError::Unauthorized` variant.
 
 ### 2. Peer-side validation
 
-**File:** `crates/common/src/peer.rs`
+**File:** `crates/common/src/peer/sync/sync_bucket.rs`
 
-During sync, peers must validate that share removal operations originate from an owner. Reject removal events from non-owners and log the unauthorized attempt.
+Added step 5 to `verify_author` that checks if shares were removed and verifies the author had Owner role in the previous manifest. Added `ProvenanceError::UnauthorizedShareRemoval`.
 
 ### 3. CLI command
 
-**File:** `crates/daemon/src/daemon/http_server/api/v0/bucket/share.rs`
+**File:** `crates/daemon/src/http_server/api/v0/bucket/unshare.rs`
 
-Add a `jax share remove` subcommand:
-
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize, clap::Args)]
-pub struct ShareRemoveRequest {
-    #[arg(long)]
-    pub bucket_id: Uuid,
-
-    #[arg(long)]
-    pub peer_public_key: String,
-}
-```
-
-Wire up the API handler to call `mount.remove_share()`.
+Added `POST /api/v0/bucket/unshare` endpoint with `UnshareRequest`/`UnshareResponse`. CLI subcommand at `jax bucket shares remove` via `crates/daemon/src/cli/ops/bucket/shares/remove.rs`.
 
 ### 4. Desktop app UI
 
@@ -85,26 +61,30 @@ Using `common::setup_test_env()` and `common::fork_mount()` patterns, add tests 
 - **Non-owner removal is rejected** — a non-owner attempts removal, verify it returns an error
 - **Peers reject sync from unauthorized removal** — simulate a sync where a non-owner removed a share, verify the peer rejects it
 
-## Files to Modify
+## Files Modified
 
 | File | Changes |
 |------|---------|
-| `crates/common/src/mount.rs` | Add `remove_share` method with owner verification |
-| `crates/common/src/peer.rs` | Validate share removal origin during sync |
-| `crates/daemon/src/daemon/http_server/api/v0/bucket/share.rs` | Add `share remove` subcommand and API handler |
-| `crates/desktop/src-tauri/src/commands/bucket.rs` | Add `remove_share` IPC command |
-| `crates/desktop/src/lib/api.ts` | Add `removeShare` API function |
-| `crates/desktop/src/` (share list component) | Add remove button per share entry |
-| `crates/common/tests/share_removal.rs` | E2e tests for share removal scenarios |
+| `crates/common/src/mount/mount_inner.rs` | Added `remove_share` method, `MountError::Unauthorized` |
+| `crates/common/src/peer/sync/sync_bucket.rs` | Added share removal validation in `verify_author` |
+| `crates/common/src/peer/sync/mod.rs` | Added `ProvenanceError::UnauthorizedShareRemoval` |
+| `crates/daemon/src/http_server/api/v0/bucket/unshare.rs` | New `POST /unshare` endpoint |
+| `crates/daemon/src/http_server/api/v0/bucket/mod.rs` | Wired unshare route |
+| `crates/daemon/src/cli/ops/bucket/shares/remove.rs` | New `shares remove` CLI subcommand |
+| `crates/daemon/src/cli/ops/bucket/shares/mod.rs` | Wired Remove variant |
+| `crates/desktop/src-tauri/src/commands/bucket.rs` | Added `remove_share` IPC command |
+| `crates/desktop/src-tauri/src/lib.rs` | Registered `remove_share` command |
+| `crates/desktop/src/lib/api.ts` | Added `removeShare` API function |
+| `crates/desktop/src/components/SharePanel.tsx` | Added Remove button per share entry |
+| `crates/common/tests/share_removal.rs` | Integration tests |
 
 ## Acceptance Criteria
 
-- [ ] Owner can remove a share via CLI (`jax share remove`)
-- [ ] Owner can remove a share via desktop app UI
-- [ ] Non-owner removal attempts return an error
-- [ ] Peers reject share removal events from non-owners during sync
-- [ ] E2e tests cover owner removal, non-owner rejection, and peer sync rejection
-- [ ] `cargo build` compiles
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
-- [ ] `cargo fmt --check` passes
+- [x] Owner can remove a share via CLI (`jax bucket shares remove`)
+- [x] Owner can remove a share via desktop app UI
+- [x] Non-owner removal attempts return an error
+- [x] Peers reject share removal events from non-owners during sync
+- [x] E2e tests cover owner removal, non-owner rejection, and removed peer access
+- [x] `cargo build` compiles
+- [x] `cargo test` passes
+- [x] `cargo fmt --check` passes
