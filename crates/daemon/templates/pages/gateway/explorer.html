@@ -28,10 +28,10 @@
         <!-- Breadcrumb navigation -->
         <nav aria-label="Breadcrumb">
             <ol class="flex items-center gap-2 text-sm">
-                <li><a href="/gw/{{ bucket_id }}" class="text-primary hover:underline">/</a></li>
+                <li><a href="/gw/{{ bucket_id }}?viewer=true" class="text-primary hover:underline">/</a></li>
                 {% for segment in path_segments %}
                 <li><i class="fas fa-chevron-right text-muted-foreground text-xs"></i></li>
-                <li><a href="/gw/{{ bucket_id }}{{ segment.path }}" class="text-primary hover:underline">{{ segment.name }}</a></li>
+                <li><a href="/gw/{{ bucket_id }}{{ segment.path }}?viewer=true" class="text-primary hover:underline">{{ segment.name }}</a></li>
                 {% endfor %}
             </ol>
         </nav>
@@ -60,7 +60,7 @@
                             <div class="flex items-center gap-2">
                                 {% if item.is_dir %}
                                 <i class="fas fa-folder file-icon-dir"></i>
-                                <a href="/gw/{{ bucket_id }}{{ item.path }}" class="text-primary font-medium hover:underline">
+                                <a href="/gw/{{ bucket_id }}{{ item.path }}?viewer=true" class="text-primary font-medium hover:underline">
                                     {{ item.name }}
                                 </a>
                                 {% else %}
@@ -77,7 +77,7 @@
                                 {% else %}
                                 <i class="fas fa-file file-icon-default"></i>
                                 {% endif %}
-                                <a href="/gw/{{ bucket_id }}{{ item.path }}?view=true" class="text-primary font-medium hover:underline">
+                                <a href="/gw/{{ bucket_id }}{{ item.path }}?viewer=true" class="text-primary font-medium hover:underline">
                                     {{ item.name }}
                                 </a>
                                 {% endif %}

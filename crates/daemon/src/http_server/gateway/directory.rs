@@ -9,9 +9,9 @@ pub struct DirectoryQuery {
     /// If true, recursively list all files under the path
     #[serde(default)]
     pub deep: Option<bool>,
-    /// If true, return JSON instead of HTML
+    /// If true, use the HTML explorer UI instead of raw JSON
     #[serde(default)]
-    pub json: Option<bool>,
+    pub viewer: Option<bool>,
 }
 
 /// Path segment for breadcrumb navigation.
@@ -65,10 +65,10 @@ pub async fn handler(
     query: &DirectoryQuery,
     meta: &super::BucketMeta<'_>,
 ) -> Response {
-    let wants_json = query.json.unwrap_or(false);
+    let wants_viewer = query.viewer.unwrap_or(false);
 
-    // Check for index file first (unless JSON is explicitly requested)
-    if !wants_json {
+    // In viewer mode, check for index file first
+    if wants_viewer {
         if let Some((index_path, index_mime_type)) = find_index_file(mount, path_buf).await {
             let file_data = match mount.cat(&index_path).await {
                 Ok(data) => data,
@@ -124,8 +124,8 @@ pub async fn handler(
         }
     };
 
-    // Return JSON if requested
-    if wants_json {
+    // Default: return JSON directory listing
+    if !wants_viewer {
         let entries: Vec<DirectoryEntry> = items_map
             .into_iter()
             .map(|(path, node_link)| {
@@ -164,7 +164,7 @@ pub async fn handler(
             .into_response();
     }
 
-    // Render HTML explorer
+    // Viewer mode: render HTML explorer
     let items: Vec<FileDisplayInfo> = items_map
         .into_iter()
         .map(|(path, node_link)| {

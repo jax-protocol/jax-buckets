@@ -37,9 +37,12 @@ Move gateway-specific code under a properly named module.
 - `at` - version hash (keep)
 - `download` - force download (keep)
 - `deep` - recursive listing (keep)
-- `json` - JSON output (new, replaces Accept header requirement)
+- `viewer` - opt-in HTML viewer UI (new)
 
-Remove `view` (redundant).
+Default behavior (no flags): raw JSON for directories, raw file bytes for files.
+With `?viewer=true`: HTML explorer UI for directories, HTML viewer UI for files.
+
+Remove `view` and `json` (superseded by `viewer` flag with inverted defaults).
 
 ### 4. Self-contained handler files
 
@@ -49,23 +52,34 @@ Each handler file contains everything it needs - no shared types module:
 - Helper functions (inline)
 - Error responses (inline)
 
+### 5. Template links include `?viewer=true`
+
+All links in gateway HTML templates (index, explorer, file viewer) include
+`?viewer=true` so navigation stays within the viewer experience.
+
 ## Acceptance Criteria
 
-- [ ] `cargo build` passes
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` passes
-- [ ] `?json` returns JSON for directories (listing) and files (metadata)
-- [ ] HTML explorer works without `?json`
-- [ ] `?download` still forces file download
+- [x] `cargo build` passes
+- [x] `cargo test` passes
+- [x] `cargo clippy` passes
+- [x] Default (no flags) returns JSON for directories, raw file for files
+- [x] `?viewer=true` shows HTML explorer/viewer UI
+- [x] `?download` still forces file download
+- [x] All viewer template links include `?viewer=true`
 
 ## Status
 
-**In Review** - PR #102 created 2026-02-17.
+**In Progress** - PR #102, design revised 2026-02-17.
 
-### 2026-02-17 - Ready for Review
+### 2026-02-17 - Initial implementation
 - Renamed html/ → gateway/ module
 - Split 881-line monolith into mod.rs, index.rs, directory.rs, file.rs
-- Replaced Accept header JSON detection with ?json query param
-- Removed ?view query param
-- All CI checks pass (build, test, fmt)
 - PR: #102
+
+### 2026-02-17 - Design change: ?viewer flag
+- Removed `?json` flag (was added in initial implementation)
+- Added `?viewer=true` flag with inverted defaults
+- Default: raw JSON for directories, raw file bytes for files
+- `?viewer=true`: HTML explorer/viewer UI
+- Updated all gateway templates to include `?viewer=true` in links
+- Decision: API-first design — programmatic access is the default, human browsing is opt-in

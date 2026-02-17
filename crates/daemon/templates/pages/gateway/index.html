@@ -21,7 +21,7 @@
             {% else %}
             <div class="space-y-2">
                 {% for bucket in buckets %}
-                <a href="/gw/{{ bucket.id }}" class="bucket-row">
+                <a href="/gw/{{ bucket.id }}?viewer=true" class="bucket-row">
                     <div class="bucket-info">
                         <span class="bucket-name">{{ bucket.name }}</span>
                         <div class="bucket-ids">

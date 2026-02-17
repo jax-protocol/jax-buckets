@@ -44,8 +44,9 @@ pub struct GatewayQuery {
     pub download: Option<bool>,
     #[serde(default)]
     pub deep: Option<bool>,
+    /// If true, use the HTML viewer UI instead of raw JSON/binary responses.
     #[serde(default)]
-    pub json: Option<bool>,
+    pub viewer: Option<bool>,
 }
 
 /// Handler for bucket root requests (no file path).
@@ -180,13 +181,13 @@ pub async fn handler(
     if is_directory {
         let dir_query = directory::DirectoryQuery {
             deep: query.deep,
-            json: query.json,
+            viewer: query.viewer,
         };
         directory::handler(&mount, &path_buf, &absolute_path, &dir_query, &meta).await
     } else {
         let file_query = file::FileQuery {
             download: query.download,
-            json: query.json,
+            viewer: query.viewer,
         };
         file::handler(
             &mount,

@@ -6,12 +6,12 @@ use serde::Deserialize;
 /// Query parameters for file requests.
 #[derive(Debug, Deserialize)]
 pub struct FileQuery {
-    /// If true, serve the raw file with Content-Disposition: attachment
+    /// If true, serve with Content-Disposition: attachment
     #[serde(default)]
     pub download: Option<bool>,
-    /// If true, return file metadata as JSON
+    /// If true, use the HTML viewer UI instead of serving raw file
     #[serde(default)]
-    pub json: Option<bool>,
+    pub viewer: Option<bool>,
 }
 
 /// Template for file viewer.
@@ -56,7 +56,7 @@ pub async fn handler(
         .to_string();
 
     let wants_download = query.download.unwrap_or(false);
-    let wants_json = query.json.unwrap_or(false);
+    let wants_viewer = query.viewer.unwrap_or(false);
 
     // Read file data
     let file_data = match mount.cat(path_buf).await {
@@ -69,7 +69,7 @@ pub async fn handler(
 
     let size_formatted = format_bytes(file_data.len());
 
-    // If download is requested, serve raw file
+    // If download is requested, serve with attachment disposition
     if wants_download {
         return (
             axum::http::StatusCode::OK,
@@ -85,28 +85,27 @@ pub async fn handler(
             .into_response();
     }
 
-    // If JSON is requested, return file metadata
-    if wants_json {
-        let metadata = serde_json::json!({
-            "path": absolute_path,
-            "name": filename,
-            "mime_type": mime_type,
-            "size": file_data.len(),
-            "size_formatted": size_formatted,
-        });
-
+    // Default: serve raw file inline
+    if !wants_viewer {
         return (
             axum::http::StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            serde_json::to_string_pretty(&metadata).unwrap(),
+            [
+                (axum::http::header::CONTENT_TYPE, mime_type.as_str()),
+                (
+                    axum::http::header::CONTENT_DISPOSITION,
+                    &format!("inline; filename=\"{}\"", filename),
+                ),
+            ],
+            file_data,
         )
             .into_response();
     }
 
-    // For HTML and Markdown files, render directly
+    // Viewer mode: render HTML UI
     let is_html = mime_type == "text/html";
     let is_markdown = mime_type == "text/markdown";
 
+    // For HTML and Markdown files in viewer mode, render directly
     if is_html || is_markdown {
         let (final_content, final_mime_type) = if is_markdown {
             let content_str = String::from_utf8_lossy(&file_data);
@@ -134,7 +133,7 @@ pub async fn handler(
             .into_response();
     }
 
-    // Render file viewer UI
+    // Render file viewer template
     let content = if mime_type.starts_with("text/")
         || mime_type == "application/json"
         || mime_type == "application/xml"
