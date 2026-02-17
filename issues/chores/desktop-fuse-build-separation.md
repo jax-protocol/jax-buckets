@@ -1,6 +1,6 @@
 # Desktop App FUSE/Non-FUSE Build Separation
 
-- **Status:** Planned
+- **Status:** Done
 - **Priority:** High
 
 ## Objective
@@ -59,3 +59,16 @@ Add a Downloads section linking to releases, noting standard and `_fuse` variant
 - INSTALL.md documents building with/without FUSE, lists which platforms support FUSE (macOS Apple Silicon only)
 - README references download variants and links to releases page
 - `cargo build` / `cargo test` / `cargo clippy` / `cargo fmt --check` pass
+
+## Progress Log
+
+### 2026-02-17 - Done
+- Implementation completed and merged via PR #93
+- CI matrix in `ci-tauri.yml` builds both FUSE and non-FUSE variants
+- Release workflow in `release-desktop.yml` produces four artifacts (macOS aarch64, macOS aarch64 FUSE, macOS x64, Linux amd64)
+- Release body template includes full variant table
+- INSTALL.md updated with "Building Without FUSE" section and download table
+- README.md updated with Downloads section listing all variants
+- FUSE integration tests gated behind `#[cfg(feature = "fuse")]` with skip warnings
+- Desktop mount commands have non-FUSE stubs returning appropriate errors
+- PR: #93 (merged)
