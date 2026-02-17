@@ -60,7 +60,12 @@ Each handler file contains everything it needs - no shared types module:
 
 ## Status
 
-**CLOSED** - Duplicate workers created PRs #96 and #97, both closed 2026-02-17.
-Work was completed but PRs were not merged due to duplication.
+**In Review** - PR #102 created 2026-02-17.
 
-Issue remains open for potential re-implementation if needed.
+### 2026-02-17 - Ready for Review
+- Renamed html/ → gateway/ module
+- Split 881-line monolith into mod.rs, index.rs, directory.rs, file.rs
+- Replaced Accept header JSON detection with ?json query param
+- Removed ?view query param
+- All CI checks pass (build, test, fmt)
+- PR: #102
