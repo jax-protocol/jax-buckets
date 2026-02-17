@@ -15,9 +15,8 @@ use tower_http::LatencyUnit;
 
 pub mod api;
 mod config;
-mod gateway_index;
+mod gateway;
 mod handlers;
-mod html;
 
 pub use config::Config;
 
@@ -130,17 +129,12 @@ pub async fn run_gateway(
         .allow_credentials(false);
 
     // Gateway routes with their own CORS layer
-    let gateway_routes = Router::new()
-        .route("/:bucket_id", get(html::gateway::root_handler))
-        .route("/:bucket_id/", get(html::gateway::root_handler))
-        .route("/:bucket_id/*file_path", get(html::gateway::handler))
-        .with_state(state.clone())
-        .layer(gateway_cors);
+    let gateway_routes = gateway::router(state.clone()).layer(gateway_cors);
 
     let router = Router::new()
         .nest(STATUS_PREFIX, health::router(state.clone()))
         .nest("/gw", gateway_routes)
-        .route("/", get(gateway_index::handler))
+        .route("/", get(gateway::index_handler))
         .route("/static/*path", get(static_handler))
         .fallback(handlers::not_found_handler)
         .layer(Extension(config.clone()))

@@ -62,3 +62,12 @@ Each handler file contains everything it needs - no shared types module:
 
 ### 2026-02-17 - Started
 - Beginning implementation
+
+### 2026-02-17 - In Review
+- Renamed `html/` → `gateway/` module
+- Split 881-line monolith into: `mod.rs` (router), `index.rs`, `directory.rs`, `file.rs`
+- Replaced Accept header JSON detection with `?json` query param
+- Removed `?view` param (redundant)
+- Removed URL rewriting (simplified for clarity)
+- Each handler file is self-contained with its own types/helpers
+- All checks pass: build, test, fmt

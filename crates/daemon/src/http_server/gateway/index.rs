@@ -40,7 +40,6 @@ pub async fn handler(State(state): State<ServiceState>) -> askama_axum::Response
     // Only include buckets that have a published version
     let mut buckets = Vec::new();
     for b in db_buckets {
-        // Only show buckets that have been published
         match state.peer().logs().latest_published(b.id).await {
             Ok(Some((link, _height))) => {
                 let id_str = b.id.to_string();
@@ -58,9 +57,7 @@ pub async fn handler(State(state): State<ServiceState>) -> askama_axum::Response
                     version_short,
                 });
             }
-            _ => {
-                // No published version - skip this bucket on gateway
-            }
+            _ => {}
         }
     }
 
