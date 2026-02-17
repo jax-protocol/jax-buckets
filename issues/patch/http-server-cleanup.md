@@ -83,3 +83,15 @@ All links in gateway HTML templates (index, explorer, file viewer) include
 - `?viewer=true`: HTML explorer/viewer UI
 - Updated all gateway templates to include `?viewer=true` in links
 - Decision: API-first design — programmatic access is the default, human browsing is opt-in
+
+### 2026-02-17 - E2E verification
+- Updated `bin/dev_/api.sh`: removed `Accept: application/json` header from `api_fetch()` (no longer needed since directories return JSON by default)
+- E2E gateway verification confirmed all behaviors:
+  - Default dir → JSON listing
+  - `?viewer=true` dir → HTML explorer
+  - Default file → raw bytes
+  - `?viewer=true` file → HTML viewer
+  - `?download=true` → attachment disposition
+  - Template links propagate `?viewer=true`
+- Cross-node sync verified: mirror node sees bucket, serves files via S3 gateway
+- MinIO blob storage confirmed
