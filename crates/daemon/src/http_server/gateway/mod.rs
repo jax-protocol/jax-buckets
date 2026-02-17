@@ -13,6 +13,15 @@ pub mod directory;
 pub mod file;
 pub mod index;
 
+/// Bucket metadata passed to sub-handlers.
+pub struct BucketMeta<'a> {
+    pub id_str: &'a str,
+    pub id_short: &'a str,
+    pub name: &'a str,
+    pub link: &'a str,
+    pub link_short: &'a str,
+}
+
 // Lazy static regex patterns for URL rewriting
 static HTML_ATTR_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?P<attr>(?:href|src|action|data|srcset))=["'](?P<url>\.{0,2}/[^"']+)["']"#)
@@ -107,7 +116,7 @@ pub async fn handler(
                 .await
                 {
                     Ok(mount) => mount,
-                    Err(_e) => {
+                    Err(_) => {
                         return syncing_response();
                     }
                 }
@@ -156,17 +165,18 @@ pub async fn handler(
         &bucket_link[bucket_link.len() - 8..]
     );
 
+    let meta = BucketMeta {
+        id_str: &bucket_id_str,
+        id_short: &bucket_id_short,
+        name: &bucket_name,
+        link: &bucket_link,
+        link_short: &bucket_link_short,
+    };
+
     if is_directory {
         let dir_query = directory::DirectoryQuery {
             deep: query.deep,
             json: query.json,
-        };
-        let meta = directory::BucketMeta {
-            id_str: &bucket_id_str,
-            id_short: &bucket_id_short,
-            name: &bucket_name,
-            link: &bucket_link,
-            link_short: &bucket_link_short,
         };
         directory::handler(
             &mount,
@@ -183,13 +193,6 @@ pub async fn handler(
             download: query.download,
             json: query.json,
         };
-        let meta = file::BucketMeta {
-            id_str: &bucket_id_str,
-            id_short: &bucket_id_short,
-            name: &bucket_name,
-            link: &bucket_link,
-            link_short: &bucket_link_short,
-        };
         file::handler(
             &mount,
             &path_buf,
@@ -204,7 +207,7 @@ pub async fn handler(
     }
 }
 
-fn error_response(message: &str) -> Response {
+pub(super) fn error_response(message: &str) -> Response {
     (
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         format!("Error: {}", message),

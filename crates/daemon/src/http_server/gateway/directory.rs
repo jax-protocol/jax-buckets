@@ -60,15 +60,6 @@ pub struct GatewayExplorerTemplate {
     pub items: Vec<FileDisplayInfo>,
 }
 
-/// Bucket metadata passed from the router.
-pub struct BucketMeta<'a> {
-    pub id_str: &'a str,
-    pub id_short: &'a str,
-    pub name: &'a str,
-    pub link: &'a str,
-    pub link_short: &'a str,
-}
-
 pub async fn handler(
     mount: &Mount,
     path_buf: &std::path::Path,
@@ -76,7 +67,7 @@ pub async fn handler(
     query: &DirectoryQuery,
     host: &str,
     bucket_id: &Uuid,
-    meta: &BucketMeta<'_>,
+    meta: &super::BucketMeta<'_>,
 ) -> Response {
     let wants_json = query.json.unwrap_or(false);
 
@@ -87,7 +78,7 @@ pub async fn handler(
                 Ok(data) => data,
                 Err(e) => {
                     tracing::error!("Failed to read index file: {}", e);
-                    return error_response("Failed to read index file");
+                    return super::error_response("Failed to read index file");
                 }
             };
 
@@ -124,7 +115,7 @@ pub async fn handler(
             Ok(items) => items,
             Err(e) => {
                 tracing::error!("Failed to deep list directory: {}", e);
-                return error_response("Failed to list directory");
+                return super::error_response("Failed to list directory");
             }
         }
     } else {
@@ -132,7 +123,7 @@ pub async fn handler(
             Ok(items) => items,
             Err(e) => {
                 tracing::error!("Failed to list directory: {}", e);
-                return error_response("Failed to list directory");
+                return super::error_response("Failed to list directory");
             }
         }
     };
@@ -225,7 +216,7 @@ pub async fn handler(
             .into_response(),
         Err(e) => {
             tracing::error!("Failed to render explorer template: {}", e);
-            error_response("Failed to render page")
+            super::error_response("Failed to render page")
         }
     }
 }
@@ -271,12 +262,4 @@ fn build_path_segments(path: &str) -> Vec<PathSegment> {
     }
 
     segments
-}
-
-fn error_response(message: &str) -> Response {
-    (
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-        format!("Error: {}", message),
-    )
-        .into_response()
 }

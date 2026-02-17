@@ -33,15 +33,6 @@ pub struct GatewayViewerTemplate {
     pub back_url: String,
 }
 
-/// Bucket metadata passed from the router.
-pub struct BucketMeta<'a> {
-    pub id_str: &'a str,
-    pub id_short: &'a str,
-    pub name: &'a str,
-    pub link: &'a str,
-    pub link_short: &'a str,
-}
-
 pub async fn handler(
     mount: &Mount,
     path_buf: &std::path::Path,
@@ -49,7 +40,7 @@ pub async fn handler(
     query: &FileQuery,
     host: &str,
     bucket_id: &Uuid,
-    meta: &BucketMeta<'_>,
+    meta: &super::BucketMeta<'_>,
     node_link: NodeLink,
 ) -> Response {
     let file_metadata_data = match &node_link {
@@ -76,7 +67,7 @@ pub async fn handler(
         Ok(data) => data,
         Err(e) => {
             tracing::error!("Failed to read file: {}", e);
-            return error_response("Failed to read file");
+            return super::error_response("Failed to read file");
         }
     };
 
@@ -183,7 +174,7 @@ pub async fn handler(
             .into_response(),
         Err(e) => {
             tracing::error!("Failed to render viewer template: {}", e);
-            error_response("Failed to render page")
+            super::error_response("Failed to render page")
         }
     }
 }
@@ -255,12 +246,4 @@ fn to_hex_dump(data: &[u8], max_bytes: usize) -> String {
     }
 
     result
-}
-
-fn error_response(message: &str) -> Response {
-    (
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-        format!("Error: {}", message),
-    )
-        .into_response()
 }

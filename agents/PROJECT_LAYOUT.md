@@ -16,8 +16,11 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
   - `api/v0/bucket/` - REST API handlers (add, cat, create, delete, shares, etc.)
   - `api/v0/mounts/` - FUSE mount REST API (create, list, get, update, delete, start, stop)
   - `api/client/` - API client for CLI commands and FUSE operations
-  - `html/gateway/` - Gateway HTML handlers for published content
-  - `gateway_index.rs` - Gateway index page (lists published buckets)
+  - `gateway/` - Gateway handlers for published content
+    - `mod.rs` - Router, mount loading, URL rewriting helpers
+    - `index.rs` - Gateway homepage (lists published buckets)
+    - `directory.rs` - Directory listing handler (self-contained)
+    - `file.rs` - File serving handler (self-contained)
 - `src/database/` - SQLite storage and bucket log provider
   - `mount_queries.rs` - FUSE mount persistence (CRUD, status updates)
 - `src/blobs/` - Blob store setup and configuration
