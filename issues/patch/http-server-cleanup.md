@@ -57,3 +57,10 @@ Each handler file contains everything it needs - no shared types module:
 - [ ] `?json` returns JSON for directories (listing) and files (metadata)
 - [ ] HTML explorer works without `?json`
 - [ ] `?download` still forces file download
+
+## Status
+
+**CLOSED** - Duplicate workers created PRs #96 and #97, both closed 2026-02-17.
+Work was completed but PRs were not merged due to duplication.
+
+Issue remains open for potential re-implementation if needed.
