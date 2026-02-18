@@ -24,6 +24,11 @@ pub struct LsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[arg(long)]
     pub deep: Option<bool>,
+
+    /// Optional: specific version hash to list from
+    #[arg(long)]
+    #[serde(default)]
+    pub at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,8 +52,17 @@ pub async fn handler(
 ) -> Result<impl IntoResponse, LsError> {
     let deep = req.deep.unwrap_or(false);
 
-    // Load mount based on role (owners see HEAD, mirrors see latest_published)
-    let mount = state.peer().mount_for_read(req.bucket_id).await?;
+    // Load mount - either from specific link or role-based
+    let mount = if let Some(hash_str) = &req.at {
+        let hash = hash_str
+            .parse::<common::linked_data::Hash>()
+            .map_err(|e| LsError::InvalidHash(format!("Invalid hash format: {}", e)))?;
+        let link = common::linked_data::Link::new(common::linked_data::LD_RAW_CODEC, hash);
+        common::mount::Mount::load(&link, state.peer().secret(), state.peer().blobs()).await?
+    } else {
+        // Load mount based on role (owners see HEAD, mirrors see latest_published)
+        state.peer().mount_for_read(req.bucket_id).await?
+    };
 
     let path_str = req.path.as_deref().unwrap_or("/");
     let path_buf = std::path::PathBuf::from(path_str);
@@ -97,17 +111,22 @@ pub async fn handler(
 
 #[derive(Debug, thiserror::Error)]
 pub enum LsError {
+    #[error("Invalid hash: {0}")]
+    InvalidHash(String),
     #[error("Mount error: {0}")]
     Mount(#[from] MountError),
 }
 
 impl IntoResponse for LsError {
     fn into_response(self) -> Response {
-        (
-            http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Error: {}", self),
-        )
-            .into_response()
+        match self {
+            LsError::InvalidHash(msg) => (http::StatusCode::BAD_REQUEST, msg).into_response(),
+            LsError::Mount(_) => (
+                http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Error: {}", self),
+            )
+                .into_response(),
+        }
     }
 }
 

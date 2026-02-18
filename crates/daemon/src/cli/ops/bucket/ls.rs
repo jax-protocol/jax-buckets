@@ -52,6 +52,7 @@ impl crate::cli::op::Op for Ls {
             bucket_id,
             path: self.path.clone(),
             deep: self.deep,
+            at: None,
         };
 
         // Call API
