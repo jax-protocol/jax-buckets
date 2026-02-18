@@ -1,6 +1,6 @@
 # Make FUSE an Optional Build Feature
 
-**Status:** Planned
+**Status:** Done
 
 ## Objective
 
@@ -76,8 +76,8 @@ fuse = ["jax-common/fuse"]
 
 ## Acceptance Criteria
 
-- [ ] `cargo build` works without macFUSE installed (without `fuse` feature)
-- [ ] `cargo build --features fuse` requires macFUSE and enables mount support
-- [ ] Desktop app builds with FUSE by default
-- [ ] Cross-compilation works when FUSE feature is disabled
-- [ ] Desktop app degrades gracefully when FUSE unavailable (grayed out mount button, helpful error)
+- [x] `cargo build` works without macFUSE installed (without `fuse` feature)
+- [x] `cargo build --features fuse` requires macFUSE and enables mount support
+- [x] Desktop app builds with FUSE by default
+- [x] Cross-compilation works when FUSE feature is disabled
+- [x] Desktop app degrades gracefully when FUSE unavailable (grayed out mount button, helpful error)
