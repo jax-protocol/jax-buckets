@@ -1,29 +1,46 @@
 //! Jax Desktop Application - Tauri Backend
 //!
 //! This crate provides the Tauri backend for the Jax desktop application.
-//! It embeds the jax daemon and exposes IPC commands that access
-//! ServiceState directly (no HTTP proxying).
+//! It connects to the jax daemon via HTTP API, either detecting an
+//! already-running sidecar daemon or spawning an embedded one.
 
 mod commands;
 mod tray;
 
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
 
-use jax_daemon::ServiceState;
+/// How the desktop app is connected to the daemon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DaemonMode {
+    /// Desktop spawned the daemon in-process.
+    Embedded,
+    /// Desktop connected to an already-running daemon.
+    Sidecar,
+}
 
-/// Inner daemon state, populated once the daemon has started.
+impl fmt::Display for DaemonMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DaemonMode::Embedded => write!(f, "embedded"),
+            DaemonMode::Sidecar => write!(f, "sidecar"),
+        }
+    }
+}
+
+/// Inner daemon state, populated once the daemon is available.
+/// No longer holds a direct `ServiceState` reference — all access goes through HTTP.
 pub struct DaemonInner {
-    pub service: ServiceState,
     pub api_port: u16,
     pub gateway_port: u16,
     pub jax_dir: PathBuf,
+    pub mode: DaemonMode,
 }
 
 /// Application state managed by Tauri.
-/// Holds a direct reference to the daemon's ServiceState for IPC commands.
 pub struct AppState {
     pub inner: Arc<RwLock<Option<DaemonInner>>>,
 }
@@ -39,7 +56,6 @@ impl Default for AppState {
 /// Run the Tauri application
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize tracing subscriber for logging
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
@@ -56,25 +72,20 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            // On macOS, set activation policy to Accessory to prevent
-            // creating new windows when app is activated by external events (like FUSE)
             #[cfg(target_os = "macos")]
             {
                 use tauri::ActivationPolicy;
                 app.set_activation_policy(ActivationPolicy::Accessory);
             }
-            // Initialize app state
             let state = AppState::default();
             app.manage(state);
 
-            // Setup system tray
             tray::setup_tray(app)?;
 
-            // Spawn daemon in background
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = spawn_daemon(&app_handle).await {
-                    tracing::error!("Failed to spawn daemon: {}", e);
+                if let Err(e) = connect_or_spawn_daemon(&app_handle).await {
+                    tracing::error!("Failed to connect to daemon: {}", e);
                     eprintln!("DAEMON ERROR: {}", e);
                 }
             });
@@ -129,34 +140,77 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// Spawn the jax daemon in the background
-async fn spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    use jax_daemon::state::AppState as JaxAppState;
-    use jax_daemon::{start_service, ServiceConfig};
+/// Probe whether a daemon is already listening on the given port.
+/// Returns `true` if a healthy daemon was detected.
+async fn probe_daemon(api_port: u16) -> bool {
+    let url = format!("http://localhost:{}/_status/livez", api_port);
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(1))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
 
-    // Load jax state from default location (~/.jax)
+    match client.get(&url).send().await {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+/// Try to connect to an existing sidecar daemon; if none found, spawn an embedded one.
+async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    use jax_daemon::state::AppState as JaxAppState;
+
+    // Load jax state to get configured ports and paths
     let jax_state = JaxAppState::load(None)
         .map_err(|e| format!("Failed to load jax state (run 'jax init' first): {}", e))?;
 
-    // Load the secret key
+    let api_port = jax_state.config.api_port;
+    let gateway_port = jax_state.config.gateway_port;
+    let jax_dir = jax_state.jax_dir.clone();
+
+    let state = app_handle.state::<AppState>();
+
+    // Phase 1: probe for an already-running daemon
+    if probe_daemon(api_port).await {
+        tracing::info!(
+            "Detected running sidecar daemon on port {}, using sidecar mode",
+            api_port
+        );
+
+        // Emit connection-mode event to the frontend
+        let _ = app_handle.emit("daemon-mode", "sidecar");
+
+        let mut inner = state.inner.write().await;
+        *inner = Some(DaemonInner {
+            api_port,
+            gateway_port,
+            jax_dir,
+            mode: DaemonMode::Sidecar,
+        });
+
+        return Ok(());
+    }
+
+    // Phase 2: no sidecar detected — start an embedded daemon
+    tracing::info!(
+        "No sidecar daemon detected, starting embedded daemon on ports {}/{}",
+        api_port,
+        gateway_port
+    );
+
     let secret_key = jax_state
         .load_key()
         .map_err(|e| format!("Failed to load secret key: {}", e))?;
 
-    // Build node listen address from peer_port if configured
     let node_listen_addr = jax_state.config.peer_port.map(|port| {
         format!("0.0.0.0:{}", port)
             .parse()
             .expect("Failed to parse peer listen address")
     });
 
-    let api_port = jax_state.config.api_port;
-    let gateway_port = jax_state.config.gateway_port;
-
-    let state = app_handle.state::<AppState>();
-
-    // Build service config
-    let config = ServiceConfig {
+    let config = jax_daemon::ServiceConfig {
         node_listen_addr,
         node_secret: Some(secret_key),
         blob_store: jax_state.config.blob_store.clone(),
@@ -169,30 +223,24 @@ async fn spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), String> {
         gateway_url: None,
     };
 
-    tracing::info!(
-        "Starting jax daemon: API on port {}, gateway on port {}",
-        api_port,
-        gateway_port
-    );
+    let (_service_state, shutdown_handle) = jax_daemon::start_service(&config).await;
 
-    // Start the daemon and get direct state access
-    let (service_state, shutdown_handle) = start_service(&config).await;
+    // Emit connection-mode event to the frontend
+    let _ = app_handle.emit("daemon-mode", "embedded");
 
-    // Store service state for IPC commands
     {
         let mut inner = state.inner.write().await;
         *inner = Some(DaemonInner {
-            service: service_state,
             api_port,
             gateway_port,
             jax_dir: jax_state.jax_dir.clone(),
+            mode: DaemonMode::Embedded,
         });
     }
 
     // Block until shutdown
     shutdown_handle.wait().await;
 
-    // Mark daemon as stopped
     {
         let mut inner = state.inner.write().await;
         *inner = None;
