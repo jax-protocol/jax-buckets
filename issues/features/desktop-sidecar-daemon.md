@@ -85,7 +85,27 @@ Convert all 17 direct-access commands to use HTTP API calls. The existing `creat
 
 **File:** `crates/desktop/src-tauri/src/commands/mount.rs`
 
-Convert all FUSE mount commands to use `/api/v0/mounts/*` endpoints. `is_fuse_available` remains a local check (no HTTP needed).
+Convert all mount commands to use the daemon's `/api/v0/mounts/*` HTTP endpoints. The desktop becomes a thin client — the daemon owns all mount state, FUSE lifecycle, sync integration, conflict resolution, and cache management. The desktop only handles platform-specific concerns that require a GUI context.
+
+**Goes through HTTP (daemon owns it):**
+
+| Desktop Command | HTTP Endpoint |
+|---|---|
+| `list_mounts` | `GET /api/v0/mounts/` |
+| `create_mount` | `POST /api/v0/mounts/` |
+| `get_mount` | `GET /api/v0/mounts/:id` |
+| `update_mount` | `PATCH /api/v0/mounts/:id` |
+| `delete_mount` | `DELETE /api/v0/mounts/:id` |
+| `start_mount` | `POST /api/v0/mounts/:id/start` |
+| `stop_mount` | `POST /api/v0/mounts/:id/stop` |
+
+**Stays local in the desktop (no HTTP):**
+
+- `is_fuse_available` / `check_fuse_installed` — local system check (`/dev/fuse`, macFUSE presence)
+- Mount point path generation — platform-specific defaults (`/Volumes/`, `/media/$USER/`, `/mnt/`)
+- Privilege escalation for creating mount directories — requires GUI context (`osascript` on macOS, `pkexec` on Linux)
+
+**Composing the convenience commands:** The current `mount_bucket` one-shot command (auto-generate mount point + create config + start) does not need a dedicated daemon endpoint. Instead, the desktop composes the existing HTTP calls: generate the mount point path locally, `POST /api/v0/mounts/` to create, then `POST /api/v0/mounts/:id/start` to start. Similarly, `unmount_bucket` composes list + stop + delete. This keeps platform-specific logic (path generation, privilege escalation) in the desktop where it belongs, and avoids adding desktop-specific conveniences to the daemon API.
 
 ### Phase 3: Add Sidecar Detection
 
@@ -144,7 +164,7 @@ Emit a Tauri event indicating whether the daemon is embedded or sidecar, so the 
 - [ ] Desktop connects to an already-running `jax-daemon` without starting a second instance
 - [ ] Desktop falls back to embedded daemon when no sidecar is detected
 - [ ] All Tauri commands work identically in both embedded and sidecar modes
-- [ ] No direct `ServiceState` access remains in the desktop crate
+- [ ] No direct `ServiceState` or `MountManager` access remains in the desktop crate
 - [ ] `POST /api/v0/bucket/history` endpoint returns paginated version logs
 - [ ] `POST /api/v0/bucket/ls` supports `at` parameter for version-specific listing
 - [ ] `POST /api/v0/bucket/is-published` endpoint returns publication status
