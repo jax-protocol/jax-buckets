@@ -305,7 +305,11 @@ mod tests {
                 stats.found += 1;
 
                 if stats.found % 1000 == 0 {
-                    info!(found = stats.found, added = stats.added, "recovery progress");
+                    info!(
+                        found = stats.found,
+                        added = stats.added,
+                        "recovery progress"
+                    );
                 }
 
                 if self.db.has_blob(&hash_str).await? {

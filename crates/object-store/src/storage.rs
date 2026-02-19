@@ -208,9 +208,7 @@ impl Storage {
     }
 
     /// Stream all blob hashes in the data directory without collecting into memory.
-    pub fn list_data_hashes_stream(
-        &self,
-    ) -> impl futures::Stream<Item = Result<String>> + '_ {
+    pub fn list_data_hashes_stream(&self) -> impl futures::Stream<Item = Result<String>> + '_ {
         use futures::StreamExt;
 
         let prefix = ObjectPath::from("data/");
