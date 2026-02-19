@@ -171,25 +171,6 @@ impl Database {
         Ok(())
     }
 
-    /// Mark a partial blob as complete.
-    #[allow(dead_code)]
-    pub async fn mark_blob_complete(&self, hash: &str) -> Result<bool> {
-        let now = chrono::Utc::now().timestamp();
-        let result = sqlx::query(
-            r#"
-            UPDATE blobs SET state = ?, updated_at = ?
-            WHERE hash = ? AND state = ?
-            "#,
-        )
-        .bind(BlobState::Complete.as_str())
-        .bind(now)
-        .bind(hash)
-        .bind(BlobState::Partial.as_str())
-        .execute(&self.pool)
-        .await?;
-        Ok(result.rows_affected() > 0)
-    }
-
     /// Get the state of a blob.
     pub async fn get_blob_state(&self, hash: &str) -> Result<Option<BlobState>> {
         let row = sqlx::query(
@@ -272,6 +253,24 @@ impl Database {
 
 #[cfg(test)]
 impl Database {
+    /// Mark a partial blob as complete.
+    pub async fn mark_blob_complete(&self, hash: &str) -> Result<bool> {
+        let now = chrono::Utc::now().timestamp();
+        let result = sqlx::query(
+            r#"
+            UPDATE blobs SET state = ?, updated_at = ?
+            WHERE hash = ? AND state = ?
+            "#,
+        )
+        .bind(BlobState::Complete.as_str())
+        .bind(now)
+        .bind(hash)
+        .bind(BlobState::Partial.as_str())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Count blobs.
     pub async fn count_blobs(&self) -> Result<i64> {
         let row = sqlx::query(

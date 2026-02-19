@@ -40,7 +40,7 @@ The `jax-object-store` crate stores blobs in SQLite (metadata) + S3/local (data)
 ## Acceptance Criteria
 
 - [x] Partial blobs tracked in SQLite metadata
-- [x] Interrupted imports can resume
+- [x] Interrupted imports skip already-complete blobs; partial state tracked for observability
 - [x] `export_bao` produces correct outboard data
 - [x] Verified streaming works end-to-end
 - [x] `cargo test` passes

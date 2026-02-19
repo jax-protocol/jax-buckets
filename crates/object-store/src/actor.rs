@@ -43,6 +43,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn, Instrument};
 
+use crate::database::BlobState;
 use crate::object_store::BlobStore;
 
 /// Block size for BAO tree operations (matches iroh-blobs IROH_BLOCK_SIZE)
@@ -219,17 +220,13 @@ impl ObjectStoreActor {
                 let store = self.store.clone();
                 self.spawn(async move {
                     let status = match store.get_state(&hash).await {
-                        Ok(Some(crate::database::BlobState::Complete)) => {
-                            match store.get(&hash).await {
-                                Ok(Some(data)) => BlobStatus::Complete {
-                                    size: data.len() as u64,
-                                },
-                                _ => BlobStatus::NotFound,
-                            }
-                        }
-                        Ok(Some(crate::database::BlobState::Partial)) => {
-                            BlobStatus::Partial { size: None }
-                        }
+                        Ok(Some(BlobState::Complete)) => match store.get(&hash).await {
+                            Ok(Some(data)) => BlobStatus::Complete {
+                                size: data.len() as u64,
+                            },
+                            _ => BlobStatus::NotFound,
+                        },
+                        Ok(Some(BlobState::Partial)) => BlobStatus::Partial { size: None },
                         Ok(_) => BlobStatus::NotFound,
                         Err(e) => {
                             warn!("BlobStatus error: {e}");
@@ -661,7 +658,7 @@ async fn import_bao(
 
     // Check if blob already exists as complete — skip re-import
     match store.get_state(&hash).await {
-        Ok(Some(crate::database::BlobState::Complete)) => {
+        Ok(Some(BlobState::Complete)) => {
             debug!("ImportBao: blob {} already complete, skipping", hash);
             tx.send(Ok(())).await.ok();
             return;
@@ -933,11 +930,11 @@ async fn export_path(store: BlobStore, cmd: ExportPathMsg) {
 async fn observe(store: BlobStore, hash: Hash, tx: mpsc::Sender<iroh_blobs::api::blobs::Bitfield>) {
     // Check current status including partial blobs
     let bitfield = match store.get_state(&hash).await {
-        Ok(Some(crate::database::BlobState::Complete)) => match store.get(&hash).await {
+        Ok(Some(BlobState::Complete)) => match store.get(&hash).await {
             Ok(Some(data)) => iroh_blobs::api::blobs::Bitfield::complete(data.len() as u64),
             _ => iroh_blobs::api::blobs::Bitfield::empty(),
         },
-        Ok(Some(crate::database::BlobState::Partial)) => {
+        Ok(Some(BlobState::Partial)) => {
             // Partial blob exists but data is incomplete
             iroh_blobs::api::blobs::Bitfield::empty()
         }

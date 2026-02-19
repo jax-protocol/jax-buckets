@@ -164,38 +164,10 @@ impl BlobStore {
         Ok(())
     }
 
-    /// Mark a partial blob as complete after successful import.
-    #[allow(dead_code)]
-    pub async fn mark_complete(&self, hash: &Hash) -> Result<bool> {
-        let hash_str = hash.to_string();
-        let marked = self.db.mark_blob_complete(&hash_str).await?;
-        if marked {
-            debug!(hash = %hash_str, "blob marked complete");
-        }
-        Ok(marked)
-    }
-
     /// Get the state of a blob (Complete, Partial, or None if not found).
     pub async fn get_state(&self, hash: &Hash) -> Result<Option<BlobState>> {
         let hash_str = hash.to_string();
         self.db.get_blob_state(&hash_str).await
-    }
-
-    /// Get outboard data for a blob.
-    #[allow(dead_code)]
-    pub async fn get_outboard(&self, hash: &Hash) -> Result<Option<Bytes>> {
-        let hash_str = hash.to_string();
-        self.storage.get_outboard(&hash_str).await
-    }
-
-    /// Store outboard data for a blob.
-    #[allow(dead_code)]
-    pub async fn put_outboard(&self, hash: &Hash, outboard: Vec<u8>) -> Result<()> {
-        let hash_str = hash.to_string();
-        self.storage
-            .put_outboard(&hash_str, Bytes::from(outboard))
-            .await?;
-        Ok(())
     }
 
     /// List all blob hashes in the store.
@@ -363,6 +335,11 @@ mod tests {
 
     /// Test-only methods on BlobStore for verifying internal state.
     impl BlobStore {
+        async fn get_outboard(&self, hash: &Hash) -> Result<Option<Bytes>> {
+            let hash_str = hash.to_string();
+            self.storage.get_outboard(&hash_str).await
+        }
+
         async fn has(&self, hash: &Hash) -> Result<bool> {
             let hash_str = hash.to_string();
             self.db.has_blob(&hash_str).await
@@ -764,7 +741,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_blob_status_partial() {
+    async fn test_blob_status_complete_and_not_found() {
         let store = ObjectStore::new_ephemeral().await.unwrap();
 
         // Store a blob normally (complete)
