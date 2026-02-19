@@ -38,10 +38,11 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
 - `src/cli/` - CLI-specific code (not exported by library)
   - `args.rs` - CLI argument parsing
   - `op.rs` - Op trait and command_enum macro
-  - `ops/` - CLI command implementations (bucket, daemon, health, init, mount, version)
+  - `ops/` - CLI command implementations (bucket, daemon, health, init, mount, update, version)
     - `bucket/publish.rs` - Publish bucket subcommand
     - `bucket/shares/` - Share management subcommands (create, ls)
     - `mount/` - Mount CLI commands (list, add, remove, start, stop, set) — gated behind `fuse` feature
+    - `update.rs` - Self-update command (detects install method, platform, FUSE; delegates to install.sh)
 
 ### `crates/common` - Core Library
 

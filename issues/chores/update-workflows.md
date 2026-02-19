@@ -97,21 +97,31 @@ Modify desktop release workflow to generate Tauri update manifest:
 
 | File | Changes |
 |------|---------|
-| `.github/workflows/release-cli.yml` | New workflow for CLI binary releases |
-| `install.sh` | New install/update script |
-| `agents/INSTALL.md` | Document all installation methods |
+| `.github/workflows/release-cli.yml` | New workflow for CLI binary releases (incl. FUSE variant) |
+| `install.sh` | New install/update script with `--fuse`/`--no-fuse` flags |
+| `crates/daemon/src/cli/ops/update.rs` | New `jax update` CLI command |
+| `crates/daemon/src/cli/ops/mod.rs` | Register update command |
+| `crates/daemon/src/cli/mod.rs` | Export Update |
+| `crates/daemon/src/main.rs` | Add Update to command_enum |
+| `agents/INSTALL.md` | Document all installation methods incl. FUSE |
 | `README.md` | Update quick start with install script |
 | `crates/desktop/src-tauri/Cargo.toml` | Add tauri-plugin-updater |
 | `crates/desktop/src-tauri/tauri.conf.json` | Configure updater endpoint |
 | `crates/desktop/src-tauri/src/lib.rs` | Initialize updater plugin |
-| `.github/workflows/release-desktop.yml` | Add update manifest generation |
+| `crates/desktop/src/pages/Settings.tsx` | Add update check UI to Settings |
+| `crates/desktop/package.json` | Add plugin-updater, plugin-process deps |
+| `.github/workflows/release-desktop.yml` | Add update manifest generation + signing docs |
+| `agents/PROJECT_LAYOUT.md` | Document new files |
 
 ## Acceptance Criteria
 
-- [ ] CLI binaries are published to GitHub releases on tag push
-- [ ] Install script works on macOS (arm64, x64) and Linux (x64)
-- [ ] Running install script again updates to latest version
-- [ ] Desktop app shows notification when update is available
-- [ ] User can install update from within the app
-- [ ] INSTALL.md documents all three installation methods
-- [ ] `cargo build`, `cargo test`, `cargo clippy`, `cargo fmt --check` pass
+- [x] CLI binaries are published to GitHub releases on tag push
+- [x] FUSE variant published for macOS Apple Silicon
+- [x] Install script works on macOS (arm64, x64) and Linux (x64)
+- [x] Install script supports `--fuse` flag and interactive prompt
+- [x] Running install script again updates to latest version
+- [x] `jax update` CLI command detects install method, platform, and FUSE
+- [x] Desktop app shows notification when update is available
+- [x] User can install update from within the app
+- [x] INSTALL.md documents all installation methods
+- [x] `cargo build`, `cargo test`, `cargo fmt --check` pass
