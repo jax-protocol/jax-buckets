@@ -166,16 +166,6 @@ impl Storage {
             Err(e) => Err(e.into()),
         }
     }
-}
-
-#[cfg(test)]
-impl Storage {
-    /// Create an in-memory storage backend (test-only).
-    pub fn memory() -> Self {
-        Self {
-            inner: Arc::new(InMemory::new()),
-        }
-    }
 
     /// Put blob outboard data into storage.
     pub async fn put_outboard(&self, hash: &str, data: Bytes) -> Result<()> {
@@ -185,6 +175,7 @@ impl Storage {
     }
 
     /// Get blob outboard data from storage.
+    #[allow(dead_code)]
     pub async fn get_outboard(&self, hash: &str) -> Result<Option<Bytes>> {
         let path = Self::outboard_path(hash);
         match self.inner.get(&path).await {
@@ -194,6 +185,16 @@ impl Storage {
             }
             Err(object_store::Error::NotFound { .. }) => Ok(None),
             Err(e) => Err(e.into()),
+        }
+    }
+}
+
+#[cfg(test)]
+impl Storage {
+    /// Create an in-memory storage backend (test-only).
+    pub fn memory() -> Self {
+        Self {
+            inner: Arc::new(InMemory::new()),
         }
     }
 

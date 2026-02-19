@@ -10,8 +10,12 @@ use std::{
 };
 
 use bao_tree::{
-    io::{mixed::EncodedItem, outboard::PreOrderMemOutboard, BaoContentItem, Leaf},
-    BaoTree, ChunkRanges,
+    io::{
+        mixed::{traverse_selected_rec, EncodedItem},
+        outboard::PreOrderMemOutboard,
+        BaoContentItem, Leaf,
+    },
+    BaoTree, ChunkNum, ChunkRanges,
 };
 use bytes::Bytes;
 use iroh_blobs::{
@@ -214,11 +218,19 @@ impl ObjectStoreActor {
                 } = cmd;
                 let store = self.store.clone();
                 self.spawn(async move {
-                    let status = match store.get(&hash).await {
-                        Ok(Some(data)) => BlobStatus::Complete {
-                            size: data.len() as u64,
-                        },
-                        Ok(None) => BlobStatus::NotFound,
+                    let status = match store.get_state(&hash).await {
+                        Ok(Some(crate::database::BlobState::Complete)) => {
+                            match store.get(&hash).await {
+                                Ok(Some(data)) => BlobStatus::Complete {
+                                    size: data.len() as u64,
+                                },
+                                _ => BlobStatus::NotFound,
+                            }
+                        }
+                        Ok(Some(crate::database::BlobState::Partial)) => {
+                            BlobStatus::Partial { size: None }
+                        }
+                        Ok(_) => BlobStatus::NotFound,
                         Err(e) => {
                             warn!("BlobStatus error: {e}");
                             BlobStatus::NotFound
@@ -647,6 +659,27 @@ async fn import_bao(
         return;
     }
 
+    // Check if blob already exists as complete — skip re-import
+    match store.get_state(&hash).await {
+        Ok(Some(crate::database::BlobState::Complete)) => {
+            debug!("ImportBao: blob {} already complete, skipping", hash);
+            tx.send(Ok(())).await.ok();
+            return;
+        }
+        Ok(_) => {}
+        Err(e) => {
+            warn!("ImportBao: failed to check blob state for {}: {}", hash, e);
+        }
+    }
+
+    // Track partial state in the database before starting
+    if let Err(e) = store.insert_partial(&hash, size).await {
+        warn!(
+            "ImportBao: failed to insert partial record for {}: {}",
+            hash, e
+        );
+    }
+
     let mut data = vec![0u8; size as usize];
     let mut leaf_count = 0usize;
     let mut parent_count = 0usize;
@@ -712,7 +745,8 @@ async fn import_bao(
         size, hash
     );
 
-    match store.put(data).await {
+    // Store data + outboard together and mark complete
+    match store.put_with_outboard(data, outboard).await {
         Ok(stored_hash) => {
             info!(
                 "ImportBao: successfully stored hash {} (returned {})",
@@ -730,7 +764,7 @@ async fn import_bao(
 async fn export_bao(
     store: BlobStore,
     hash: Hash,
-    _ranges: ChunkRanges,
+    ranges: ChunkRanges,
     tx: mpsc::Sender<EncodedItem>,
 ) {
     let data = match store.get(&hash).await {
@@ -753,27 +787,32 @@ async fn export_bao(
         }
     };
 
-    // Create outboard for the data
-    let outboard = PreOrderMemOutboard::create(&data, IROH_BLOCK_SIZE);
-
-    // For simplicity, send all data as leaves
-    // A full implementation would use traverse_ranges_validated
-    let chunk_size = 1024u64;
-    let mut offset = 0u64;
-    while offset < data.len() as u64 {
-        let end = (offset + chunk_size).min(data.len() as u64);
-        let leaf = Leaf {
-            offset,
-            data: data.slice(offset as usize..end as usize),
-        };
-        if tx.send(EncodedItem::Leaf(leaf)).await.is_err() {
-            break;
-        }
-        offset = end;
+    // Send size first
+    if tx.send(EncodedItem::Size(data.len() as u64)).await.is_err() {
+        return;
     }
 
-    // Suppress unused variable warning
-    let _ = outboard;
+    // Use BAO tree traversal to produce correct parent + leaf items
+    let mut items = Vec::new();
+    traverse_selected_rec(
+        ChunkNum(0),
+        data,
+        true,
+        ranges.as_ref(),
+        IROH_BLOCK_SIZE.chunk_log() as u32,
+        true,
+        &mut items,
+    );
+
+    // Send all encoded items
+    for item in items {
+        if tx.send(item).await.is_err() {
+            return;
+        }
+    }
+
+    // Signal completion
+    tx.send(EncodedItem::Done).await.ok();
 }
 
 async fn export_ranges(store: BlobStore, cmd: ExportRangesMsg) {
@@ -892,11 +931,17 @@ async fn export_path(store: BlobStore, cmd: ExportPathMsg) {
 }
 
 async fn observe(store: BlobStore, hash: Hash, tx: mpsc::Sender<iroh_blobs::api::blobs::Bitfield>) {
-    // Check current status
-    let bitfield = match store.get(&hash).await {
-        Ok(Some(data)) => iroh_blobs::api::blobs::Bitfield::complete(data.len() as u64),
-        Ok(None) => iroh_blobs::api::blobs::Bitfield::empty(),
-        Err(_) => iroh_blobs::api::blobs::Bitfield::empty(),
+    // Check current status including partial blobs
+    let bitfield = match store.get_state(&hash).await {
+        Ok(Some(crate::database::BlobState::Complete)) => match store.get(&hash).await {
+            Ok(Some(data)) => iroh_blobs::api::blobs::Bitfield::complete(data.len() as u64),
+            _ => iroh_blobs::api::blobs::Bitfield::empty(),
+        },
+        Ok(Some(crate::database::BlobState::Partial)) => {
+            // Partial blob exists but data is incomplete
+            iroh_blobs::api::blobs::Bitfield::empty()
+        }
+        _ => iroh_blobs::api::blobs::Bitfield::empty(),
     };
 
     // Send initial state
