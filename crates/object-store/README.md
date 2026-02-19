@@ -23,6 +23,7 @@ use std::path::Path;
 let store = ObjectStore::new_local(
     Path::new("/tmp/blobs.db"),
     Path::new("/tmp/blobs/objects"),
+    None, // use default max import size (1GB)
 ).await?;
 
 // Convert to iroh_blobs::api::Store for use with BlobsProtocol

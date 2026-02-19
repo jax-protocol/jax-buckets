@@ -85,25 +85,13 @@ impl BlobsStore {
     /// # Arguments
     /// * `db_path` - Path to the SQLite database file
     /// * `objects_path` - Directory for object storage
-    pub async fn fs(db_path: &Path, objects_path: &Path) -> Result<Self, BlobsStoreError> {
-        let store = ObjStore::new_local(db_path, objects_path).await?;
-        Ok(Self::from_store(store.into()))
-    }
-
-    /// Local filesystem via ObjectStore with custom max import size.
-    ///
-    /// # Arguments
-    /// * `db_path` - Path to the SQLite database file
-    /// * `objects_path` - Directory for object storage
-    /// * `max_import_size` - Maximum blob size allowed for BAO imports
-    pub async fn fs_with_max_import_size(
+    /// * `max_import_size` - Maximum blob size for BAO imports, or None for default (1GB)
+    pub async fn fs(
         db_path: &Path,
         objects_path: &Path,
-        max_import_size: u64,
+        max_import_size: Option<u64>,
     ) -> Result<Self, BlobsStoreError> {
-        let store =
-            ObjStore::new_local_with_max_import_size(db_path, objects_path, max_import_size)
-                .await?;
+        let store = ObjStore::new_local(db_path, objects_path, max_import_size).await?;
         Ok(Self::from_store(store.into()))
     }
 
@@ -114,6 +102,9 @@ impl BlobsStore {
     }
 
     /// S3-backed via ObjectStore.
+    ///
+    /// # Arguments
+    /// * `max_import_size` - Maximum blob size for BAO imports, or None for default (1GB)
     pub async fn s3(
         db_path: &Path,
         endpoint: &str,
@@ -121,23 +112,9 @@ impl BlobsStore {
         secret_key: &str,
         bucket: &str,
         region: Option<&str>,
+        max_import_size: Option<u64>,
     ) -> Result<Self, BlobsStoreError> {
-        let store =
-            ObjStore::new_s3(db_path, endpoint, access_key, secret_key, bucket, region).await?;
-        Ok(Self::from_store(store.into()))
-    }
-
-    /// S3-backed via ObjectStore with custom max import size.
-    pub async fn s3_with_max_import_size(
-        db_path: &Path,
-        endpoint: &str,
-        access_key: &str,
-        secret_key: &str,
-        bucket: &str,
-        region: Option<&str>,
-        max_import_size: u64,
-    ) -> Result<Self, BlobsStoreError> {
-        let store = ObjStore::new_s3_with_max_import_size(
+        let store = ObjStore::new_s3(
             db_path,
             endpoint,
             access_key,
@@ -441,7 +418,7 @@ mod tests {
         let db_path = temp_dir.path().join("blobs.db");
         let objects_path = temp_dir.path().join("objects");
 
-        let blobs = BlobsStore::fs(&db_path, &objects_path).await.unwrap();
+        let blobs = BlobsStore::fs(&db_path, &objects_path, None).await.unwrap();
         (blobs, temp_dir)
     }
 

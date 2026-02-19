@@ -22,6 +22,7 @@
 //! let store = ObjectStore::new_local(
 //!     Path::new("/tmp/blobs.db"),
 //!     Path::new("/tmp/blobs/objects"),
+//!     None, // use default max import size
 //! ).await?;
 //!
 //! // Convert to iroh_blobs::api::Store for use with BlobsProtocol

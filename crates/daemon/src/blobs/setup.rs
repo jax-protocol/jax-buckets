@@ -38,7 +38,7 @@ pub async fn setup_blobs_store(
                 max_import_size,
                 "Using SQLite + local filesystem blob store"
             );
-            BlobsStore::fs_with_max_import_size(&db_path, path, max_import_size)
+            BlobsStore::fs(&db_path, path, Some(max_import_size))
                 .await
                 .map_err(|e| BlobsSetupError::StoreError(e.to_string()))
         }
@@ -58,14 +58,14 @@ pub async fn setup_blobs_store(
             // SQLite database goes in jax_dir
             let db_path = jax_dir.join("blobs.db");
 
-            BlobsStore::s3_with_max_import_size(
+            BlobsStore::s3(
                 &db_path,
                 &s3_config.endpoint,
                 &s3_config.access_key,
                 &s3_config.secret_key,
                 &s3_config.bucket,
                 None, // Use default region
-                max_import_size,
+                Some(max_import_size),
             )
             .await
             .map_err(|e| BlobsSetupError::StoreError(e.to_string()))

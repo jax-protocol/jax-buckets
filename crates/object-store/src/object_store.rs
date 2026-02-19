@@ -208,6 +208,7 @@ impl BlobStore {
 /// let store = ObjectStore::new_local(
 ///     Path::new("/tmp/blobs.db"),
 ///     Path::new("/tmp/blobs/objects"),
+///     None, // use default max import size
 /// ).await?;
 ///
 /// // Convert to iroh_blobs::api::Store for use with BlobsProtocol
@@ -226,9 +227,17 @@ impl ObjectStore {
     /// # Arguments
     /// * `db_path` - Path to the SQLite database file
     /// * `config` - Object storage configuration (S3, MinIO, local, or memory)
-    pub async fn new(db_path: &Path, config: ObjectStoreConfig) -> Result<Self> {
+    /// * `max_import_size` - Maximum blob size for BAO imports, or None for default (1GB)
+    pub async fn new(
+        db_path: &Path,
+        config: ObjectStoreConfig,
+        max_import_size: Option<u64>,
+    ) -> Result<Self> {
         let store = BlobStore::new(db_path, config).await?;
-        Ok(Self::from_blob_store(store, DEFAULT_MAX_IMPORT_SIZE))
+        Ok(Self::from_blob_store(
+            store,
+            max_import_size.unwrap_or(DEFAULT_MAX_IMPORT_SIZE),
+        ))
     }
 
     /// Create a new ObjectStore backed by local filesystem.
@@ -236,24 +245,17 @@ impl ObjectStore {
     /// # Arguments
     /// * `db_path` - Path to the SQLite database file
     /// * `objects_path` - Directory for object storage
-    pub async fn new_local(db_path: &Path, objects_path: &Path) -> Result<Self> {
-        let store = BlobStore::new_local(db_path, objects_path).await?;
-        Ok(Self::from_blob_store(store, DEFAULT_MAX_IMPORT_SIZE))
-    }
-
-    /// Create a new ObjectStore backed by local filesystem with custom max import size.
-    ///
-    /// # Arguments
-    /// * `db_path` - Path to the SQLite database file
-    /// * `objects_path` - Directory for object storage
-    /// * `max_import_size` - Maximum blob size allowed for BAO imports
-    pub async fn new_local_with_max_import_size(
+    /// * `max_import_size` - Maximum blob size for BAO imports, or None for default (1GB)
+    pub async fn new_local(
         db_path: &Path,
         objects_path: &Path,
-        max_import_size: u64,
+        max_import_size: Option<u64>,
     ) -> Result<Self> {
         let store = BlobStore::new_local(db_path, objects_path).await?;
-        Ok(Self::from_blob_store(store, max_import_size))
+        Ok(Self::from_blob_store(
+            store,
+            max_import_size.unwrap_or(DEFAULT_MAX_IMPORT_SIZE),
+        ))
     }
 
     /// Create a new ObjectStore with S3/MinIO storage.
@@ -265,6 +267,7 @@ impl ObjectStore {
     /// * `secret_key` - S3 secret access key
     /// * `bucket` - S3 bucket name
     /// * `region` - Optional S3 region (defaults to "us-east-1")
+    /// * `max_import_size` - Maximum blob size for BAO imports, or None for default (1GB)
     pub async fn new_s3(
         db_path: &Path,
         endpoint: &str,
@@ -272,6 +275,7 @@ impl ObjectStore {
         secret_key: &str,
         bucket: &str,
         region: Option<&str>,
+        max_import_size: Option<u64>,
     ) -> Result<Self> {
         let config = ObjectStoreConfig::S3 {
             endpoint: endpoint.to_string(),
@@ -280,28 +284,7 @@ impl ObjectStore {
             bucket: bucket.to_string(),
             region: region.map(|s| s.to_string()),
         };
-        Self::new(db_path, config).await
-    }
-
-    /// Create a new ObjectStore with S3/MinIO storage and custom max import size.
-    pub async fn new_s3_with_max_import_size(
-        db_path: &Path,
-        endpoint: &str,
-        access_key: &str,
-        secret_key: &str,
-        bucket: &str,
-        region: Option<&str>,
-        max_import_size: u64,
-    ) -> Result<Self> {
-        let config = ObjectStoreConfig::S3 {
-            endpoint: endpoint.to_string(),
-            access_key: access_key.to_string(),
-            secret_key: secret_key.to_string(),
-            bucket: bucket.to_string(),
-            region: region.map(|s| s.to_string()),
-        };
-        let store = BlobStore::new(db_path, config).await?;
-        Ok(Self::from_blob_store(store, max_import_size))
+        Self::new(db_path, config, max_import_size).await
     }
 
     /// Create a fully ephemeral ObjectStore (in-memory DB + in-memory object storage).
@@ -471,7 +454,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let db_path = temp_dir.path().join("blobs.db");
         let objects_path = temp_dir.path().join("objects");
-        let store = ObjectStore::new_local(&db_path, &objects_path)
+        let store = ObjectStore::new_local(&db_path, &objects_path, None)
             .await
             .unwrap();
 
