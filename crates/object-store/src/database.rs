@@ -113,7 +113,7 @@ impl Database {
         Ok(())
     }
 
-    /// Insert a new blob record.
+    /// Insert a new blob record as complete.
     pub async fn insert_blob(&self, hash: &str, size: i64, has_outboard: bool) -> Result<()> {
         let now = chrono::Utc::now().timestamp();
         sqlx::query(
@@ -136,6 +136,53 @@ impl Database {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Insert a blob record in partial state (import in progress).
+    pub async fn insert_partial_blob(
+        &self,
+        hash: &str,
+        size: i64,
+        has_outboard: bool,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO blobs (hash, size, has_outboard, state, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(hash) DO UPDATE SET
+                size = excluded.size,
+                has_outboard = excluded.has_outboard,
+                state = CASE
+                    WHEN blobs.state = 'complete' THEN 'complete'
+                    ELSE excluded.state
+                END,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(hash)
+        .bind(size)
+        .bind(has_outboard)
+        .bind(BlobState::Partial.as_str())
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get the state of a blob.
+    pub async fn get_blob_state(&self, hash: &str) -> Result<Option<BlobState>> {
+        let row = sqlx::query(
+            r#"
+            SELECT state FROM blobs WHERE hash = ?
+            "#,
+        )
+        .bind(hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| BlobState::parse(r.get("state"))))
     }
 
     /// Get blob metadata by hash.
@@ -206,6 +253,24 @@ impl Database {
 
 #[cfg(test)]
 impl Database {
+    /// Mark a partial blob as complete.
+    pub async fn mark_blob_complete(&self, hash: &str) -> Result<bool> {
+        let now = chrono::Utc::now().timestamp();
+        let result = sqlx::query(
+            r#"
+            UPDATE blobs SET state = ?, updated_at = ?
+            WHERE hash = ? AND state = ?
+            "#,
+        )
+        .bind(BlobState::Complete.as_str())
+        .bind(now)
+        .bind(hash)
+        .bind(BlobState::Partial.as_str())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Count blobs.
     pub async fn count_blobs(&self) -> Result<i64> {
         let row = sqlx::query(
@@ -284,5 +349,53 @@ mod tests {
 
         // Should still be only one blob
         assert_eq!(db.count_blobs().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_partial_blob_lifecycle() {
+        let db = Database::in_memory().await.unwrap();
+
+        // Insert as partial
+        db.insert_partial_blob("hash1", 4096, true).await.unwrap();
+
+        // Should exist in DB but not in complete list
+        let state = db.get_blob_state("hash1").await.unwrap();
+        assert_eq!(state, Some(BlobState::Partial));
+        assert!(!db.has_blob("hash1").await.unwrap()); // has_blob checks complete only
+        assert_eq!(db.list_blobs().await.unwrap().len(), 0); // list checks complete only
+
+        // Mark complete
+        assert!(db.mark_blob_complete("hash1").await.unwrap());
+
+        // Now should appear in complete queries
+        let state = db.get_blob_state("hash1").await.unwrap();
+        assert_eq!(state, Some(BlobState::Complete));
+        assert!(db.has_blob("hash1").await.unwrap());
+        assert_eq!(db.list_blobs().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_partial_blob_no_overwrite_complete() {
+        let db = Database::in_memory().await.unwrap();
+
+        // Insert as complete first
+        db.insert_blob("hash1", 4096, true).await.unwrap();
+        assert_eq!(
+            db.get_blob_state("hash1").await.unwrap(),
+            Some(BlobState::Complete)
+        );
+
+        // Re-insert as partial should NOT downgrade to partial
+        db.insert_partial_blob("hash1", 4096, true).await.unwrap();
+        assert_eq!(
+            db.get_blob_state("hash1").await.unwrap(),
+            Some(BlobState::Complete)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_blob_state_nonexistent() {
+        let db = Database::in_memory().await.unwrap();
+        assert_eq!(db.get_blob_state("nonexistent").await.unwrap(), None);
     }
 }

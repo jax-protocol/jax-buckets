@@ -166,6 +166,13 @@ impl Storage {
             Err(e) => Err(e.into()),
         }
     }
+
+    /// Put blob outboard data into storage.
+    pub async fn put_outboard(&self, hash: &str, data: Bytes) -> Result<()> {
+        let path = Self::outboard_path(hash);
+        self.inner.put(&path, data.into()).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -175,13 +182,6 @@ impl Storage {
         Self {
             inner: Arc::new(InMemory::new()),
         }
-    }
-
-    /// Put blob outboard data into storage.
-    pub async fn put_outboard(&self, hash: &str, data: Bytes) -> Result<()> {
-        let path = Self::outboard_path(hash);
-        self.inner.put(&path, data.into()).await?;
-        Ok(())
     }
 
     /// Get blob outboard data from storage.
