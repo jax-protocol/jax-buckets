@@ -1,6 +1,6 @@
 # Update Workflows for CLI and Desktop
 
-- **Status:** Planned
+- **Status:** Done
 - **Priority:** Normal
 
 ## Objective

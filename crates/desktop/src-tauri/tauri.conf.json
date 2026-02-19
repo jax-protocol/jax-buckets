@@ -38,6 +38,12 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/jax-protocol/jax-fs/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
     }
   }
 }

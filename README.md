@@ -44,6 +44,10 @@ The `_fuse` variant enables mounting buckets as local filesystem directories. Se
 ## Quick Start
 
 ```bash
+# Install (or update) the CLI
+curl -fsSL https://raw.githubusercontent.com/jax-protocol/jax-fs/main/install.sh | sh
+
+# Or install via cargo
 cargo install jax-daemon
 
 jax init
