@@ -149,13 +149,19 @@ Install or update with a single command (no Rust toolchain required):
 curl -fsSL https://raw.githubusercontent.com/jax-protocol/jax-fs/main/install.sh | sh
 ```
 
+Install with FUSE mount support (macOS Apple Silicon only):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jax-protocol/jax-fs/main/install.sh | sh -s -- --fuse
+```
+
 Install a specific version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jax-protocol/jax-fs/main/install.sh | sh -s -- --version 0.1.9
 ```
 
-Re-running the script updates to the latest version. The binary is installed to `~/.local/bin` by default (set `JAX_INSTALL_DIR` to change).
+Re-running the script updates to the latest version. The binary is installed to `~/.local/bin` by default (set `JAX_INSTALL_DIR` to change). On interactive terminals, the script will prompt to install the FUSE variant on supported platforms.
 
 ##### Option 2: Install from Crates.io
 

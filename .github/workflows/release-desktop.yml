@@ -110,6 +110,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_FEATURES: ${{ matrix.features }}
+          # Tauri updater signing keys — generate with: npx @tauri-apps/cli signer generate -w ~/.tauri/jax.key
+          # Then add the private key as TAURI_SIGNING_PRIVATE_KEY repo secret and
+          # the public key to crates/desktop/src-tauri/tauri.conf.json plugins.updater.pubkey
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
