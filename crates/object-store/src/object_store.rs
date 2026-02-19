@@ -296,11 +296,18 @@ mod tests {
         }
 
         async fn recover_from_storage(&self) -> Result<RecoveryStats> {
-            let mut stats = RecoveryStats::default();
-            let hashes = self.storage.list_data_hashes().await?;
-            stats.found = hashes.len();
+            use futures::TryStreamExt;
 
-            for hash_str in hashes {
+            let mut stats = RecoveryStats::default();
+            let mut stream = std::pin::pin!(self.storage.list_data_hashes_stream());
+
+            while let Some(hash_str) = stream.try_next().await? {
+                stats.found += 1;
+
+                if stats.found % 1000 == 0 {
+                    info!(found = stats.found, added = stats.added, "recovery progress");
+                }
+
                 if self.db.has_blob(&hash_str).await? {
                     stats.existing += 1;
                     continue;

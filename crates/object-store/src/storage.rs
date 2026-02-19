@@ -207,24 +207,22 @@ impl Storage {
         }
     }
 
-    /// List all blob hashes in the data directory.
-    pub async fn list_data_hashes(&self) -> Result<Vec<String>> {
-        use futures::TryStreamExt;
+    /// Stream all blob hashes in the data directory without collecting into memory.
+    pub fn list_data_hashes_stream(
+        &self,
+    ) -> impl futures::Stream<Item = Result<String>> + '_ {
+        use futures::StreamExt;
 
         let prefix = ObjectPath::from("data/");
-        let stream = self.inner.list(Some(&prefix));
-
-        let items: Vec<_> = stream.try_collect().await?;
-
-        let hashes = items
-            .into_iter()
-            .filter_map(|meta| {
-                let path = meta.location.as_ref();
-                path.strip_prefix("data/").map(|s| s.to_string())
-            })
-            .collect();
-
-        Ok(hashes)
+        self.inner.list(Some(&prefix)).filter_map(|r| async {
+            match r {
+                Ok(meta) => {
+                    let path = meta.location.as_ref();
+                    path.strip_prefix("data/").map(|s| Ok(s.to_string()))
+                }
+                Err(e) => Some(Err(e.into())),
+            }
+        })
     }
 }
 
@@ -247,8 +245,12 @@ mod tests {
         // Check existence
         assert!(storage.has_data(hash).await.unwrap());
 
-        // List hashes
-        let hashes = storage.list_data_hashes().await.unwrap();
+        // List hashes via stream
+        use futures::TryStreamExt;
+        let hashes: Vec<String> = std::pin::pin!(storage.list_data_hashes_stream())
+            .try_collect()
+            .await
+            .unwrap();
         assert_eq!(hashes.len(), 1);
         assert_eq!(hashes[0], hash);
 
