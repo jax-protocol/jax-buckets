@@ -2,7 +2,7 @@
 mod cli;
 
 use clap::{Parser, Subcommand};
-use cli::{args::Args, op::Op, Bucket, Daemon, Health, Init, Version};
+use cli::{args::Args, op::Op, Bucket, Daemon, Health, Init, Update, Version};
 
 #[cfg(feature = "fuse")]
 use cli::Mount;
@@ -14,6 +14,7 @@ command_enum! {
     (Health, Health),
     (Init, Init),
     (Mount, Mount),
+    (Update, Update),
     (Version, Version),
 }
 
@@ -23,6 +24,7 @@ command_enum! {
     (Daemon, Daemon),
     (Health, Health),
     (Init, Init),
+    (Update, Update),
     (Version, Version),
 }
 

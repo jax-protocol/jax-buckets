@@ -141,9 +141,31 @@ You will also need Node.js 20+ and pnpm. Install via your preferred method (e.g.
 
 For headless servers or if you prefer the command line:
 
-##### Option 1: Install from Crates.io
+##### Option 1: Install Script (Recommended)
 
-Once published, you can install JaxBucket directly from crates.io:
+Install or update with a single command (no Rust toolchain required):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jax-protocol/jax-fs/main/install.sh | sh
+```
+
+Install with FUSE mount support (macOS Apple Silicon only):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jax-protocol/jax-fs/main/install.sh | sh -s -- --fuse
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jax-protocol/jax-fs/main/install.sh | sh -s -- --version 0.1.9
+```
+
+Re-running the script updates to the latest version. The binary is installed to `~/.local/bin` by default (set `JAX_INSTALL_DIR` to change). On interactive terminals, the script will prompt to install the FUSE variant on supported platforms.
+
+##### Option 2: Install from Crates.io
+
+For Rust developers who prefer cargo:
 
 ```bash
 cargo install jax-daemon
@@ -151,7 +173,7 @@ cargo install jax-daemon
 
 This will download, compile, and install the `jax` binary to `~/.cargo/bin/`.
 
-##### Option 2: Install from Git Repository
+##### Option 3: Install from Git Repository
 
 Install the latest development version:
 
@@ -159,7 +181,7 @@ Install the latest development version:
 cargo install --git https://github.com/jax-protocol/jax-fs jax-daemon
 ```
 
-##### Option 3: Build from Source
+##### Option 4: Build from Source
 
 Clone and build manually for development or customization:
 
