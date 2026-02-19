@@ -1,6 +1,6 @@
 # Recovery: Cursor-Based Pagination for Object Storage Listing
 
-**Status:** Planned
+**Status:** Done
 **Priority:** Low
 
 ## Problem
@@ -59,7 +59,7 @@ async fn recover_from_storage(&self) -> Result<RecoveryStats> {
 
 ## Acceptance Criteria
 
-- [ ] Recovery does not load all keys into memory at once
-- [ ] Progress logged periodically during recovery
-- [ ] Existing tests still pass
-- [ ] `cargo clippy` clean
+- [x] Recovery does not load all keys into memory at once
+- [x] Progress logged periodically during recovery
+- [x] Existing tests still pass
+- [x] `cargo clippy` clean
