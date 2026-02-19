@@ -17,6 +17,7 @@ use super::BlobsSetupError;
 pub async fn setup_blobs_store(
     config: &BlobStoreConfig,
     jax_dir: &Path,
+    max_import_size: u64,
 ) -> Result<BlobsStore, BlobsSetupError> {
     match config {
         BlobStoreConfig::Legacy => {
@@ -28,10 +29,16 @@ pub async fn setup_blobs_store(
                 .map_err(|e| BlobsSetupError::StoreError(e.to_string()))
         }
 
-        BlobStoreConfig::Filesystem { path } => {
+        BlobStoreConfig::Filesystem { path, db_path } => {
             // Use ObjectStore with local filesystem backend
-            tracing::info!(path = %path.display(), "Using SQLite + local filesystem blob store");
-            BlobsStore::fs(path)
+            let db_path = db_path.clone().unwrap_or_else(|| path.join("blobs.db"));
+            tracing::info!(
+                objects_path = %path.display(),
+                db_path = %db_path.display(),
+                max_import_size,
+                "Using SQLite + local filesystem blob store"
+            );
+            BlobsStore::fs_with_max_import_size(&db_path, path, max_import_size)
                 .await
                 .map_err(|e| BlobsSetupError::StoreError(e.to_string()))
         }
@@ -44,19 +51,21 @@ pub async fn setup_blobs_store(
             tracing::info!(
                 endpoint = %s3_config.endpoint,
                 bucket = %s3_config.bucket,
+                max_import_size,
                 "Using SQLite + S3 blob store"
             );
 
             // SQLite database goes in jax_dir
             let db_path = jax_dir.join("blobs.db");
 
-            BlobsStore::s3(
+            BlobsStore::s3_with_max_import_size(
                 &db_path,
                 &s3_config.endpoint,
                 &s3_config.access_key,
                 &s3_config.secret_key,
                 &s3_config.bucket,
                 None, // Use default region
+                max_import_size,
             )
             .await
             .map_err(|e| BlobsSetupError::StoreError(e.to_string()))

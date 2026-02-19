@@ -12,7 +12,7 @@ use iroh_blobs::api::proto::Command;
 use iroh_blobs::Hash;
 use tracing::{debug, info, warn};
 
-use crate::actor::ObjectStoreActor;
+use crate::actor::{ObjectStoreActor, DEFAULT_MAX_IMPORT_SIZE};
 use crate::database::{BlobState, Database};
 use crate::error::Result;
 use crate::storage::{ObjectStoreConfig, Storage};
@@ -52,11 +52,15 @@ impl BlobStore {
     }
 
     /// Create a new BlobStore backed by local filesystem.
-    pub async fn new_local(data_dir: &Path) -> Result<Self> {
-        let db_path = data_dir.join("blobs.db");
-        let objects_path = data_dir.join("objects");
-        let config = ObjectStoreConfig::Local { path: objects_path };
-        Self::new(&db_path, config).await
+    ///
+    /// # Arguments
+    /// * `db_path` - Path to the SQLite database file
+    /// * `objects_path` - Directory for object storage
+    pub async fn new_local(db_path: &Path, objects_path: &Path) -> Result<Self> {
+        let config = ObjectStoreConfig::Local {
+            path: objects_path.to_path_buf(),
+        };
+        Self::new(db_path, config).await
     }
 
     /// Create a fully ephemeral BlobStore (in-memory DB + in-memory object storage).
@@ -201,7 +205,10 @@ impl BlobStore {
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create a store with local filesystem storage
-/// let store = ObjectStore::new_local(Path::new("/tmp/blobs")).await?;
+/// let store = ObjectStore::new_local(
+///     Path::new("/tmp/blobs.db"),
+///     Path::new("/tmp/blobs/objects"),
+/// ).await?;
 ///
 /// // Convert to iroh_blobs::api::Store for use with BlobsProtocol
 /// let iroh_store: iroh_blobs::api::Store = store.into();
@@ -221,18 +228,32 @@ impl ObjectStore {
     /// * `config` - Object storage configuration (S3, MinIO, local, or memory)
     pub async fn new(db_path: &Path, config: ObjectStoreConfig) -> Result<Self> {
         let store = BlobStore::new(db_path, config).await?;
-        Ok(Self::from_blob_store(store))
+        Ok(Self::from_blob_store(store, DEFAULT_MAX_IMPORT_SIZE))
     }
 
     /// Create a new ObjectStore backed by local filesystem.
     ///
-    /// This creates both SQLite DB and object storage in the given directory.
+    /// # Arguments
+    /// * `db_path` - Path to the SQLite database file
+    /// * `objects_path` - Directory for object storage
+    pub async fn new_local(db_path: &Path, objects_path: &Path) -> Result<Self> {
+        let store = BlobStore::new_local(db_path, objects_path).await?;
+        Ok(Self::from_blob_store(store, DEFAULT_MAX_IMPORT_SIZE))
+    }
+
+    /// Create a new ObjectStore backed by local filesystem with custom max import size.
     ///
     /// # Arguments
-    /// * `data_dir` - Directory for all storage (db at data_dir/blobs.db, objects at data_dir/objects/)
-    pub async fn new_local(data_dir: &Path) -> Result<Self> {
-        let store = BlobStore::new_local(data_dir).await?;
-        Ok(Self::from_blob_store(store))
+    /// * `db_path` - Path to the SQLite database file
+    /// * `objects_path` - Directory for object storage
+    /// * `max_import_size` - Maximum blob size allowed for BAO imports
+    pub async fn new_local_with_max_import_size(
+        db_path: &Path,
+        objects_path: &Path,
+        max_import_size: u64,
+    ) -> Result<Self> {
+        let store = BlobStore::new_local(db_path, objects_path).await?;
+        Ok(Self::from_blob_store(store, max_import_size))
     }
 
     /// Create a new ObjectStore with S3/MinIO storage.
@@ -262,18 +283,39 @@ impl ObjectStore {
         Self::new(db_path, config).await
     }
 
+    /// Create a new ObjectStore with S3/MinIO storage and custom max import size.
+    pub async fn new_s3_with_max_import_size(
+        db_path: &Path,
+        endpoint: &str,
+        access_key: &str,
+        secret_key: &str,
+        bucket: &str,
+        region: Option<&str>,
+        max_import_size: u64,
+    ) -> Result<Self> {
+        let config = ObjectStoreConfig::S3 {
+            endpoint: endpoint.to_string(),
+            access_key: access_key.to_string(),
+            secret_key: secret_key.to_string(),
+            bucket: bucket.to_string(),
+            region: region.map(|s| s.to_string()),
+        };
+        let store = BlobStore::new(db_path, config).await?;
+        Ok(Self::from_blob_store(store, max_import_size))
+    }
+
     /// Create a fully ephemeral ObjectStore (in-memory DB + in-memory object storage).
     ///
     /// Data will be lost when the ObjectStore is dropped. Useful for testing.
     pub async fn new_ephemeral() -> Result<Self> {
         let store = BlobStore::new_ephemeral().await?;
-        Ok(Self::from_blob_store(store))
+        Ok(Self::from_blob_store(store, DEFAULT_MAX_IMPORT_SIZE))
     }
 
     /// Create an ObjectStore from an existing BlobStore.
-    fn from_blob_store(store: BlobStore) -> Self {
+    fn from_blob_store(store: BlobStore, max_import_size: u64) -> Self {
         let (tx, rx) = tokio::sync::mpsc::channel::<Command>(256);
-        let actor = ObjectStoreActor::new(store, rx);
+        let actor = ObjectStoreActor::new(store, rx, max_import_size);
         tokio::spawn(actor.run());
         let client: ApiClient = tx.into();
         Self { client }
@@ -427,7 +469,11 @@ mod tests {
     #[tokio::test]
     async fn test_local_store() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let store = ObjectStore::new_local(temp_dir.path()).await.unwrap();
+        let db_path = temp_dir.path().join("blobs.db");
+        let objects_path = temp_dir.path().join("objects");
+        let store = ObjectStore::new_local(&db_path, &objects_path)
+            .await
+            .unwrap();
 
         let data = b"test local storage".to_vec();
         let tt = store.add_bytes(data.clone()).temp_tag().await.unwrap();
@@ -521,18 +567,15 @@ mod tests {
     #[tokio::test]
     async fn test_blob_store_local() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let store = BlobStore::new_local(temp_dir.path()).await.unwrap();
+        let db_path = temp_dir.path().join("blobs.db");
+        let objects_path = temp_dir.path().join("objects");
+        let store = BlobStore::new_local(&db_path, &objects_path).await.unwrap();
 
         let data = b"test local storage".to_vec();
         let hash = store.put(data.clone()).await.unwrap();
 
-        assert!(temp_dir.path().join("blobs.db").exists());
-        assert!(temp_dir
-            .path()
-            .join("objects")
-            .join("data")
-            .join(hash.to_string())
-            .exists());
+        assert!(db_path.exists());
+        assert!(objects_path.join("data").join(hash.to_string()).exists());
 
         let retrieved = store.get(&hash).await.unwrap().unwrap();
         assert_eq!(retrieved.as_ref(), data.as_slice());
@@ -541,22 +584,22 @@ mod tests {
     #[tokio::test]
     async fn test_blob_store_recovery() {
         let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("blobs.db");
+        let objects_path = temp_dir.path().join("objects");
 
         let hash1;
         let hash2;
 
         {
-            let store = BlobStore::new_local(temp_dir.path()).await.unwrap();
+            let store = BlobStore::new_local(&db_path, &objects_path).await.unwrap();
             hash1 = store.put(b"blob one".to_vec()).await.unwrap();
             hash2 = store.put(b"blob two".to_vec()).await.unwrap();
             store.close().await;
         }
 
-        tokio::fs::remove_file(temp_dir.path().join("blobs.db"))
-            .await
-            .unwrap();
+        tokio::fs::remove_file(&db_path).await.unwrap();
 
-        let store = BlobStore::new_local(temp_dir.path()).await.unwrap();
+        let store = BlobStore::new_local(&db_path, &objects_path).await.unwrap();
         assert_eq!(store.count().await.unwrap(), 0);
 
         let stats = store.recover_from_storage().await.unwrap();

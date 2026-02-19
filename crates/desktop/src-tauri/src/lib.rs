@@ -161,6 +161,7 @@ async fn spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), String> {
         node_secret: Some(secret_key),
         blob_store: jax_state.config.blob_store.clone(),
         jax_dir: jax_state.jax_dir.clone(),
+        max_import_size: jax_state.config.max_import_size,
         api_port,
         gateway_port,
         sqlite_path: Some(jax_state.db_path),

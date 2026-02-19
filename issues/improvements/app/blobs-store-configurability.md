@@ -1,6 +1,6 @@
 # Blobs Store Configurability
 
-**Status:** Planned
+**Status:** Done
 **Priority:** Low
 
 ## Objective
@@ -58,9 +58,9 @@ pub struct BlobStoreConfig {
 
 ## Acceptance Criteria
 
-- [ ] SQLite path configurable separately from object storage path
-- [ ] Max import size configurable (with sensible default)
+- [x] SQLite path configurable separately from object storage path
+- [x] Max import size configurable (with sensible default)
 - [x] S3Store renamed to ObjectStore
-- [ ] Existing configs continue to work (backward compatible)
-- [ ] `cargo test` passes
+- [x] Existing configs continue to work (backward compatible)
+- [x] `cargo test` passes
 - [ ] `cargo clippy` clean

@@ -19,8 +19,11 @@ This crate provides an iroh-blobs compatible store implementation that uses SQLi
 use jax_object_store::ObjectStore;
 use std::path::Path;
 
-// Create a local file-based store
-let store = ObjectStore::new_local(Path::new("/tmp/blobs")).await?;
+// Create a local file-based store (separate DB and object paths)
+let store = ObjectStore::new_local(
+    Path::new("/tmp/blobs.db"),
+    Path::new("/tmp/blobs/objects"),
+).await?;
 
 // Convert to iroh_blobs::api::Store for use with BlobsProtocol
 let iroh_store: iroh_blobs::api::Store = store.into();

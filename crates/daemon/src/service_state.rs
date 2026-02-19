@@ -51,7 +51,8 @@ impl State {
 
         // 3. Setup blobs store using the new blobs module
         tracing::debug!("ServiceState::from_config - loading blobs store");
-        let blobs = Blobs::setup(&config.blob_store, &config.jax_dir).await?;
+        let blobs =
+            Blobs::setup(&config.blob_store, &config.jax_dir, config.max_import_size).await?;
         tracing::debug!("ServiceState::from_config - blobs store loaded successfully");
 
         // 4. Build peer from the database as the log provider

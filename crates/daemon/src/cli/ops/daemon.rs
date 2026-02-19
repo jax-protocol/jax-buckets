@@ -60,6 +60,7 @@ impl crate::cli::op::Op for Daemon {
             node_secret: Some(secret_key),
             blob_store: state.config.blob_store.clone(),
             jax_dir: state.jax_dir.clone(),
+            max_import_size: state.config.max_import_size,
             api_port,
             gateway_port,
             sqlite_path: Some(state.db_path),
