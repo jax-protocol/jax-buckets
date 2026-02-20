@@ -103,7 +103,7 @@ Use `#[tokio::test]` for async tests:
 ```rust
 #[tokio::test]
 async fn test_mirror_can_mount_published_bucket() {
-    let blobs = BlobsStore::fs(&temp_path).await.unwrap();
+    let blobs = BlobsStore::fs(&temp_path.join("blobs.db"), &temp_path.join("objects"), None).await.unwrap();
     let mount = Mount::init(id, name, &key, &blobs).await.unwrap();
     // ...
 }
@@ -320,7 +320,9 @@ Keep test setup DRY with helper functions:
 ```rust
 async fn setup_test_env() -> (Mount, BlobsStore, SecretKey, TempDir) {
     let temp_dir = TempDir::new().unwrap();
-    let blobs = BlobsStore::fs(&temp_dir.path().join("blobs")).await.unwrap();
+    let db_path = temp_dir.path().join("blobs.db");
+    let objects_path = temp_dir.path().join("objects");
+    let blobs = BlobsStore::fs(&db_path, &objects_path, None).await.unwrap();
     let key = SecretKey::generate();
     let mount = Mount::init(Uuid::new_v4(), "test".to_string(), &key, &blobs)
         .await.unwrap();

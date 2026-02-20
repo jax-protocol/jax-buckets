@@ -116,7 +116,10 @@ impl Init {
                     }
                     None => jax_dir.join("blobs-store"),
                 };
-                Ok(BlobStoreConfig::Filesystem { path })
+                Ok(BlobStoreConfig::Filesystem {
+                    path,
+                    db_path: None,
+                })
             }
 
             BlobStoreType::S3 => {
@@ -146,14 +149,24 @@ impl crate::cli::op::Op for Init {
             gateway_port: self.gateway_port,
             peer_port: self.peer_port,
             blob_store: blob_store.clone(),
+            ..Default::default()
         };
 
         let state = AppState::init(ctx.config_path.clone(), Some(config))?;
 
         let blob_store_str = match &state.config.blob_store {
             BlobStoreConfig::Legacy => "legacy (iroh FsStore)".to_string(),
-            BlobStoreConfig::Filesystem { path } => format!("filesystem ({})", path.display()),
-            BlobStoreConfig::S3 { url } => format!("s3 ({})", mask_s3_url(url)),
+            BlobStoreConfig::Filesystem { path, db_path } => {
+                let db_info = match db_path {
+                    Some(p) => format!(", db: {}", p.display()),
+                    None => String::new(),
+                };
+                format!("filesystem ({}{})", path.display(), db_info)
+            }
+            BlobStoreConfig::S3 { url } => {
+                // Mask credentials in output
+                format!("s3 ({})", mask_s3_url(url))
+            }
         };
 
         Ok(InitOutput {

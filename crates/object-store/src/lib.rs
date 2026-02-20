@@ -19,7 +19,11 @@
 //!
 //! # async fn example() -> Result<(), jax_object_store::BlobStoreError> {
 //! // Create a local file-based store
-//! let store = ObjectStore::new_local(Path::new("/tmp/blobs")).await?;
+//! let store = ObjectStore::new_local(
+//!     Path::new("/tmp/blobs.db"),
+//!     Path::new("/tmp/blobs/objects"),
+//!     None, // use default max import size
+//! ).await?;
 //!
 //! // Convert to iroh_blobs::api::Store for use with BlobsProtocol
 //! let iroh_store: iroh_blobs::api::Store = store.into();
@@ -33,6 +37,7 @@ mod error;
 mod object_store;
 mod storage;
 
+pub use actor::DEFAULT_MAX_IMPORT_SIZE;
 pub use error::{BlobStoreError, Result};
 pub use object_store::ObjectStore;
 pub use storage::ObjectStoreConfig;

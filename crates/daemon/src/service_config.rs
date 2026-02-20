@@ -20,6 +20,8 @@ pub struct Config {
     pub blob_store: BlobStoreConfig,
     /// Path to the jax directory (absolute path, used for legacy blobs and cache)
     pub jax_dir: PathBuf,
+    /// Maximum blob size allowed for BAO imports (bytes)
+    pub max_import_size: u64,
 
     // http server configuration - separate ports for API and gateway
     /// Port for the API HTTP server (private, mutation/RPC).
