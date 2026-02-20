@@ -1,6 +1,6 @@
 # Desktop Sidecar Daemon Support
 
-- **Status:** In Review
+- **Status:** Done
 - **Priority:** High
 
 ## Objective

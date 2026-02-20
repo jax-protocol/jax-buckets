@@ -1,12 +1,31 @@
 //! Bucket IPC commands
 //!
-//! All commands communicate with the daemon via its HTTP API,
+//! All commands communicate with the daemon via its HTTP API using the ApiClient,
 //! enabling both embedded and sidecar daemon modes.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+use jax_daemon::http_server::api::client::ApiClient;
+use jax_daemon::http_server::api::v0::bucket::{
+    cat::CatRequest,
+    create::CreateRequest,
+    delete::DeleteRequest,
+    history::HistoryRequest,
+    list::ListRequest,
+    ls::LsRequest,
+    mkdir::MkdirRequest,
+    mv::MvRequest,
+    ping::PingRequest,
+    publish::PublishRequest,
+    rename::RenameRequest,
+    share::{ShareRequest, ShareRole},
+    shares::SharesRequest,
+    stat::StatRequest,
+    unshare::UnshareRequest,
+};
 
 use crate::AppState;
 
@@ -57,16 +76,11 @@ pub struct ShareInfo {
     pub is_self: bool,
 }
 
-/// Get the daemon API base URL
-async fn get_daemon_url(state: &State<'_, AppState>) -> Result<String, String> {
+/// Get an ApiClient from the app state.
+async fn get_client(state: &State<'_, AppState>) -> Result<ApiClient, String> {
     let inner = state.inner.read().await;
     let inner = inner.as_ref().ok_or("Daemon not connected")?;
-    Ok(format!("http://localhost:{}", inner.api_port))
-}
-
-/// Shared HTTP client (reused across requests within the same command)
-fn http_client() -> reqwest::Client {
-    reqwest::Client::new()
+    Ok(inner.client.clone())
 }
 
 /// Parse a bucket_id string into Uuid
@@ -76,134 +90,17 @@ fn parse_bucket_id(bucket_id: &str) -> Result<Uuid, String> {
         .map_err(|e| format!("Invalid bucket ID: {}", e))
 }
 
-/// Helper to make a JSON POST request and parse the response
-async fn post_json<Req: Serialize, Resp: serde::de::DeserializeOwned>(
-    base_url: &str,
-    path: &str,
-    request: &Req,
-) -> Result<Resp, String> {
-    let url = format!("{}{}", base_url, path);
-    let client = http_client();
-    let response = client
-        .post(&url)
-        .json(request)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to connect to daemon: {}", e))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!("Daemon API error ({}): {}", status, body));
-    }
-
-    response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))
-}
-
-// --- Daemon API response types (match the HTTP endpoint types) ---
-
-#[derive(Deserialize)]
-struct ApiListResponse {
-    buckets: Vec<ApiBucketInfo>,
-}
-
-#[derive(Deserialize)]
-struct ApiBucketInfo {
-    bucket_id: Uuid,
-    name: String,
-    link: common::linked_data::Link,
-    #[serde(with = "time::serde::rfc3339")]
-    created_at: OffsetDateTime,
-}
-
-#[derive(Deserialize)]
-struct ApiCreateResponse {
-    bucket_id: Uuid,
-    name: String,
-    #[serde(with = "time::serde::rfc3339")]
-    created_at: OffsetDateTime,
-}
-
-#[derive(Deserialize)]
-struct ApiLsResponse {
-    items: Vec<ApiPathInfo>,
-}
-
-#[derive(Deserialize)]
-struct ApiPathInfo {
-    path: String,
-    name: String,
-    link: common::linked_data::Link,
-    is_dir: bool,
-    mime_type: String,
-}
-
-#[derive(Deserialize)]
-struct ApiCatResponse {
-    #[allow(dead_code)]
-    path: String,
-    content: String,
-    size: usize,
-    mime_type: String,
-}
-
-#[derive(Deserialize)]
-struct ApiHistoryResponse {
-    #[allow(dead_code)]
-    bucket_id: Uuid,
-    entries: Vec<ApiHistoryEntry>,
-}
-
-#[derive(Deserialize)]
-struct ApiHistoryEntry {
-    link_hash: String,
-    height: u64,
-    published: bool,
-    #[serde(with = "time::serde::rfc3339")]
-    created_at: OffsetDateTime,
-}
-
-#[derive(Deserialize)]
-struct ApiIsPublishedResponse {
-    #[allow(dead_code)]
-    bucket_id: Uuid,
-    published: bool,
-}
-
-#[derive(Deserialize)]
-struct ApiSharesResponse {
-    #[allow(dead_code)]
-    bucket_id: Uuid,
-    #[allow(dead_code)]
-    self_key: String,
-    shares: Vec<ApiShareInfo>,
-}
-
-#[derive(Deserialize)]
-struct ApiShareInfo {
-    public_key: String,
-    role: String,
-    is_self: bool,
-}
-
 /// List all buckets
 #[tauri::command]
 pub async fn list_buckets(state: State<'_, AppState>) -> Result<Vec<BucketInfo>, String> {
-    let base_url = get_daemon_url(&state).await?;
-
-    #[derive(Serialize)]
-    struct ListReq {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        prefix: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        limit: Option<u32>,
-    }
-
-    let resp: ApiListResponse =
-        post_json(&base_url, "/api/v0/bucket/list", &ListReq { prefix: None, limit: None }).await?;
+    let mut client = get_client(&state).await?;
+    let resp = client
+        .call(ListRequest {
+            prefix: None,
+            limit: None,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(resp
         .buckets
@@ -221,15 +118,11 @@ pub async fn list_buckets(state: State<'_, AppState>) -> Result<Vec<BucketInfo>,
 /// Create a new bucket
 #[tauri::command]
 pub async fn create_bucket(state: State<'_, AppState>, name: String) -> Result<BucketInfo, String> {
-    let base_url = get_daemon_url(&state).await?;
-
-    #[derive(Serialize)]
-    struct CreateReq {
-        name: String,
-    }
-
-    let resp: ApiCreateResponse =
-        post_json(&base_url, "/api/v0/bucket", &CreateReq { name }).await?;
+    let mut client = get_client(&state).await?;
+    let resp = client
+        .call(CreateRequest { name })
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(BucketInfo {
         bucket_id: resp.bucket_id,
@@ -240,28 +133,18 @@ pub async fn create_bucket(state: State<'_, AppState>, name: String) -> Result<B
     })
 }
 
-/// Delete a file or directory (or entire bucket at path "/")
+/// Delete a bucket (deletes at path "/")
 #[tauri::command]
 pub async fn delete_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct DeleteReq {
-        bucket_id: Uuid,
-        path: String,
-    }
-
-    let _: serde_json::Value = post_json(
-        &base_url,
-        "/api/v0/bucket/delete",
-        &DeleteReq {
+    client
+        .call(DeleteRequest {
             bucket_id: bucket_uuid,
             path: "/".to_string(),
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -272,28 +155,17 @@ pub async fn ls(
     bucket_id: String,
     path: String,
 ) -> Result<Vec<FileEntry>, String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct LsReq {
-        bucket_id: Uuid,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        path: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        deep: Option<bool>,
-    }
-
-    let resp: ApiLsResponse = post_json(
-        &base_url,
-        "/api/v0/bucket/ls",
-        &LsReq {
+    let resp = client
+        .call(LsRequest {
             bucket_id: bucket_uuid,
             path: Some(path),
             deep: None,
-        },
-    )
-    .await?;
+            at: None,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(resp
         .items
@@ -315,26 +187,18 @@ pub async fn cat(
     bucket_id: String,
     path: String,
 ) -> Result<CatResult, String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct CatReq {
-        bucket_id: Uuid,
-        path: String,
-    }
-
-    let resp: ApiCatResponse = post_json(
-        &base_url,
-        "/api/v0/bucket/cat",
-        &CatReq {
+    let resp = client
+        .call(CatRequest {
             bucket_id: bucket_uuid,
             path,
-        },
-    )
-    .await?;
+            at: None,
+            download: None,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
 
-    // Decode base64 content
     use base64::Engine;
     let content = base64::engine::general_purpose::STANDARD
         .decode(&resp.content)
@@ -355,7 +219,7 @@ pub async fn add_file(
     path: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
 
     let file_name = std::path::Path::new(&path)
@@ -372,10 +236,10 @@ pub async fn add_file(
             reqwest::multipart::Part::bytes(data).file_name(file_name),
         );
 
-    let url = format!("{}/api/v0/bucket/add", base_url);
-    let client = http_client();
+    let url = client.base_url().join("/api/v0/bucket/add").unwrap();
     let response = client
-        .post(&url)
+        .http_client()
+        .post(url)
         .multipart(form)
         .send()
         .await
@@ -398,7 +262,7 @@ pub async fn update_file(
     path: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
 
     let file_name = std::path::Path::new(&path)
@@ -415,10 +279,10 @@ pub async fn update_file(
             reqwest::multipart::Part::bytes(data).file_name(file_name),
         );
 
-    let url = format!("{}/api/v0/bucket/update", base_url);
-    let client = http_client();
+    let url = client.base_url().join("/api/v0/bucket/update").unwrap();
     let response = client
-        .post(&url)
+        .http_client()
+        .post(url)
         .multipart(form)
         .send()
         .await
@@ -441,27 +305,16 @@ pub async fn rename_path(
     old_path: String,
     new_path: String,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct RenameReq {
-        bucket_id: Uuid,
-        old_path: String,
-        new_path: String,
-    }
-
-    let _: serde_json::Value = post_json(
-        &base_url,
-        "/api/v0/bucket/rename",
-        &RenameReq {
+    client
+        .call(RenameRequest {
             bucket_id: bucket_uuid,
             old_path,
             new_path,
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -473,27 +326,16 @@ pub async fn move_path(
     source_path: String,
     dest_path: String,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct MvReq {
-        bucket_id: Uuid,
-        source_path: String,
-        dest_path: String,
-    }
-
-    let _: serde_json::Value = post_json(
-        &base_url,
-        "/api/v0/bucket/mv",
-        &MvReq {
+    client
+        .call(MvRequest {
             bucket_id: bucket_uuid,
             source_path,
             dest_path,
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -505,27 +347,20 @@ pub async fn share_bucket(
     peer_public_key: String,
     role: String,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct ShareReq {
-        bucket_id: Uuid,
-        peer_public_key: String,
-        role: String,
-    }
-
-    let _: serde_json::Value = post_json(
-        &base_url,
-        "/api/v0/bucket/share",
-        &ShareReq {
+    let share_role = match role.to_lowercase().as_str() {
+        "mirror" => ShareRole::Mirror,
+        _ => ShareRole::Owner,
+    };
+    client
+        .call(ShareRequest {
             bucket_id: bucket_uuid,
             peer_public_key,
-            role,
-        },
-    )
-    .await?;
-
+            role: share_role,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -536,71 +371,43 @@ pub async fn remove_share(
     bucket_id: String,
     peer_public_key: String,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct UnshareReq {
-        bucket_id: Uuid,
-        peer_public_key: String,
-    }
-
-    let _: serde_json::Value = post_json(
-        &base_url,
-        "/api/v0/bucket/unshare",
-        &UnshareReq {
+    client
+        .call(UnshareRequest {
             bucket_id: bucket_uuid,
             peer_public_key,
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// Check if the current HEAD of a bucket is published
+/// Check if the current HEAD of a bucket is published (via stat endpoint)
 #[tauri::command]
 pub async fn is_published(state: State<'_, AppState>, bucket_id: String) -> Result<bool, String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct IsPublishedReq {
-        bucket_id: Uuid,
-    }
-
-    let resp: ApiIsPublishedResponse = post_json(
-        &base_url,
-        "/api/v0/bucket/is-published",
-        &IsPublishedReq {
+    let resp = client
+        .call(StatRequest {
             bucket_id: bucket_uuid,
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(resp.published)
 }
 
 /// Publish a bucket
 #[tauri::command]
 pub async fn publish_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct PublishReq {
-        bucket_id: Uuid,
-    }
-
-    let _: serde_json::Value = post_json(
-        &base_url,
-        "/api/v0/bucket/publish",
-        &PublishReq {
+    client
+        .call(PublishRequest {
             bucket_id: bucket_uuid,
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -611,30 +418,15 @@ pub async fn ping_peer(
     bucket_id: String,
     peer_public_key: String,
 ) -> Result<String, String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct PingReq {
-        bucket_id: Uuid,
-        peer_public_key: String,
-    }
-
-    #[derive(Deserialize)]
-    struct PingResp {
-        message: String,
-    }
-
-    let resp: PingResp = post_json(
-        &base_url,
-        "/api/v0/bucket/ping",
-        &PingReq {
+    let resp = client
+        .call(PingRequest {
             bucket_id: bucket_uuid,
             peer_public_key,
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(resp.message)
 }
 
@@ -646,8 +438,10 @@ pub async fn upload_native_files(
     mount_path: String,
     file_paths: Vec<String>,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
+
+    let url = client.base_url().join("/api/v0/bucket/add").unwrap();
 
     for file_path in file_paths {
         let path = std::path::Path::new(&file_path);
@@ -675,10 +469,9 @@ pub async fn upload_native_files(
                 reqwest::multipart::Part::bytes(data).file_name(file_name),
             );
 
-        let url = format!("{}/api/v0/bucket/add", base_url);
-        let client = http_client();
         let response = client
-            .post(&url)
+            .http_client()
+            .post(url.clone())
             .multipart(form)
             .send()
             .await
@@ -701,25 +494,15 @@ pub async fn mkdir(
     bucket_id: String,
     path: String,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct MkdirReq {
-        bucket_id: Uuid,
-        path: String,
-    }
-
-    let _: serde_json::Value = post_json(
-        &base_url,
-        "/api/v0/bucket/mkdir",
-        &MkdirReq {
+    client
+        .call(MkdirRequest {
             bucket_id: bucket_uuid,
             path,
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -730,25 +513,15 @@ pub async fn delete_path(
     bucket_id: String,
     path: String,
 ) -> Result<(), String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct DeleteReq {
-        bucket_id: Uuid,
-        path: String,
-    }
-
-    let _: serde_json::Value = post_json(
-        &base_url,
-        "/api/v0/bucket/delete",
-        &DeleteReq {
+    client
+        .call(DeleteRequest {
             bucket_id: bucket_uuid,
             path,
-        },
-    )
-    .await?;
-
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -759,28 +532,16 @@ pub async fn get_history(
     bucket_id: String,
     page: Option<u32>,
 ) -> Result<Vec<HistoryEntry>, String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct HistoryReq {
-        bucket_id: Uuid,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        page: Option<u32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        page_size: Option<u32>,
-    }
-
-    let resp: ApiHistoryResponse = post_json(
-        &base_url,
-        "/api/v0/bucket/history",
-        &HistoryReq {
+    let resp = client
+        .call(HistoryRequest {
             bucket_id: bucket_uuid,
             page,
             page_size: Some(50),
-        },
-    )
-    .await?;
+        })
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(resp
         .entries
@@ -802,31 +563,17 @@ pub async fn ls_at_version(
     link_hash: String,
     path: String,
 ) -> Result<Vec<FileEntry>, String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct LsReq {
-        bucket_id: Uuid,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        path: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        deep: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        at: Option<String>,
-    }
-
-    let resp: ApiLsResponse = post_json(
-        &base_url,
-        "/api/v0/bucket/ls",
-        &LsReq {
+    let resp = client
+        .call(LsRequest {
             bucket_id: bucket_uuid,
             path: Some(path),
             deep: None,
             at: Some(link_hash),
-        },
-    )
-    .await?;
+        })
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(resp
         .items
@@ -847,22 +594,14 @@ pub async fn get_bucket_shares(
     state: State<'_, AppState>,
     bucket_id: String,
 ) -> Result<Vec<ShareInfo>, String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct SharesReq {
-        bucket_id: Uuid,
-    }
-
-    let resp: ApiSharesResponse = post_json(
-        &base_url,
-        "/api/v0/bucket/shares",
-        &SharesReq {
+    let resp = client
+        .call(SharesRequest {
             bucket_id: bucket_uuid,
-        },
-    )
-    .await?;
+        })
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(resp
         .shares
@@ -883,13 +622,10 @@ pub async fn export_file(
     path: String,
     dest_path: String,
 ) -> Result<(), String> {
-    // Read file content via cat, then write to local filesystem
     let result = cat(state, bucket_id, path).await?;
-
     tokio::fs::write(&dest_path, &result.content)
         .await
         .map_err(|e| format!("Failed to write file '{}': {}", dest_path, e))?;
-
     Ok(())
 }
 
@@ -901,27 +637,17 @@ pub async fn cat_at_version(
     link_hash: String,
     path: String,
 ) -> Result<CatResult, String> {
-    let base_url = get_daemon_url(&state).await?;
+    let mut client = get_client(&state).await?;
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
-
-    #[derive(Serialize)]
-    struct CatReq {
-        bucket_id: Uuid,
-        path: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        at: Option<String>,
-    }
-
-    let resp: ApiCatResponse = post_json(
-        &base_url,
-        "/api/v0/bucket/cat",
-        &CatReq {
+    let resp = client
+        .call(CatRequest {
             bucket_id: bucket_uuid,
             path,
             at: Some(link_hash),
-        },
-    )
-    .await?;
+            download: None,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
 
     use base64::Engine;
     let content = base64::engine::general_purpose::STANDARD

@@ -9,7 +9,6 @@ pub mod create;
 pub mod delete;
 pub mod export;
 pub mod history;
-pub mod is_published;
 pub mod latest_published;
 pub mod list;
 pub mod ls;
@@ -20,6 +19,7 @@ pub mod publish;
 pub mod rename;
 pub mod share;
 pub mod shares;
+pub mod stat;
 pub mod unshare;
 pub mod update;
 
@@ -50,6 +50,6 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/export", post(export::handler))
         .route("/latest-published", post(latest_published::handler))
         .route("/history", post(history::handler))
-        .route("/is-published", post(is_published::handler))
+        .route("/stat", post(stat::handler))
         .with_state(state)
 }

@@ -6,8 +6,8 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 
 mod data_source;
-mod identity;
-mod liveness;
+pub mod identity;
+pub mod liveness;
 mod readiness;
 mod version;
 

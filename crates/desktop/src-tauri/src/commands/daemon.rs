@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use jax_daemon::http_server::health::identity::IdentityRequest;
+
 use crate::AppState;
 
 /// Daemon status information
@@ -25,8 +27,14 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<DaemonStatus, Stri
 
     match inner.as_ref() {
         Some(daemon) => {
-            // Try to get identity from the daemon's HTTP API
-            let node_id = get_node_id(daemon.api_port).await.ok();
+            let node_id = {
+                let mut client = daemon.client.clone();
+                client
+                    .call(IdentityRequest {})
+                    .await
+                    .ok()
+                    .map(|r| r.node_id)
+            };
 
             Ok(DaemonStatus {
                 running: node_id.is_some(),
@@ -51,8 +59,12 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<DaemonStatus, Stri
 pub async fn get_identity(state: State<'_, AppState>) -> Result<String, String> {
     let inner = state.inner.read().await;
     let daemon = inner.as_ref().ok_or("Daemon not connected")?;
-
-    get_node_id(daemon.api_port).await
+    let mut client = daemon.client.clone();
+    let resp = client
+        .call(IdentityRequest {})
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(resp.node_id)
 }
 
 /// Configuration info for the Settings page
@@ -82,35 +94,4 @@ pub async fn get_config_info(state: State<'_, AppState>) -> Result<ConfigInfo, S
         }
         .to_string(),
     })
-}
-
-/// Fetch node_id from the daemon's identity endpoint
-async fn get_node_id(api_port: u16) -> Result<String, String> {
-    #[derive(Deserialize)]
-    struct IdentityResponse {
-        node_id: String,
-    }
-
-    let url = format!("http://localhost:{}/_status/identity", api_port);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-        .map_err(|e| format!("Failed to build client: {}", e))?;
-
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to connect to daemon: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err("Daemon identity endpoint returned error".to_string());
-    }
-
-    let resp: IdentityResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse identity response: {}", e))?;
-
-    Ok(resp.node_id)
 }

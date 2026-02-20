@@ -10,8 +10,12 @@ mod tray;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
+
+use jax_daemon::http_server::api::client::ApiClient;
+use jax_daemon::http_server::health::liveness::LivezRequest;
+use reqwest::Url;
 
 /// How the desktop app is connected to the daemon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +38,7 @@ impl fmt::Display for DaemonMode {
 /// Inner daemon state, populated once the daemon is available.
 /// No longer holds a direct `ServiceState` reference — all access goes through HTTP.
 pub struct DaemonInner {
+    pub client: ApiClient,
     pub api_port: u16,
     pub gateway_port: u16,
     pub jax_dir: PathBuf,
@@ -143,19 +148,17 @@ pub fn run() {
 /// Probe whether a daemon is already listening on the given port.
 /// Returns `true` if a healthy daemon was detected.
 async fn probe_daemon(api_port: u16) -> bool {
-    let url = format!("http://localhost:{}/_status/livez", api_port);
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(1))
-        .build()
-    {
+    let url = format!("http://localhost:{}", api_port);
+    let base_url = match Url::parse(&url) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+    let mut client = match ApiClient::new(&base_url) {
         Ok(c) => c,
         Err(_) => return false,
     };
 
-    match client.get(&url).send().await {
-        Ok(resp) => resp.status().is_success(),
-        Err(_) => false,
-    }
+    client.call(LivezRequest {}).await.is_ok()
 }
 
 /// Try to connect to an existing sidecar daemon; if none found, spawn an embedded one.
@@ -182,8 +185,14 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
         // Emit connection-mode event to the frontend
         let _ = app_handle.emit("daemon-mode", "sidecar");
 
+        let base_url = Url::parse(&format!("http://localhost:{}", api_port))
+            .map_err(|e| format!("Failed to parse URL: {}", e))?;
+        let client =
+            ApiClient::new(&base_url).map_err(|e| format!("Failed to create API client: {}", e))?;
+
         let mut inner = state.inner.write().await;
         *inner = Some(DaemonInner {
+            client,
             api_port,
             gateway_port,
             jax_dir,
@@ -228,9 +237,15 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
     // Emit connection-mode event to the frontend
     let _ = app_handle.emit("daemon-mode", "embedded");
 
+    let base_url = Url::parse(&format!("http://localhost:{}", api_port))
+        .map_err(|e| format!("Failed to parse URL: {}", e))?;
+    let client =
+        ApiClient::new(&base_url).map_err(|e| format!("Failed to create API client: {}", e))?;
+
     {
         let mut inner = state.inner.write().await;
         *inner = Some(DaemonInner {
+            client,
             api_port,
             gateway_port,
             jax_dir: jax_state.jax_dir.clone(),

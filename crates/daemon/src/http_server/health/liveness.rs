@@ -1,6 +1,29 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use reqwest::{Client, RequestBuilder, Url};
+use serde::{Deserialize, Serialize};
+
+use crate::http_server::api::client::ApiRequest;
+
+/// Request type for the liveness probe endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LivezRequest {}
+
+/// Response type for the liveness probe endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LivezResponse {
+    pub status: String,
+}
+
+impl ApiRequest for LivezRequest {
+    type Response = LivezResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url.join("/_status/livez").unwrap();
+        client.get(full_url)
+    }
+}
 
 /// This is a very simple handler that always returns with a valid response. It's intended to be
 /// used by external healthchecks to see whether the service is "alive". Failing this check for any
