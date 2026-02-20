@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "jax-daemon-v*"
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-cli.yml"
   workflow_dispatch:
     inputs:
       version:
@@ -16,6 +20,8 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.name }}
+    # Only run for tag pushes or manual dispatch (not workflow file changes)
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
