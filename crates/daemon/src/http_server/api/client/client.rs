@@ -71,3 +71,13 @@ impl ApiClient {
         &self.client
     }
 }
+
+/// Resolve a bucket identifier (name or UUID string) to a UUID.
+///
+/// Tries to parse as UUID first; if that fails, resolves by name via the API.
+pub async fn resolve_bucket(client: &mut ApiClient, identifier: &str) -> Result<Uuid, ApiError> {
+    if let Ok(uuid) = Uuid::parse_str(identifier) {
+        return Ok(uuid);
+    }
+    client.resolve_bucket_name(identifier).await
+}

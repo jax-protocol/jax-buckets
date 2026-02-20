@@ -1,25 +1,43 @@
-use clap::Args;
+use std::fmt;
 use std::path::PathBuf;
+
+use clap::Args;
+use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::Op;
-use jax_daemon::http_server::api::client::ApiError;
+use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 
 use super::clone_state::{CloneConfig, CloneStateError, CloneStateManager, PathHashMap};
 
 #[derive(Args, Debug, Clone)]
 pub struct Clone {
-    /// Bucket ID (or use --name)
-    #[arg(long, group = "bucket_identifier")]
-    pub bucket_id: Option<Uuid>,
-
-    /// Bucket name (or use --bucket-id)
-    #[arg(long, group = "bucket_identifier")]
-    pub name: Option<String>,
+    /// Bucket name or UUID
+    pub bucket: String,
 
     /// Directory to clone into (will be created if it doesn't exist)
-    #[arg(long)]
     pub directory: PathBuf,
+}
+
+#[derive(Debug)]
+pub struct CloneOutput {
+    pub name: String,
+    pub bucket_id: Uuid,
+    pub directory: PathBuf,
+    pub files_exported: usize,
+}
+
+impl fmt::Display for CloneOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{} bucket {} to {}",
+            "Cloned".green().bold(),
+            self.name.bold(),
+            self.directory.display().to_string().bold()
+        )?;
+        write!(f, "  {} {}", "files:".dimmed(), self.files_exported)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -30,8 +48,6 @@ pub enum CloneError {
     Io(#[from] std::io::Error),
     #[error("Clone state error: {0}")]
     CloneState(#[from] CloneStateError),
-    #[error("Either --bucket-id or --name must be provided")]
-    NoBucketIdentifier,
     #[error("Directory already exists and is not empty: {0}")]
     DirectoryNotEmpty(PathBuf),
     #[error("Directory already initialized as a clone")]
@@ -47,19 +63,11 @@ pub enum CloneError {
 #[async_trait::async_trait]
 impl Op for Clone {
     type Error = CloneError;
-    type Output = String;
+    type Output = CloneOutput;
 
     async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
         let mut client = ctx.client.clone();
-
-        // Resolve bucket name to UUID if needed
-        let bucket_id = if let Some(id) = self.bucket_id {
-            id
-        } else if let Some(ref name) = self.name {
-            client.resolve_bucket_name(name).await?
-        } else {
-            return Err(CloneError::NoBucketIdentifier);
-        };
+        let bucket_id = resolve_bucket(&mut client, &self.bucket).await?;
 
         // Check if directory exists and is empty
         if self.directory.exists() {
@@ -68,7 +76,6 @@ impl Op for Clone {
                 return Err(CloneError::AlreadyCloned);
             }
 
-            // Check if directory is empty (except for .jax which we'll overwrite)
             let entries: Vec<_> = std::fs::read_dir(&self.directory)?
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_name() != ".jax")
@@ -78,12 +85,9 @@ impl Op for Clone {
                 return Err(CloneError::DirectoryNotEmpty(self.directory.clone()));
             }
         } else {
-            // Create the directory
             std::fs::create_dir_all(&self.directory)?;
         }
 
-        // Call the daemon's export endpoint
-        // The daemon will use its local peer to export the bucket
         #[derive(serde::Serialize)]
         struct ExportRequest {
             bucket_id: Uuid,
@@ -114,7 +118,6 @@ impl Op for Clone {
             .json()
             .await?;
 
-        // Initialize .jax directory with clone state
         let state_manager = CloneStateManager::new(self.directory.clone());
         let config = CloneConfig {
             bucket_id,
@@ -126,12 +129,11 @@ impl Op for Clone {
         state_manager.init(config)?;
         state_manager.write_hash_map(&export_result.hash_map)?;
 
-        Ok(format!(
-            "Cloned bucket '{}' ({}) to {}\nExported {} files",
-            export_result.bucket_name,
+        Ok(CloneOutput {
+            name: export_result.bucket_name,
             bucket_id,
-            self.directory.display(),
-            export_result.files_exported
-        ))
+            directory: self.directory.clone(),
+            files_exported: export_result.files_exported,
+        })
     }
 }

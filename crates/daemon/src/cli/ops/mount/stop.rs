@@ -1,4 +1,7 @@
+use std::fmt;
+
 use clap::Args;
+use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
@@ -11,21 +14,28 @@ pub struct Stop {
     pub id: Uuid,
 }
 
-#[async_trait::async_trait]
-impl Op for Stop {
-    type Error = StopError;
-    type Output = String;
+#[derive(Debug)]
+pub struct StopOutput {
+    pub mount_id: Uuid,
+    pub stopped: bool,
+}
 
-    async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let mut client = ctx.client.clone();
-
-        let request = StopMountRequest { mount_id: self.id };
-        let response: StopMountResponse = client.call(request).await?;
-
-        if response.stopped {
-            Ok(format!("Stopped mount {}", self.id))
+impl fmt::Display for StopOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.stopped {
+            write!(
+                f,
+                "{} mount {}",
+                "Stopped".green().bold(),
+                self.mount_id.bold()
+            )
         } else {
-            Ok(format!("Failed to stop mount {}", self.id))
+            write!(
+                f,
+                "{} to stop mount {}",
+                "Failed".red().bold(),
+                self.mount_id.bold()
+            )
         }
     }
 }
@@ -36,8 +46,20 @@ pub enum StopError {
     Api(#[from] ApiError),
 }
 
-impl std::fmt::Display for Stop {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "mount stop {}", self.id)
+#[async_trait::async_trait]
+impl Op for Stop {
+    type Error = StopError;
+    type Output = StopOutput;
+
+    async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
+        let mut client = ctx.client.clone();
+
+        let request = StopMountRequest { mount_id: self.id };
+        let response: StopMountResponse = client.call(request).await?;
+
+        Ok(StopOutput {
+            mount_id: self.id,
+            stopped: response.stopped,
+        })
     }
 }

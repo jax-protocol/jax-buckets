@@ -1,8 +1,11 @@
+use std::fmt;
+
 use clap::Args;
+use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
-use jax_daemon::http_server::api::client::ApiError;
+use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::mounts::{CreateMountRequest, CreateMountResponse};
 
 #[derive(Args, Debug, Clone)]
@@ -30,20 +33,42 @@ pub struct Add {
     pub cache_ttl: u32,
 }
 
+#[derive(Debug)]
+pub struct AddOutput {
+    pub mount_id: Uuid,
+    pub bucket_id: Uuid,
+    pub path: String,
+    pub status: String,
+}
+
+impl fmt::Display for AddOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{} mount {}",
+            "Created".green().bold(),
+            self.mount_id.bold()
+        )?;
+        writeln!(f, "  {} {}", "bucket:".dimmed(), self.bucket_id)?;
+        writeln!(f, "  {} {}", "path:".dimmed(), self.path)?;
+        write!(f, "  {} {}", "status:".dimmed(), self.status)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AddError {
+    #[error("API error: {0}")]
+    Api(#[from] ApiError),
+}
+
 #[async_trait::async_trait]
 impl Op for Add {
     type Error = AddError;
-    type Output = String;
+    type Output = AddOutput;
 
     async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
         let mut client = ctx.client.clone();
-
-        // Resolve bucket name to ID if needed
-        let bucket_id = if let Ok(uuid) = Uuid::parse_str(&self.bucket) {
-            uuid
-        } else {
-            client.resolve_bucket_name(&self.bucket).await?
-        };
+        let bucket_id = resolve_bucket(&mut client, &self.bucket).await?;
 
         let request = CreateMountRequest {
             bucket_id,
@@ -56,24 +81,11 @@ impl Op for Add {
 
         let response: CreateMountResponse = client.call(request).await?;
 
-        Ok(format!(
-            "Created mount {} for bucket {} at {}\nStatus: {}",
-            response.mount.mount_id,
-            response.mount.bucket_id,
-            response.mount.mount_point,
-            response.mount.status
-        ))
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum AddError {
-    #[error("API error: {0}")]
-    Api(#[from] ApiError),
-}
-
-impl std::fmt::Display for Add {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "mount add {} {}", self.bucket, self.path)
+        Ok(AddOutput {
+            mount_id: response.mount.mount_id,
+            bucket_id: response.mount.bucket_id,
+            path: response.mount.mount_point,
+            status: response.mount.status,
+        })
     }
 }

@@ -1,34 +1,67 @@
+use std::fmt;
+
+use clap::Args;
+use comfy_table::Table;
+
 use jax_daemon::http_server::api::client::ApiError;
-use jax_daemon::http_server::api::v0::bucket::list::{ListRequest, ListResponse};
+use jax_daemon::http_server::api::v0::bucket::list::{BucketInfo, ListRequest, ListResponse};
+
+#[derive(Args, Debug, Clone)]
+pub struct List {
+    /// Filter buckets by name prefix
+    #[arg(long)]
+    pub prefix: Option<String>,
+
+    /// Maximum number of buckets to return
+    #[arg(long)]
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug)]
+pub struct ListOutput {
+    pub buckets: Vec<BucketInfo>,
+}
+
+impl fmt::Display for ListOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.buckets.is_empty() {
+            return write!(f, "No buckets found");
+        }
+
+        let mut table = Table::new();
+        table.set_header(vec!["NAME", "ID", "LINK"]);
+        for b in &self.buckets {
+            table.add_row(vec![
+                b.name.clone(),
+                b.bucket_id.to_string(),
+                b.link.hash().to_string(),
+            ]);
+        }
+        write!(f, "{table}")
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
-pub enum BucketListError {
+pub enum ListError {
     #[error("API error: {0}")]
     Api(#[from] ApiError),
-    #[error("Bucket list operation failed: {0}")]
-    Failed(String),
 }
 
 #[async_trait::async_trait]
-impl crate::cli::op::Op for ListRequest {
-    type Error = BucketListError;
-    type Output = String;
+impl crate::cli::op::Op for List {
+    type Error = ListError;
+    type Output = ListOutput;
 
     async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
-        // Always use API client
         let mut client = ctx.client.clone();
-        let response: ListResponse = client.call(self.clone()).await?;
+        let request = ListRequest {
+            prefix: self.prefix.clone(),
+            limit: self.limit,
+        };
+        let response: ListResponse = client.call(request).await?;
 
-        if response.buckets.is_empty() {
-            Ok("No buckets found".to_string())
-        } else {
-            let output = response
-                .buckets
-                .iter()
-                .map(|b| format!("{} (id: {} | link: {})", b.name, b.bucket_id, b.link.hash()))
-                .collect::<Vec<_>>()
-                .join("\n");
-            Ok(output)
-        }
+        Ok(ListOutput {
+            buckets: response.buckets,
+        })
     }
 }

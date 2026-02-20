@@ -1,4 +1,7 @@
+use std::fmt;
+
 use clap::Args;
+use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
@@ -37,10 +40,49 @@ pub struct Set {
     pub cache_ttl: Option<u32>,
 }
 
+#[derive(Debug)]
+pub struct SetOutput {
+    pub mount_id: Uuid,
+    pub mount_point: String,
+    pub enabled: bool,
+    pub auto_mount: bool,
+    pub read_only: bool,
+    pub cache_size_mb: u32,
+    pub cache_ttl_secs: u32,
+}
+
+impl fmt::Display for SetOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{} mount {}",
+            "Updated".green().bold(),
+            self.mount_id.bold()
+        )?;
+        writeln!(f, "  {} {}", "mount_point:".dimmed(), self.mount_point)?;
+        writeln!(f, "  {} {}", "enabled:".dimmed(), self.enabled)?;
+        writeln!(f, "  {} {}", "auto_mount:".dimmed(), self.auto_mount)?;
+        writeln!(f, "  {} {}", "read_only:".dimmed(), self.read_only)?;
+        writeln!(f, "  {} {}", "cache_size_mb:".dimmed(), self.cache_size_mb)?;
+        write!(
+            f,
+            "  {} {}",
+            "cache_ttl_secs:".dimmed(),
+            self.cache_ttl_secs
+        )
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SetError {
+    #[error("API error: {0}")]
+    Api(#[from] ApiError),
+}
+
 #[async_trait::async_trait]
 impl Op for Set {
     type Error = SetError;
-    type Output = String;
+    type Output = SetOutput;
 
     async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
         let mut client = ctx.client.clone();
@@ -59,27 +101,14 @@ impl Op for Set {
 
         let response: UpdateMountResponse = client.call(request).await?;
 
-        Ok(format!(
-            "Updated mount {}\n  mount_point: {}\n  enabled: {}\n  auto_mount: {}\n  read_only: {}\n  cache_size_mb: {}\n  cache_ttl_secs: {}",
-            response.mount.mount_id,
-            response.mount.mount_point,
-            response.mount.enabled,
-            response.mount.auto_mount,
-            response.mount.read_only,
-            response.mount.cache_size_mb,
-            response.mount.cache_ttl_secs
-        ))
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum SetError {
-    #[error("API error: {0}")]
-    Api(#[from] ApiError),
-}
-
-impl std::fmt::Display for Set {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "mount set {}", self.id)
+        Ok(SetOutput {
+            mount_id: response.mount.mount_id,
+            mount_point: response.mount.mount_point,
+            enabled: response.mount.enabled,
+            auto_mount: response.mount.auto_mount,
+            read_only: response.mount.read_only,
+            cache_size_mb: response.mount.cache_size_mb,
+            cache_ttl_secs: response.mount.cache_ttl_secs,
+        })
     }
 }

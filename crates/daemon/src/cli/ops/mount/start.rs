@@ -1,4 +1,7 @@
+use std::fmt;
+
 use clap::Args;
+use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
@@ -11,21 +14,28 @@ pub struct Start {
     pub id: Uuid,
 }
 
-#[async_trait::async_trait]
-impl Op for Start {
-    type Error = StartError;
-    type Output = String;
+#[derive(Debug)]
+pub struct StartOutput {
+    pub mount_id: Uuid,
+    pub started: bool,
+}
 
-    async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let mut client = ctx.client.clone();
-
-        let request = StartMountRequest { mount_id: self.id };
-        let response: StartMountResponse = client.call(request).await?;
-
-        if response.started {
-            Ok(format!("Started mount {}", self.id))
+impl fmt::Display for StartOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.started {
+            write!(
+                f,
+                "{} mount {}",
+                "Started".green().bold(),
+                self.mount_id.bold()
+            )
         } else {
-            Ok(format!("Failed to start mount {}", self.id))
+            write!(
+                f,
+                "{} to start mount {}",
+                "Failed".red().bold(),
+                self.mount_id.bold()
+            )
         }
     }
 }
@@ -36,8 +46,20 @@ pub enum StartError {
     Api(#[from] ApiError),
 }
 
-impl std::fmt::Display for Start {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "mount start {}", self.id)
+#[async_trait::async_trait]
+impl Op for Start {
+    type Error = StartError;
+    type Output = StartOutput;
+
+    async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
+        let mut client = ctx.client.clone();
+
+        let request = StartMountRequest { mount_id: self.id };
+        let response: StartMountResponse = client.call(request).await?;
+
+        Ok(StartOutput {
+            mount_id: self.id,
+            started: response.started,
+        })
     }
 }

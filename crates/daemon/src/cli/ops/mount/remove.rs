@@ -1,4 +1,7 @@
+use std::fmt;
+
 use clap::Args;
+use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
@@ -15,23 +18,23 @@ pub struct Remove {
     pub force: bool,
 }
 
-#[async_trait::async_trait]
-impl Op for Remove {
-    type Error = RemoveError;
-    type Output = String;
+#[derive(Debug)]
+pub struct RemoveOutput {
+    pub mount_id: Uuid,
+    pub deleted: bool,
+}
 
-    async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let mut client = ctx.client.clone();
-
-        // TODO: Add confirmation prompt if not force
-
-        let request = DeleteMountRequest { mount_id: self.id };
-        let response: DeleteMountResponse = client.call(request).await?;
-
-        if response.deleted {
-            Ok(format!("Removed mount {}", self.id))
+impl fmt::Display for RemoveOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.deleted {
+            write!(
+                f,
+                "{} mount {}",
+                "Removed".green().bold(),
+                self.mount_id.bold()
+            )
         } else {
-            Ok(format!("Mount {} not found", self.id))
+            write!(f, "Mount {} {}", self.mount_id.bold(), "not found".red())
         }
     }
 }
@@ -42,8 +45,20 @@ pub enum RemoveError {
     Api(#[from] ApiError),
 }
 
-impl std::fmt::Display for Remove {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "mount remove {}", self.id)
+#[async_trait::async_trait]
+impl Op for Remove {
+    type Error = RemoveError;
+    type Output = RemoveOutput;
+
+    async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
+        let mut client = ctx.client.clone();
+
+        let request = DeleteMountRequest { mount_id: self.id };
+        let response: DeleteMountResponse = client.call(request).await?;
+
+        Ok(RemoveOutput {
+            mount_id: self.id,
+            deleted: response.deleted,
+        })
     }
 }

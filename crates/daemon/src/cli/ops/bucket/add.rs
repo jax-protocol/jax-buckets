@@ -1,23 +1,20 @@
+use std::env;
+use std::fmt;
+use std::path::PathBuf;
+
 use clap::Args;
-use jax_daemon::http_server::api::client::ApiError;
+use owo_colors::OwoColorize;
+
+use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::add::AddResponse;
 use reqwest::multipart;
-use std::env;
-use std::path::PathBuf;
-use uuid::Uuid;
 
 #[derive(Args, Debug, Clone)]
 pub struct Add {
-    /// Bucket ID (or use --name)
-    #[arg(long, group = "bucket_identifier")]
-    pub bucket_id: Option<Uuid>,
+    /// Bucket name or UUID
+    pub bucket: String,
 
-    /// Bucket name (or use --bucket-id)
-    #[arg(long, group = "bucket_identifier")]
-    pub name: Option<String>,
-
-    /// Absolute path to file on filesystem
-    #[arg(long)]
+    /// Path to file on filesystem
     pub path: String,
 
     /// Path in bucket where file should be mounted
@@ -25,34 +22,53 @@ pub struct Add {
     pub mount_path: String,
 }
 
+#[derive(Debug)]
+pub struct AddOutput {
+    pub successful: usize,
+    pub failed: usize,
+    pub bucket_link: String,
+}
+
+impl fmt::Display for AddOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.failed > 0 {
+            writeln!(
+                f,
+                "{} {} file(s), {} failed",
+                "Uploaded".green().bold(),
+                self.successful,
+                self.failed.to_string().red()
+            )?;
+        } else {
+            writeln!(
+                f,
+                "{} {} file(s)",
+                "Uploaded".green().bold(),
+                self.successful
+            )?;
+        }
+        write!(f, "  {} {}", "link:".dimmed(), self.bucket_link)
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
-pub enum BucketAddError {
+pub enum AddError {
     #[error("API error: {0}")]
     Api(#[from] ApiError),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("HTTP error: {0}")]
     Reqwest(#[from] reqwest::Error),
-    #[error("Either --bucket-id or --name must be provided")]
-    NoBucketIdentifier,
 }
 
 #[async_trait::async_trait]
 impl crate::cli::op::Op for Add {
-    type Error = BucketAddError;
-    type Output = String;
+    type Error = AddError;
+    type Output = AddOutput;
 
     async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
         let mut client = ctx.client.clone();
-
-        // Resolve bucket name to UUID if needed
-        let bucket_id = if let Some(id) = self.bucket_id {
-            id
-        } else if let Some(ref name) = self.name {
-            client.resolve_bucket_name(name).await?
-        } else {
-            return Err(BucketAddError::NoBucketIdentifier);
-        };
+        let bucket_id = resolve_bucket(&mut client, &self.bucket).await?;
 
         // Normalize path to absolute
         let path = PathBuf::from(&self.path);
@@ -83,24 +99,15 @@ impl crate::cli::op::Op for Add {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await?;
-            return Err(BucketAddError::Api(ApiError::HttpStatus(status, body)));
+            return Err(AddError::Api(ApiError::HttpStatus(status, body)));
         }
 
         let response: AddResponse = response.json().await?;
 
-        if response.failed_files > 0 {
-            Ok(format!(
-                "Uploaded {} file(s) successfully, {} failed (bucket link: {})",
-                response.successful_files,
-                response.failed_files,
-                response.bucket_link.hash()
-            ))
-        } else {
-            Ok(format!(
-                "Uploaded {} file(s) successfully (bucket link: {})",
-                response.successful_files,
-                response.bucket_link.hash()
-            ))
-        }
+        Ok(AddOutput {
+            successful: response.successful_files,
+            failed: response.failed_files,
+            bucket_link: response.bucket_link.hash().to_string(),
+        })
     }
 }

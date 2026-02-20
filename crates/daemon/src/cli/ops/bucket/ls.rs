@@ -1,17 +1,15 @@
+use std::fmt;
+
 use clap::Args;
-use jax_daemon::http_server::api::client::ApiError;
-use jax_daemon::http_server::api::v0::bucket::ls::{LsRequest, LsResponse};
-use uuid::Uuid;
+use comfy_table::Table;
+
+use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
+use jax_daemon::http_server::api::v0::bucket::ls::{LsRequest, LsResponse, PathInfo};
 
 #[derive(Args, Debug, Clone)]
 pub struct Ls {
-    /// Bucket ID (or use --name)
-    #[arg(long, group = "bucket_identifier")]
-    pub bucket_id: Option<Uuid>,
-
-    /// Bucket name (or use --bucket-id)
-    #[arg(long, group = "bucket_identifier")]
-    pub name: Option<String>,
+    /// Bucket name or UUID
+    pub bucket: String,
 
     /// Path in bucket to list (defaults to root)
     #[arg(long)]
@@ -22,54 +20,56 @@ pub struct Ls {
     pub deep: Option<bool>,
 }
 
+#[derive(Debug)]
+pub struct LsOutput {
+    pub items: Vec<PathInfo>,
+}
+
+impl fmt::Display for LsOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.items.is_empty() {
+            return write!(f, "No items found");
+        }
+
+        let mut table = Table::new();
+        table.set_header(vec!["TYPE", "NAME", "HASH"]);
+        for item in &self.items {
+            let type_str = if item.is_dir { "dir" } else { "file" };
+            table.add_row(vec![
+                type_str.to_string(),
+                item.name.clone(),
+                item.link.hash().to_string(),
+            ]);
+        }
+        write!(f, "{table}")
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
-pub enum BucketLsError {
+pub enum LsError {
     #[error("API error: {0}")]
     Api(#[from] ApiError),
-    #[error("Either --bucket-id or --name must be provided")]
-    NoBucketIdentifier,
 }
 
 #[async_trait::async_trait]
 impl crate::cli::op::Op for Ls {
-    type Error = BucketLsError;
-    type Output = String;
+    type Error = LsError;
+    type Output = LsOutput;
 
     async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
         let mut client = ctx.client.clone();
+        let bucket_id = resolve_bucket(&mut client, &self.bucket).await?;
 
-        // Resolve bucket name to UUID if needed
-        let bucket_id = if let Some(id) = self.bucket_id {
-            id
-        } else if let Some(ref name) = self.name {
-            client.resolve_bucket_name(name).await?
-        } else {
-            return Err(BucketLsError::NoBucketIdentifier);
-        };
-
-        // Create API request
         let request = LsRequest {
             bucket_id,
             path: self.path.clone(),
             deep: self.deep,
         };
 
-        // Call API
         let response: LsResponse = client.call(request).await?;
 
-        if response.items.is_empty() {
-            Ok("No items found".to_string())
-        } else {
-            let output = response
-                .items
-                .iter()
-                .map(|item| {
-                    let type_str = if item.is_dir { "dir" } else { "file" };
-                    format!("{} ({}) [{}]", item.path, type_str, item.link.hash())
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            Ok(output)
-        }
+        Ok(LsOutput {
+            items: response.items,
+        })
     }
 }
