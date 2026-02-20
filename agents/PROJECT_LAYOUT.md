@@ -93,7 +93,7 @@ SQLite + object storage backend for blob data (`jax-object-store`).
 
 ### `crates/desktop` - Desktop App
 
-Tauri 2.0 desktop application (`jax-desktop`) with SolidJS frontend. Embeds the daemon in-process and exposes IPC commands that access `ServiceState` directly (no HTTP proxying for most operations). Released via GitHub Actions (not cargo publish).
+Tauri 2.0 desktop application (`jax-desktop`) with SolidJS frontend. Connects to the daemon via HTTP API using `ApiClient`, either detecting an already-running sidecar daemon or spawning an embedded one. Released via GitHub Actions (not cargo publish).
 
 **Key areas:**
 

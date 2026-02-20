@@ -11,7 +11,9 @@ fn report_build_profile() {
 fn report_enabled_features() {
     let mut enabled_features: Vec<&str> = Vec::new();
 
-    // TODO (amiller68): actually report those
+    if std::env::var("CARGO_FEATURE_FUSE").is_ok() {
+        enabled_features.push("fuse");
+    }
 
     if enabled_features.is_empty() {
         enabled_features.push("none");
@@ -87,6 +89,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/heads");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_FUSE");
 
     report_build_profile();
     report_enabled_features();

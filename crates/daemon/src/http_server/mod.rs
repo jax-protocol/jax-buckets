@@ -158,7 +158,7 @@ pub async fn run_gateway(
     Ok(())
 }
 
-mod health;
+pub mod health;
 
 #[derive(Debug, thiserror::Error)]
 pub enum HttpServerError {

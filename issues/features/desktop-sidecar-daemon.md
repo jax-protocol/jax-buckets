@@ -1,6 +1,6 @@
 # Desktop Sidecar Daemon Support
 
-- **Status:** Planned
+- **Status:** Done
 - **Priority:** High
 
 ## Objective
@@ -161,16 +161,17 @@ Emit a Tauri event indicating whether the daemon is embedded or sidecar, so the 
 
 ## Acceptance Criteria
 
-- [ ] Desktop connects to an already-running `jax-daemon` without starting a second instance
-- [ ] Desktop falls back to embedded daemon when no sidecar is detected
-- [ ] All Tauri commands work identically in both embedded and sidecar modes
-- [ ] No direct `ServiceState` or `MountManager` access remains in the desktop crate
-- [ ] `POST /api/v0/bucket/history` endpoint returns paginated version logs
-- [ ] `POST /api/v0/bucket/ls` supports `at` parameter for version-specific listing
-- [ ] `POST /api/v0/bucket/is-published` endpoint returns publication status
-- [ ] Connection mode (embedded/sidecar) is surfaced to the UI
-- [ ] Daemon going away mid-session produces clear errors (not silent failures)
-- [ ] `cargo build` compiles
-- [ ] `cargo test` passes
+- [x] Desktop connects to an already-running `jax-daemon` without starting a second instance
+- [x] Desktop falls back to embedded daemon when no sidecar is detected
+- [x] All Tauri commands work identically in both embedded and sidecar modes
+- [x] No direct `ServiceState` or `MountManager` access remains in the desktop crate
+- [x] `POST /api/v0/bucket/history` endpoint returns paginated version logs
+- [x] `POST /api/v0/bucket/ls` supports `at` parameter for version-specific listing
+- [x] `is-published` replaced with `bucket stat` endpoint (height, version, peers, publish state)
+- [x] Connection mode (embedded/sidecar) is surfaced to the UI
+- [x] Daemon going away mid-session produces clear errors (not silent failures)
+- [x] Desktop uses `ApiClient` from daemon crate (no hand-rolled HTTP calls)
+- [x] `cargo build` compiles
+- [x] `cargo test` passes
 - [ ] `cargo clippy` has no warnings
-- [ ] `cargo fmt --check` passes
+- [x] `cargo fmt --check` passes

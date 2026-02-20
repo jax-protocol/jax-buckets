@@ -121,7 +121,7 @@ impl ApiRequest for CreateMountRequest {
     type Response = CreateMountResponse;
 
     fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
-        let full_url = base_url.join("/api/v0/mounts/").unwrap();
+        let full_url = base_url.join("/api/v0/mounts").unwrap();
         client.post(full_url).json(&self)
     }
 }

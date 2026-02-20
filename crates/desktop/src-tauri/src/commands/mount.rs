@@ -1,12 +1,26 @@
 //! FUSE mount IPC commands
 //!
-//! These commands provide mount management through Tauri IPC.
-//! They access the MountManager through ServiceState (when fuse feature is enabled).
+//! These commands use the daemon's HTTP API via ApiClient for mount management,
+//! enabling both embedded and sidecar daemon modes.
+//! The `is_fuse_available` and `mount_bucket`/`unmount_bucket` commands
+//! perform local checks and orchestrate multiple API calls.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
+
 #[cfg(feature = "fuse")]
 use uuid::Uuid;
+
+#[cfg(feature = "fuse")]
+use jax_daemon::http_server::api::client::ApiClient;
+#[cfg(feature = "fuse")]
+use jax_daemon::http_server::api::v0::bucket::list::ListRequest;
+#[cfg(feature = "fuse")]
+use jax_daemon::http_server::api::v0::mounts::{
+    CreateMountRequest, DeleteMountRequest, GetMountRequest, ListMountsRequest,
+    MountInfo as DaemonMountInfo, StartMountRequest, StopMountRequest, UpdateMountBody,
+    UpdateMountRequest,
+};
 
 use crate::AppState;
 
@@ -20,7 +34,6 @@ fn get_mount_base_dir() -> std::path::PathBuf {
 
     #[cfg(target_os = "linux")]
     {
-        // Prefer /media/$USER, fall back to /run/media/$USER
         if let Ok(user) = std::env::var("USER") {
             let media_path = std::path::PathBuf::from(format!("/media/{}", user));
             if media_path.exists() {
@@ -30,7 +43,6 @@ fn get_mount_base_dir() -> std::path::PathBuf {
             if run_media_path.exists() {
                 return run_media_path;
             }
-            // Default to /media/$USER
             media_path
         } else {
             std::path::PathBuf::from("/media")
@@ -49,13 +61,11 @@ fn generate_mount_point(bucket_name: &str, existing_mounts: &[String]) -> std::p
     let base_dir = get_mount_base_dir();
     let sanitized_name = sanitize_mount_name(bucket_name);
 
-    // Check if base name is available
     let base_path = base_dir.join(&sanitized_name);
     if !existing_mounts.contains(&base_path.to_string_lossy().to_string()) && !base_path.exists() {
         return base_path;
     }
 
-    // Try numbered suffixes
     for i in 2..100 {
         let numbered_path = base_dir.join(format!("{}-{}", sanitized_name, i));
         if !existing_mounts.contains(&numbered_path.to_string_lossy().to_string())
@@ -65,8 +75,7 @@ fn generate_mount_point(bucket_name: &str, existing_mounts: &[String]) -> std::p
         }
     }
 
-    // Fallback: use UUID suffix
-    let uuid_suffix = uuid::Uuid::new_v4().to_string()[..8].to_string();
+    let uuid_suffix = Uuid::new_v4().to_string()[..8].to_string();
     base_dir.join(format!("{}-{}", sanitized_name, uuid_suffix))
 }
 
@@ -89,14 +98,12 @@ fn sanitize_mount_name(name: &str) -> String {
 /// Create mount point directory with platform-specific privilege escalation
 #[cfg(feature = "fuse")]
 async fn create_mount_point(path: &std::path::Path) -> Result<(), String> {
-    // First try without elevation
     if std::fs::create_dir_all(path).is_ok() {
         return Ok(());
     }
 
     #[cfg(target_os = "macos")]
     {
-        // Use AppleScript to create with admin privileges
         let script = format!(
             r#"do shell script "mkdir -p '{}'" with administrator privileges"#,
             path.display()
@@ -117,7 +124,6 @@ async fn create_mount_point(path: &std::path::Path) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        // Use pkexec for privilege escalation
         let output = std::process::Command::new("pkexec")
             .args(["mkdir", "-p", &path.to_string_lossy()])
             .output()
@@ -154,9 +160,29 @@ pub struct MountInfo {
     pub updated_at: String,
 }
 
-/// Request to create a new mount
+#[cfg(feature = "fuse")]
+impl From<DaemonMountInfo> for MountInfo {
+    fn from(m: DaemonMountInfo) -> Self {
+        Self {
+            mount_id: m.mount_id.to_string(),
+            bucket_id: m.bucket_id.to_string(),
+            mount_point: m.mount_point,
+            enabled: m.enabled,
+            auto_mount: m.auto_mount,
+            read_only: m.read_only,
+            cache_size_mb: m.cache_size_mb,
+            cache_ttl_secs: m.cache_ttl_secs,
+            status: m.status,
+            error_message: m.error_message,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        }
+    }
+}
+
+/// Request to create a new mount (from frontend)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateMountRequest {
+pub struct DesktopCreateMountRequest {
     pub bucket_id: String,
     pub mount_point: String,
     #[serde(default)]
@@ -167,9 +193,9 @@ pub struct CreateMountRequest {
     pub cache_ttl_secs: Option<u32>,
 }
 
-/// Request to update a mount
+/// Request to update a mount (from frontend)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateMountRequest {
+pub struct DesktopUpdateMountRequest {
     pub mount_point: Option<String>,
     pub enabled: Option<bool>,
     pub auto_mount: Option<bool>,
@@ -178,30 +204,30 @@ pub struct UpdateMountRequest {
     pub cache_ttl_secs: Option<u32>,
 }
 
+/// Get an ApiClient from the app state.
+#[cfg(feature = "fuse")]
+async fn get_client(state: &State<'_, AppState>) -> Result<ApiClient, String> {
+    let inner = state.inner.read().await;
+    let inner = inner.as_ref().ok_or("Daemon not connected")?;
+    Ok(inner.client.clone())
+}
+
 /// List all mounts
 #[tauri::command]
 #[cfg(feature = "fuse")]
 pub async fn list_mounts(state: State<'_, AppState>) -> Result<Vec<MountInfo>, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    let mounts = manager
-        .list()
+    let mut client = get_client(&state).await?;
+    let resp = client
+        .call(ListMountsRequest {})
         .await
-        .map_err(|e| format!("Failed to list mounts: {}", e))?;
-
-    Ok(mounts.into_iter().map(fuse_mount_to_info).collect())
+        .map_err(|e| e.to_string())?;
+    Ok(resp.mounts.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
 #[cfg(not(feature = "fuse"))]
 pub async fn list_mounts(_state: State<'_, AppState>) -> Result<Vec<MountInfo>, String> {
-    Ok(Vec::new()) // FUSE not enabled
+    Ok(Vec::new())
 }
 
 /// Create a new mount
@@ -209,39 +235,32 @@ pub async fn list_mounts(_state: State<'_, AppState>) -> Result<Vec<MountInfo>, 
 #[cfg(feature = "fuse")]
 pub async fn create_mount(
     state: State<'_, AppState>,
-    request: CreateMountRequest,
+    request: DesktopCreateMountRequest,
 ) -> Result<MountInfo, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let bucket_id =
         Uuid::parse_str(&request.bucket_id).map_err(|e| format!("Invalid bucket ID: {}", e))?;
 
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    let mount = manager
-        .create_mount(
+    let resp = client
+        .call(CreateMountRequest {
             bucket_id,
-            &request.mount_point,
-            request.auto_mount,
-            request.read_only,
-            request.cache_size_mb,
-            request.cache_ttl_secs,
-        )
+            mount_point: request.mount_point,
+            auto_mount: request.auto_mount,
+            read_only: request.read_only,
+            cache_size_mb: request.cache_size_mb,
+            cache_ttl_secs: request.cache_ttl_secs,
+        })
         .await
-        .map_err(|e| format!("Failed to create mount: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
-    Ok(fuse_mount_to_info(mount))
+    Ok(resp.mount.into())
 }
 
 #[tauri::command]
 #[cfg(not(feature = "fuse"))]
 pub async fn create_mount(
     _state: State<'_, AppState>,
-    _request: CreateMountRequest,
+    _request: DesktopCreateMountRequest,
 ) -> Result<MountInfo, String> {
     Err("FUSE support not enabled".to_string())
 }
@@ -250,23 +269,13 @@ pub async fn create_mount(
 #[tauri::command]
 #[cfg(feature = "fuse")]
 pub async fn get_mount(state: State<'_, AppState>, mount_id: String) -> Result<MountInfo, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let id = Uuid::parse_str(&mount_id).map_err(|e| format!("Invalid mount ID: {}", e))?;
-
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    let mount = manager
-        .get(&id)
+    let resp = client
+        .call(GetMountRequest { mount_id: id })
         .await
-        .map_err(|e| format!("Failed to get mount: {}", e))?
-        .ok_or("Mount not found")?;
-
-    Ok(fuse_mount_to_info(mount))
+        .map_err(|e| e.to_string())?;
+    Ok(resp.mount.into())
 }
 
 #[tauri::command]
@@ -284,33 +293,25 @@ pub async fn get_mount(
 pub async fn update_mount(
     state: State<'_, AppState>,
     mount_id: String,
-    request: UpdateMountRequest,
+    request: DesktopUpdateMountRequest,
 ) -> Result<MountInfo, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let id = Uuid::parse_str(&mount_id).map_err(|e| format!("Invalid mount ID: {}", e))?;
-
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    let mount = manager
-        .update(
-            &id,
-            request.mount_point.as_deref(),
-            request.enabled,
-            request.auto_mount,
-            request.read_only,
-            request.cache_size_mb,
-            request.cache_ttl_secs,
-        )
+    let resp = client
+        .call(UpdateMountRequest {
+            mount_id: id,
+            body: UpdateMountBody {
+                mount_point: request.mount_point,
+                enabled: request.enabled,
+                auto_mount: request.auto_mount,
+                read_only: request.read_only,
+                cache_size_mb: request.cache_size_mb,
+                cache_ttl_secs: request.cache_ttl_secs,
+            },
+        })
         .await
-        .map_err(|e| format!("Failed to update mount: {}", e))?
-        .ok_or("Mount not found")?;
-
-    Ok(fuse_mount_to_info(mount))
+        .map_err(|e| e.to_string())?;
+    Ok(resp.mount.into())
 }
 
 #[tauri::command]
@@ -318,7 +319,7 @@ pub async fn update_mount(
 pub async fn update_mount(
     _state: State<'_, AppState>,
     _mount_id: String,
-    _request: UpdateMountRequest,
+    _request: DesktopUpdateMountRequest,
 ) -> Result<MountInfo, String> {
     Err("FUSE support not enabled".to_string())
 }
@@ -327,20 +328,13 @@ pub async fn update_mount(
 #[tauri::command]
 #[cfg(feature = "fuse")]
 pub async fn delete_mount(state: State<'_, AppState>, mount_id: String) -> Result<bool, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let id = Uuid::parse_str(&mount_id).map_err(|e| format!("Invalid mount ID: {}", e))?;
-
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    manager
-        .delete(&id)
+    let resp = client
+        .call(DeleteMountRequest { mount_id: id })
         .await
-        .map_err(|e| format!("Failed to delete mount: {}", e))
+        .map_err(|e| e.to_string())?;
+    Ok(resp.deleted)
 }
 
 #[tauri::command]
@@ -353,22 +347,13 @@ pub async fn delete_mount(_state: State<'_, AppState>, _mount_id: String) -> Res
 #[tauri::command]
 #[cfg(feature = "fuse")]
 pub async fn start_mount(state: State<'_, AppState>, mount_id: String) -> Result<bool, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let id = Uuid::parse_str(&mount_id).map_err(|e| format!("Invalid mount ID: {}", e))?;
-
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    manager
-        .start(&id)
+    let resp = client
+        .call(StartMountRequest { mount_id: id })
         .await
-        .map_err(|e| format!("Failed to start mount: {}", e))?;
-
-    Ok(true)
+        .map_err(|e| e.to_string())?;
+    Ok(resp.started)
 }
 
 #[tauri::command]
@@ -381,22 +366,13 @@ pub async fn start_mount(_state: State<'_, AppState>, _mount_id: String) -> Resu
 #[tauri::command]
 #[cfg(feature = "fuse")]
 pub async fn stop_mount(state: State<'_, AppState>, mount_id: String) -> Result<bool, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let id = Uuid::parse_str(&mount_id).map_err(|e| format!("Invalid mount ID: {}", e))?;
-
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    manager
-        .stop(&id)
+    let resp = client
+        .call(StopMountRequest { mount_id: id })
         .await
-        .map_err(|e| format!("Failed to stop mount: {}", e))?;
-
-    Ok(true)
+        .map_err(|e| e.to_string())?;
+    Ok(resp.stopped)
 }
 
 #[tauri::command]
@@ -405,33 +381,44 @@ pub async fn stop_mount(_state: State<'_, AppState>, _mount_id: String) -> Resul
     Err("FUSE support not enabled".to_string())
 }
 
-/// Check if FUSE support is available on the host system
+/// Check if FUSE support is available (local system + daemon capability)
 #[tauri::command]
-pub async fn is_fuse_available() -> Result<bool, String> {
+pub async fn is_fuse_available(state: State<'_, AppState>) -> Result<bool, String> {
     #[cfg(not(feature = "fuse"))]
     {
+        let _ = state; // suppress unused warning
         Ok(false)
     }
 
     #[cfg(feature = "fuse")]
     {
-        Ok(check_fuse_installed())
+        // Check local system first
+        if !check_fuse_installed() {
+            return Ok(false);
+        }
+
+        // Check if daemon has FUSE feature enabled
+        let inner = state.inner.read().await;
+        match inner.as_ref() {
+            Some(daemon) => Ok(daemon
+                .build_info
+                .as_ref()
+                .is_some_and(|b| b.has_feature("fuse"))),
+            None => Ok(false),
+        }
     }
 }
 
-/// Check if FUSE is installed on the host system
 #[cfg(feature = "fuse")]
 fn check_fuse_installed() -> bool {
     #[cfg(target_os = "macos")]
     {
-        // Check for macFUSE
         std::path::Path::new("/Library/Filesystems/macfuse.fs").exists()
             || std::path::Path::new("/Library/Filesystems/osxfuse.fs").exists()
     }
 
     #[cfg(target_os = "linux")]
     {
-        // Check for /dev/fuse
         std::path::Path::new("/dev/fuse").exists()
     }
 
@@ -441,97 +428,80 @@ fn check_fuse_installed() -> bool {
     }
 }
 
-#[cfg(feature = "fuse")]
-fn fuse_mount_to_info(m: jax_daemon::FuseMount) -> MountInfo {
-    MountInfo {
-        mount_id: m.mount_id.to_string(),
-        bucket_id: m.bucket_id.to_string(),
-        mount_point: m.mount_point,
-        enabled: *m.enabled,
-        auto_mount: *m.auto_mount,
-        read_only: *m.read_only,
-        cache_size_mb: m.cache_size_mb as u32,
-        cache_ttl_secs: m.cache_ttl_secs as u32,
-        status: m.status.to_string(),
-        error_message: m.error_message,
-        created_at: m.created_at.to_string(),
-        updated_at: m.updated_at.to_string(),
-    }
-}
-
 /// Mount a bucket with automatic mount point selection (desktop app simplified API)
-///
-/// This command:
-/// 1. Gets the bucket name
-/// 2. Generates a mount point in /Volumes (macOS) or /media/$USER (Linux)
-/// 3. Handles naming conflicts automatically
-/// 4. Requests elevated permissions if needed
-/// 5. Creates the mount and starts it
 #[tauri::command]
 #[cfg(feature = "fuse")]
 pub async fn mount_bucket(
     state: State<'_, AppState>,
     bucket_id: String,
 ) -> Result<MountInfo, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let bucket_uuid =
         Uuid::parse_str(&bucket_id).map_err(|e| format!("Invalid bucket ID: {}", e))?;
 
-    // Get bucket info to get the name
-    let bucket_name = daemon
-        .service
-        .database()
-        .get_bucket_info(&bucket_uuid)
+    // Get bucket name via list endpoint
+    let list_resp = client
+        .call(ListRequest {
+            prefix: None,
+            limit: None,
+        })
         .await
-        .map_err(|e| format!("Failed to get bucket info: {}", e))?
-        .map(|info| info.name)
+        .map_err(|e| e.to_string())?;
+
+    let bucket_name = list_resp
+        .buckets
+        .into_iter()
+        .find(|b| b.bucket_id == bucket_uuid)
+        .map(|b| b.name)
         .unwrap_or_else(|| "bucket".to_string());
 
     // Get existing mounts to check for conflicts
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    let existing_mounts: Vec<String> = manager
-        .list()
+    let mounts_resp = client
+        .call(ListMountsRequest {})
         .await
-        .map_err(|e| format!("Failed to list mounts: {}", e))?
-        .into_iter()
-        .map(|m| m.mount_point)
+        .map_err(|e| e.to_string())?;
+
+    let existing_mounts: Vec<String> = mounts_resp
+        .mounts
+        .iter()
+        .map(|m| m.mount_point.clone())
         .collect();
 
     // Generate unique mount point
     let mount_point = generate_mount_point(&bucket_name, &existing_mounts);
     let mount_point_str = mount_point.to_string_lossy().to_string();
 
-    // Create mount point directory (with privilege escalation if needed)
+    // Create mount point directory
     create_mount_point(&mount_point).await?;
 
-    // Create mount
-    let mount = manager
-        .create_mount(bucket_uuid, &mount_point_str, false, false, None, None)
+    // Create mount via API
+    let create_resp = client
+        .call(CreateMountRequest {
+            bucket_id: bucket_uuid,
+            mount_point: mount_point_str,
+            auto_mount: false,
+            read_only: false,
+            cache_size_mb: None,
+            cache_ttl_secs: None,
+        })
         .await
-        .map_err(|e| format!("Failed to create mount: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
-    let mount_id = mount.mount_id;
+    let mount_id = create_resp.mount.mount_id;
 
     // Start the mount
-    manager
-        .start(&mount_id)
+    client
+        .call(StartMountRequest { mount_id })
         .await
-        .map_err(|e| format!("Failed to start mount: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
     // Get updated mount info
-    let mount = manager
-        .get(&mount_id)
+    let get_resp = client
+        .call(GetMountRequest { mount_id })
         .await
-        .map_err(|e| format!("Failed to get mount: {}", e))?
-        .ok_or("Mount not found after creation")?;
+        .map_err(|e| e.to_string())?;
 
-    Ok(fuse_mount_to_info(mount))
+    Ok(get_resp.mount.into())
 }
 
 #[tauri::command]
@@ -547,39 +517,37 @@ pub async fn mount_bucket(
 #[tauri::command]
 #[cfg(feature = "fuse")]
 pub async fn unmount_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<bool, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let bucket_uuid =
         Uuid::parse_str(&bucket_id).map_err(|e| format!("Invalid bucket ID: {}", e))?;
 
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    // Find mount for this bucket
-    let mounts = manager
-        .list()
+    // List mounts to find the one for this bucket
+    let mounts_resp = client
+        .call(ListMountsRequest {})
         .await
-        .map_err(|e| format!("Failed to list mounts: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
-    let mount = mounts
+    let mount = mounts_resp
+        .mounts
         .into_iter()
-        .find(|m| *m.bucket_id == bucket_uuid)
+        .find(|m| m.bucket_id == bucket_uuid)
         .ok_or("No mount found for this bucket")?;
 
     // Stop the mount
-    manager
-        .stop(&mount.mount_id)
+    client
+        .call(StopMountRequest {
+            mount_id: mount.mount_id,
+        })
         .await
-        .map_err(|e| format!("Failed to stop mount: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
-    // Optionally delete the mount config
-    manager
-        .delete(&mount.mount_id)
+    // Delete the mount config
+    client
+        .call(DeleteMountRequest {
+            mount_id: mount.mount_id,
+        })
         .await
-        .map_err(|e| format!("Failed to delete mount: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
     Ok(true)
 }
@@ -600,27 +568,21 @@ pub async fn is_bucket_mounted(
     state: State<'_, AppState>,
     bucket_id: String,
 ) -> Result<Option<MountInfo>, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not started")?;
-
+    let mut client = get_client(&state).await?;
     let bucket_uuid =
         Uuid::parse_str(&bucket_id).map_err(|e| format!("Invalid bucket ID: {}", e))?;
 
-    let mount_manager = daemon.service.mount_manager().read().await;
-    let manager = mount_manager
-        .as_ref()
-        .ok_or("Mount manager not available")?;
-
-    let mounts = manager
-        .list()
+    let resp = client
+        .call(ListMountsRequest {})
         .await
-        .map_err(|e| format!("Failed to list mounts: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
-    let mount = mounts
+    let mount = resp
+        .mounts
         .into_iter()
-        .find(|m| *m.bucket_id == bucket_uuid && m.status.as_str() == "running");
+        .find(|m| m.bucket_id == bucket_uuid && m.status == "running");
 
-    Ok(mount.map(fuse_mount_to_info))
+    Ok(mount.map(Into::into))
 }
 
 #[tauri::command]

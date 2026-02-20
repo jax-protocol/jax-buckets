@@ -1,11 +1,13 @@
 use axum::extract::{Json, State};
 use axum::response::{IntoResponse, Response};
 use common::prelude::{Link, MountError};
+use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,5 +160,14 @@ impl IntoResponse for RenameError {
             )
                 .into_response(),
         }
+    }
+}
+
+impl ApiRequest for RenameRequest {
+    type Response = RenameResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url.join("/api/v0/bucket/rename").unwrap();
+        client.post(full_url).json(&self)
     }
 }
