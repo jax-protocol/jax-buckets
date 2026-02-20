@@ -15,23 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
-## v0.1.7 (2026-02-17)
+## v0.1.8 (2026-02-20)
 
 ### New Features
 
- - <csr-id-c3abb856836a0e904cd487170abea4a37cf15a54/> add bucket publish CLI command
-   - Add `jax bucket publish --bucket-id <UUID>` subcommand
-   - Add owner-only validation to publish endpoint (HTTP 403 for non-owners)
-   - Add integration tests for owner publish and publish/unpublish round-trip
-   - Update PROJECT_LAYOUT.md and issue ticket
+ - <csr-id-c339f04cd771efb6195c1779d9bd29b7a55027c7/> make blobs store configurable (separate paths + max import size)
+   * feat: make blobs store configurable with separate DB/object paths and max import size
+   
+   - Update ObjectStore::new_local to accept separate db_path and objects_path
+     instead of deriving both from a single data_dir
+   - Make MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcoded
+     constant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)
+   - Add optional db_path field to BlobStoreConfig::Filesystem variant for
+     separate SQLite metadata DB location
+   - Add max_import_size to AppConfig with serde default for backward compat
+   - Thread max_import_size through setup_blobs_store, Blobs::setup, and
+     ServiceConfig to the actor
+   - Add *_with_max_import_size constructors to BlobsStore and ObjectStore
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
- - 2 commits contributed to the release.
+ - 1 commit contributed to the release.
+ - 2 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#85](https://github.com/jax-protocol/jax-fs/issues/85), [#86](https://github.com/jax-protocol/jax-fs/issues/86)
+ - 1 unique issue was worked on: [#110](https://github.com/jax-protocol/jax-fs/issues/110)
 
 ### Commit Details
 
@@ -39,6 +48,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <details><summary>view details</summary>
 
+ * **[#110](https://github.com/jax-protocol/jax-fs/issues/110)**
+    - Make blobs store configurable (separate paths + max import size) ([`c339f04`](https://github.com/jax-protocol/jax-fs/commit/c339f04cd771efb6195c1779d9bd29b7a55027c7))
+</details>
+
+## v0.1.7 (2026-02-17)
+
+### New Features
+
+ - <csr-id-c3abb856836a0e904cd487170abea4a37cf15a54/> add bucket publish CLI command
+   - Add `jax bucket publish --bucket-id <UUID>` subcommand
+- Add owner-only validation to publish endpoint (HTTP 403 for non-owners)
+- Add integration tests for owner publish and publish/unpublish round-trip
+- Update PROJECT_LAYOUT.md and issue ticket
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 3 commits contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 3 unique issues were worked on: [#105](https://github.com/jax-protocol/jax-fs/issues/105), [#85](https://github.com/jax-protocol/jax-fs/issues/85), [#86](https://github.com/jax-protocol/jax-fs/issues/86)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#105](https://github.com/jax-protocol/jax-fs/issues/105)**
+    - Bump jax-object-store v0.1.2, jax-common v0.1.7, jax-daemon v0.1.9 ([`32b5b30`](https://github.com/jax-protocol/jax-fs/commit/32b5b3096ad278823f98ed59917a7a2401e78b15))
  * **[#85](https://github.com/jax-protocol/jax-fs/issues/85)**
     - Add bucket publish CLI command ([`c3abb85`](https://github.com/jax-protocol/jax-fs/commit/c3abb856836a0e904cd487170abea4a37cf15a54))
  * **[#86](https://github.com/jax-protocol/jax-fs/issues/86)**
@@ -59,11 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - <csr-id-30f511b983bf98d49081ef6aa6ad6e99b5c82c8f/> complete SQLite + S3 blob store with iroh-blobs integration
    * feat: implement iroh-blobs Store backend for S3 blob store
-- Add S3Actor to handle all ~20 proto::Request command variants
-- Add S3Store wrapper implementing iroh-blobs Store API
-- Add bucket existence check on S3 initialization (fail-fast)
-- Add ensure_bucket to bin/minio for auto-creation in dev
-- Update e2e skill with sync timing guidance (60s wait)
 * feat: add sync validation for signed manifests
 - Check signature is valid
 - Check author was in previous manifest's shares (prevents self-authorization)
@@ -135,7 +169,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 </details>
 
 <csr-unknown>
-The S3 blob store now fully integrates with iroh-blobs protocol,enabling P2P sync with blobs stored in S3/MinIO. add sync validation for signed manifestsValidate incoming manifests during bucket sync:Add SyncError enum with variants for validation failures.Add ProvenanceResult enum for internal validation results. add pluggable conflict resolution for PathOpLog mergesAdd ConflictResolver trait with three built-in strategies:Add merge_with_resolver() to PathOpLog for conflict-aware merging.Export conflict types from mount module.Includes 23 new tests for conflict detection and resolution. add SQLite + object storage blob store backendNew crate providing blob storage with: add author and signature fields to ManifestImplements signed-manifest-authorization ticket 0. add mirror principal role and bucket publishing workflowImplement polymorphic principal roles (Owner and Mirror) with publishing: add path operation CRDT for conflict-free syncIntroduce a lightweight Conflict-free Replicated Data Type (CRDT) to trackfilesystem path operations (add, remove, mkdir, mv) across peers. The operationlog is stored as a separate encrypted blob (not in the manifest) to avoidleaking directory structure information. Enables deterministic conflictresolution during peer sync using Lamport timestamps and peer IDs.🤖 Generated with https://claude.com/claude-codeClaude Code add mv operation to MountAdds a new mv method to the Mount struct that allows moving or renamingfiles and directories. The operation preserves the existing NodeLink (nore-encryption of content needed), creates intermediate directories ifneeded, and properly tracks all new node hashes in pins.🤖 Generated with https://claude.com/claude-codeClaude CodeAllow sync operations to work with multiple peers from bucket shares,falling back to other peers if the preferred one is unreachable. Thisfixes the bug where sync fails entirely if not all peers are online.🤖 Generated with https://claude.com/claude-codeClaude Code<csr-unknown/>
+Add S3Actor to handle all ~20 proto::Request command variantsAdd S3Store wrapper implementing iroh-blobs Store APIAdd bucket existence check on S3 initialization (fail-fast)Add ensure_bucket to bin/minio for auto-creation in devUpdate e2e skill with sync timing guidance (60s wait)<csr-unknown/>
 
 ## v0.1.5 (2025-11-18)
 
