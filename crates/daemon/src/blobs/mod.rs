@@ -23,8 +23,13 @@ impl Blobs {
     /// # Arguments
     /// * `config` - Blob store configuration (Legacy, Filesystem, or S3)
     /// * `jax_dir` - Path to the jax directory (used for legacy blobs and cache)
-    pub async fn setup(config: &BlobStoreConfig, jax_dir: &Path) -> Result<Self, BlobsSetupError> {
-        let store = setup::setup_blobs_store(config, jax_dir).await?;
+    /// * `max_import_size` - Maximum blob size allowed for BAO imports
+    pub async fn setup(
+        config: &BlobStoreConfig,
+        jax_dir: &Path,
+        max_import_size: u64,
+    ) -> Result<Self, BlobsSetupError> {
+        let store = setup::setup_blobs_store(config, jax_dir, max_import_size).await?;
         Ok(Self(store))
     }
 

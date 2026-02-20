@@ -81,8 +81,17 @@ impl BlobsStore {
     }
 
     /// Local filesystem via ObjectStore (SQLite + local object storage).
-    pub async fn fs(data_dir: &Path) -> Result<Self, BlobsStoreError> {
-        let store = ObjStore::new_local(data_dir).await?;
+    ///
+    /// # Arguments
+    /// * `db_path` - Path to the SQLite database file
+    /// * `objects_path` - Directory for object storage
+    /// * `max_import_size` - Maximum blob size for BAO imports, or None for default (1GB)
+    pub async fn fs(
+        db_path: &Path,
+        objects_path: &Path,
+        max_import_size: Option<u64>,
+    ) -> Result<Self, BlobsStoreError> {
+        let store = ObjStore::new_local(db_path, objects_path, max_import_size).await?;
         Ok(Self::from_store(store.into()))
     }
 
@@ -93,6 +102,9 @@ impl BlobsStore {
     }
 
     /// S3-backed via ObjectStore.
+    ///
+    /// # Arguments
+    /// * `max_import_size` - Maximum blob size for BAO imports, or None for default (1GB)
     pub async fn s3(
         db_path: &Path,
         endpoint: &str,
@@ -100,9 +112,18 @@ impl BlobsStore {
         secret_key: &str,
         bucket: &str,
         region: Option<&str>,
+        max_import_size: Option<u64>,
     ) -> Result<Self, BlobsStoreError> {
-        let store =
-            ObjStore::new_s3(db_path, endpoint, access_key, secret_key, bucket, region).await?;
+        let store = ObjStore::new_s3(
+            db_path,
+            endpoint,
+            access_key,
+            secret_key,
+            bucket,
+            region,
+            max_import_size,
+        )
+        .await?;
         Ok(Self::from_store(store.into()))
     }
 
@@ -394,9 +415,10 @@ mod tests {
 
     async fn setup_test_store() -> (BlobsStore, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let blob_path = temp_dir.path().join("blobs");
+        let db_path = temp_dir.path().join("blobs.db");
+        let objects_path = temp_dir.path().join("objects");
 
-        let blobs = BlobsStore::fs(&blob_path).await.unwrap();
+        let blobs = BlobsStore::fs(&db_path, &objects_path, None).await.unwrap();
         (blobs, temp_dir)
     }
 

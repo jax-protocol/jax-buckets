@@ -128,11 +128,17 @@ pub struct ObjectStoreActor {
     protected: HashSet<Hash>,
     /// Waiters for idle state
     idle_waiters: Vec<irpc::channel::oneshot::Sender<()>>,
+    /// Maximum blob size we're willing to import via BAO
+    max_import_size: u64,
 }
 
 impl ObjectStoreActor {
     /// Create a new actor with the given blob store.
-    pub fn new(store: BlobStore, commands: tokio::sync::mpsc::Receiver<Command>) -> Self {
+    pub fn new(
+        store: BlobStore,
+        commands: tokio::sync::mpsc::Receiver<Command>,
+        max_import_size: u64,
+    ) -> Self {
         Self {
             commands,
             tasks: JoinSet::new(),
@@ -141,6 +147,7 @@ impl ObjectStoreActor {
             temp_tags: TempTagManager::default(),
             protected: HashSet::new(),
             idle_waiters: Vec::new(),
+            max_import_size,
         }
     }
 
@@ -315,7 +322,8 @@ impl ObjectStoreActor {
                     ..
                 } = cmd;
                 let store = self.store.clone();
-                self.spawn(import_bao(store, hash, size, rx, tx));
+                let max_import_size = self.max_import_size;
+                self.spawn(import_bao(store, hash, size, max_import_size, rx, tx));
             }
 
             // Export BAO
@@ -621,19 +629,20 @@ async fn import_path(cmd: ImportPathMsg) -> anyhow::Result<ImportEntry> {
     import_bytes(res.into(), scope, format, tx).await
 }
 
-/// Maximum blob size we're willing to import (1 GB).
+/// Default maximum blob size we're willing to import (1 GB).
 ///
 /// This prevents memory exhaustion from garbage size values in BAO stream headers.
 /// iroh-blobs reads the blob size as raw 8 little-endian bytes from the peer's BAO
 /// stream without framing or checksums. During P2P discovery, stream corruption or
 /// misaligned reads can produce garbage u64 values (e.g. petabyte-scale sizes).
 /// These rejections are transient — retries succeed once a clean stream arrives.
-const MAX_IMPORT_SIZE: u64 = 1024 * 1024 * 1024;
+pub const DEFAULT_MAX_IMPORT_SIZE: u64 = 1024 * 1024 * 1024;
 
 async fn import_bao(
     store: BlobStore,
     hash: Hash,
     size: NonZeroU64,
+    max_import_size: u64,
     mut rx: mpsc::Receiver<BaoContentItem>,
     tx: irpc::channel::oneshot::Sender<iroh_blobs::api::Result<()>>,
 ) {
@@ -641,15 +650,15 @@ async fn import_bao(
     debug!("ImportBao: starting import for hash {} size {}", hash, size);
 
     // Reject absurdly large sizes to prevent OOM. Garbage sizes are a known transient
-    // issue caused by BAO stream framing in iroh-blobs (see MAX_IMPORT_SIZE docs).
-    if size > MAX_IMPORT_SIZE {
+    // issue caused by BAO stream framing in iroh-blobs (see DEFAULT_MAX_IMPORT_SIZE docs).
+    if size > max_import_size {
         warn!(
             "ImportBao: rejecting import of hash {} with unreasonable size {} (max is {})",
-            hash, size, MAX_IMPORT_SIZE
+            hash, size, max_import_size
         );
         tx.send(Err(ApiError::io(
             io::ErrorKind::InvalidInput,
-            format!("blob size {} exceeds maximum {}", size, MAX_IMPORT_SIZE),
+            format!("blob size {} exceeds maximum {}", size, max_import_size),
         )))
         .await
         .ok();

@@ -23,6 +23,9 @@ pub struct AppConfig {
     /// Blob storage backend configuration (set at init time)
     #[serde(default)]
     pub blob_store: BlobStoreConfig,
+    /// Maximum blob size allowed for BAO imports (bytes). Defaults to 1GB.
+    #[serde(default = "default_max_import_size")]
+    pub max_import_size: u64,
 }
 
 fn default_api_port() -> u16 {
@@ -33,6 +36,10 @@ fn default_gateway_port() -> u16 {
     8080
 }
 
+fn default_max_import_size() -> u64 {
+    object_store::DEFAULT_MAX_IMPORT_SIZE
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -40,6 +47,7 @@ impl Default for AppConfig {
             gateway_port: default_gateway_port(),
             peer_port: None,
             blob_store: BlobStoreConfig::default(),
+            max_import_size: default_max_import_size(),
         }
     }
 }
@@ -55,8 +63,11 @@ pub enum BlobStoreConfig {
 
     /// New SQLite + local filesystem backend
     Filesystem {
-        /// Absolute path for blob storage
+        /// Absolute path for object storage
         path: PathBuf,
+        /// Optional separate path for SQLite metadata DB (defaults to path/blobs.db)
+        #[serde(default)]
+        db_path: Option<PathBuf>,
     },
 
     /// S3-compatible object storage
