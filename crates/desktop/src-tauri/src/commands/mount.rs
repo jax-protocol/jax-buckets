@@ -7,10 +7,15 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
+
+#[cfg(feature = "fuse")]
 use uuid::Uuid;
 
+#[cfg(feature = "fuse")]
 use jax_daemon::http_server::api::client::ApiClient;
+#[cfg(feature = "fuse")]
 use jax_daemon::http_server::api::v0::bucket::list::ListRequest;
+#[cfg(feature = "fuse")]
 use jax_daemon::http_server::api::v0::mounts::{
     CreateMountRequest, DeleteMountRequest, GetMountRequest, ListMountsRequest,
     MountInfo as DaemonMountInfo, StartMountRequest, StopMountRequest, UpdateMountBody,
@@ -20,6 +25,7 @@ use jax_daemon::http_server::api::v0::mounts::{
 use crate::AppState;
 
 /// Get the platform-specific base mount directory
+#[cfg(feature = "fuse")]
 fn get_mount_base_dir() -> std::path::PathBuf {
     #[cfg(target_os = "macos")]
     {
@@ -50,6 +56,7 @@ fn get_mount_base_dir() -> std::path::PathBuf {
 }
 
 /// Generate a unique mount point for a bucket, handling naming conflicts
+#[cfg(feature = "fuse")]
 fn generate_mount_point(bucket_name: &str, existing_mounts: &[String]) -> std::path::PathBuf {
     let base_dir = get_mount_base_dir();
     let sanitized_name = sanitize_mount_name(bucket_name);
@@ -73,6 +80,7 @@ fn generate_mount_point(bucket_name: &str, existing_mounts: &[String]) -> std::p
 }
 
 /// Sanitize bucket name for use as mount point
+#[cfg(feature = "fuse")]
 fn sanitize_mount_name(name: &str) -> String {
     name.chars()
         .map(|c| {
@@ -152,6 +160,7 @@ pub struct MountInfo {
     pub updated_at: String,
 }
 
+#[cfg(feature = "fuse")]
 impl From<DaemonMountInfo> for MountInfo {
     fn from(m: DaemonMountInfo) -> Self {
         Self {
@@ -196,6 +205,7 @@ pub struct DesktopUpdateMountRequest {
 }
 
 /// Get an ApiClient from the app state.
+#[cfg(feature = "fuse")]
 async fn get_client(state: &State<'_, AppState>) -> Result<ApiClient, String> {
     let inner = state.inner.read().await;
     let inner = inner.as_ref().ok_or("Daemon not connected")?;
