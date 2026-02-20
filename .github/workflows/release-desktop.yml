@@ -37,14 +37,6 @@ jobs:
             artifact-suffix: "_fuse"
             artifact-name: jax-desktop-macos-aarch64-fuse
 
-          - name: macOS Intel
-            runner: macos-13
-            target: x86_64-apple-darwin
-            fuse: false
-            features: "--no-default-features --features custom-protocol"
-            artifact-suffix: ""
-            artifact-name: jax-desktop-macos-x64
-
           - name: Linux x86_64
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
@@ -199,7 +191,6 @@ jobs:
 
           # Find artifact filenames
           DMG_AARCH64=$(find artifacts/jax-desktop-macos-aarch64 -name '*.dmg' -not -name '*fuse*' | head -1 | xargs basename 2>/dev/null || echo "")
-          DMG_X64=$(find artifacts/jax-desktop-macos-x64 -name '*.dmg' | head -1 | xargs basename 2>/dev/null || echo "")
           APPIMAGE=$(find artifacts/jax-desktop-linux-amd64 -name '*.AppImage' | head -1 | xargs basename 2>/dev/null || echo "")
 
           # Build latest.json for Tauri updater
@@ -212,10 +203,6 @@ jobs:
               "darwin-aarch64": {
                 "signature": "${DARWIN_SIG}",
                 "url": "${BASE_URL}/${DMG_AARCH64}"
-              },
-              "darwin-x86_64": {
-                "signature": "${DARWIN_SIG}",
-                "url": "${BASE_URL}/${DMG_X64}"
               },
               "linux-x86_64": {
                 "signature": "${LINUX_SIG}",
@@ -249,7 +236,6 @@ jobs:
             |----------|------|--------------------|
             | macOS (Apple Silicon) | `Jax_*_aarch64.dmg` | No |
             | macOS (Apple Silicon + FUSE) | `Jax_*_aarch64_fuse.dmg` | Yes (requires [macFUSE](https://osxfuse.github.io/)) |
-            | macOS (Intel) | `Jax_*_x64.dmg` | No |
             | Linux (Debian/Ubuntu) | `jax-desktop_*_amd64.deb` | No |
             | Linux (portable) | `jax-desktop_*_amd64.AppImage` | No |
 

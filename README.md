@@ -15,6 +15,16 @@
 >
 > Use at your own risk. The authors assume no liability for data loss, security breaches, or other issues arising from the use of this software.
 
+## Desktop App
+
+Download the latest Jax Desktop:
+
+- **[macOS (Apple Silicon)](https://github.com/jax-protocol/jax-fs/releases/latest/download/Jax_aarch64.dmg)**
+- **[Linux (.AppImage)](https://github.com/jax-protocol/jax-fs/releases/latest/download/jax-desktop_amd64.AppImage)**
+- **[Linux (.deb)](https://github.com/jax-protocol/jax-fs/releases/latest/download/jax-desktop_amd64.deb)**
+
+Or browse [all releases](https://github.com/jax-protocol/jax-fs/releases).
+
 ## Overview
 
 JaxBucket is a local-first, encrypted storage system built on [Iroh](https://iroh.computer/). It provides content-addressed, encrypted file storage with automatic peer-to-peer synchronization between authorized devices.
@@ -35,7 +45,6 @@ Pre-built desktop binaries are available on the [GitHub Releases](https://github
 |----------|------|--------------------|
 | macOS (Apple Silicon) | `Jax_*_aarch64.dmg` | No |
 | macOS (Apple Silicon + FUSE) | `Jax_*_aarch64_fuse.dmg` | Yes (requires [macFUSE](https://osxfuse.github.io/)) |
-| macOS (Intel) | `Jax_*_x64.dmg` | No |
 | Linux (Debian/Ubuntu) | `jax-desktop_*_amd64.deb` | No |
 | Linux (portable) | `jax-desktop_*_amd64.AppImage` | No |
 

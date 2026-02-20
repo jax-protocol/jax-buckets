@@ -116,7 +116,7 @@ jobs:
         run: |
           # Execute release: updates files, creates commits, but NO TAGS
           # Tags will be created by publish workflow after PR is merged
-          if cargo smart-release jax-daemon \
+          if cargo smart-release jax-daemon jax-desktop \
             --execute \
             --no-publish \
             --no-tag \

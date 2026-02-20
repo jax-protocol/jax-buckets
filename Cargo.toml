@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/daemon", "crates/common", "crates/object-store"]
-exclude = ["crates/desktop/src-tauri"]
+members = ["crates/daemon", "crates/common", "crates/object-store", "crates/desktop/src-tauri"]
 
 [workspace.package]
 edition = "2021"
