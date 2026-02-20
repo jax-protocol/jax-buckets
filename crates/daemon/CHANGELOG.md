@@ -15,21 +15,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
-## v0.1.9 (2026-02-17)
+## v0.1.10 (2026-02-20)
 
 ### New Features
 
+ - <csr-id-78fc49f5b9e96d4dd7dfe54a1a99ed544f69d33c/> add sidecar daemon support
+   * feat(daemon): add history, is-published endpoints and ls `at` param
+   
+   Add POST /api/v0/bucket/history for paginated version logs.
+   Add POST /api/v0/bucket/is-published for HEAD publication status.
+   Add `at` parameter to ls endpoint for version-specific listing.
+ - <csr-id-f4f23215f7fd92f09ccb7744c86387c1b97828a9/> rich output, consistent bucket resolution, and op system
+   * feat(cli): rich output, consistent bucket resolution, and op system docs
+   
+   Replace plain text CLI output with styled, colored output using owo-colors
+   and comfy-table. Every command now returns a typed output struct with a
+   Display impl that owns all presentation logic (colors, tables, layout).
+   
+   Key changes:
+   - Add owo-colors, comfy-table, indicatif dependencies
+   - Extract resolve_bucket() helper for name-or-UUID resolution
+   - Convert all bucket commands to single positional <BUCKET> arg
+   - Create CLI wrapper structs for publish, shares commands
+   - Add typed output structs with styled Display for all commands
+   - Replace hand-rolled mount list table with comfy-table
+   - Remove mount list --json flag (use HTTP API for machine data)
+   - Add colored error chain formatting at the boundary
+   - Wire MultiProgress into OpContext for future spinners
+   - Update CLI.md with bucket resolution and typed output docs
+   - Reference CLI.md from PROJECT_LAYOUT.md
+ - <csr-id-c339f04cd771efb6195c1779d9bd29b7a55027c7/> make blobs store configurable (separate paths + max import size)
+   * feat: make blobs store configurable with separate DB/object paths and max import size
+   
+   - Update ObjectStore::new_local to accept separate db_path and objects_path
+     instead of deriving both from a single data_dir
+   - Make MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcoded
+     constant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)
+   - Add optional db_path field to BlobStoreConfig::Filesystem variant for
+     separate SQLite metadata DB location
+   - Add max_import_size to AppConfig with serde default for backward compat
+   - Thread max_import_size through setup_blobs_store, Blobs::setup, and
+     ServiceConfig to the actor
+   - Add *_with_max_import_size constructors to BlobsStore and ObjectStore
+ - <csr-id-d1166b1dc9359bfabeef9d5c2b6c70b5a5958f37/> add CLI binary releases, install script, and desktop auto-updater
+   * feat: add CLI binary releases, install script, and desktop auto-updater
+   
+   - Add release-cli.yml workflow to build and publish CLI binaries for
+     macOS (arm64, x64) and Linux (x64) on jax-daemon-v* tags
+   - Add install.sh for one-line CLI install/update via curl
+   - Integrate tauri-plugin-updater for in-app desktop update checks
+   - Update release-desktop.yml to generate latest.json update manifest
+     with signing support
+   - Add update check UI to Settings page in desktop app
+   - Update INSTALL.md and README.md with install script documentation
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 4 commits contributed to the release.
+ - 2 days passed between releases.
+ - 4 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 4 unique issues were worked on: [#107](https://github.com/jax-protocol/jax-fs/issues/107), [#109](https://github.com/jax-protocol/jax-fs/issues/109), [#110](https://github.com/jax-protocol/jax-fs/issues/110), [#112](https://github.com/jax-protocol/jax-fs/issues/112)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#107](https://github.com/jax-protocol/jax-fs/issues/107)**
+    - Add sidecar daemon support ([`78fc49f`](https://github.com/jax-protocol/jax-fs/commit/78fc49f5b9e96d4dd7dfe54a1a99ed544f69d33c))
+ * **[#109](https://github.com/jax-protocol/jax-fs/issues/109)**
+    - Add CLI binary releases, install script, and desktop auto-updater ([`d1166b1`](https://github.com/jax-protocol/jax-fs/commit/d1166b1dc9359bfabeef9d5c2b6c70b5a5958f37))
+ * **[#110](https://github.com/jax-protocol/jax-fs/issues/110)**
+    - Make blobs store configurable (separate paths + max import size) ([`c339f04`](https://github.com/jax-protocol/jax-fs/commit/c339f04cd771efb6195c1779d9bd29b7a55027c7))
+ * **[#112](https://github.com/jax-protocol/jax-fs/issues/112)**
+    - Rich output, consistent bucket resolution, and op system ([`f4f2321`](https://github.com/jax-protocol/jax-fs/commit/f4f23215f7fd92f09ccb7744c86387c1b97828a9))
+</details>
+
+## v0.1.9 (2026-02-17)
+
+<csr-id-fc09685fd84e952ffc29ef5fbd150caa29a9395b/>
+
+### New Features
+
+<csr-id-e7a06101d010e4065849d8feef0ea82edf7a61c0/>
+
  - <csr-id-c3abb856836a0e904cd487170abea4a37cf15a54/> add bucket publish CLI command
    - Add `jax bucket publish --bucket-id <UUID>` subcommand
-   - Add owner-only validation to publish endpoint (HTTP 403 for non-owners)
-   - Add integration tests for owner publish and publish/unpublish round-trip
-   - Update PROJECT_LAYOUT.md and issue ticket
- - <csr-id-e7a06101d010e4065849d8feef0ea82edf7a61c0/> add negative cache and separate TTLs for FUSE performance
-   Add a negative cache to avoid repeated lookups for non-existent paths
-   (common with macOS resource forks like ._* files). Separate metadata and
-   content TTLs so directory listings expire faster while file content stays
-   cached longer. Add GET /api/v0/mounts/:id/cache-stats endpoint for
-   debugging cache behavior.
+- Add owner-only validation to publish endpoint (HTTP 403 for non-owners)
+- Add integration tests for owner publish and publish/unpublish round-trip
+- Update PROJECT_LAYOUT.md and issue ticket
 
 ### Refactor
 
@@ -50,10 +127,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 5 commits contributed to the release over the course of 2 calendar days.
+ - 6 commits contributed to the release over the course of 2 calendar days.
  - 3 days passed between releases.
  - 3 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 5 unique issues were worked on: [#103](https://github.com/jax-protocol/jax-fs/issues/103), [#80](https://github.com/jax-protocol/jax-fs/issues/80), [#84](https://github.com/jax-protocol/jax-fs/issues/84), [#85](https://github.com/jax-protocol/jax-fs/issues/85), [#86](https://github.com/jax-protocol/jax-fs/issues/86)
+ - 6 unique issues were worked on: [#103](https://github.com/jax-protocol/jax-fs/issues/103), [#105](https://github.com/jax-protocol/jax-fs/issues/105), [#80](https://github.com/jax-protocol/jax-fs/issues/80), [#84](https://github.com/jax-protocol/jax-fs/issues/84), [#85](https://github.com/jax-protocol/jax-fs/issues/85), [#86](https://github.com/jax-protocol/jax-fs/issues/86)
 
 ### Commit Details
 
@@ -63,6 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * **[#103](https://github.com/jax-protocol/jax-fs/issues/103)**
     - Clean up server module structure ([`fc09685`](https://github.com/jax-protocol/jax-fs/commit/fc09685fd84e952ffc29ef5fbd150caa29a9395b))
+ * **[#105](https://github.com/jax-protocol/jax-fs/issues/105)**
+    - Bump jax-object-store v0.1.2, jax-common v0.1.7, jax-daemon v0.1.9 ([`32b5b30`](https://github.com/jax-protocol/jax-fs/commit/32b5b3096ad278823f98ed59917a7a2401e78b15))
  * **[#80](https://github.com/jax-protocol/jax-fs/issues/80)**
     - Add negative cache and separate TTLs for FUSE performance ([`e7a0610`](https://github.com/jax-protocol/jax-fs/commit/e7a06101d010e4065849d8feef0ea82edf7a61c0))
  * **[#84](https://github.com/jax-protocol/jax-fs/issues/84)**
@@ -73,6 +152,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Add share removal for bucket owners ([`4ec1d14`](https://github.com/jax-protocol/jax-fs/commit/4ec1d14a91b6b7dde5b6945aa9b62b93f8ae5dca))
 </details>
 
+<csr-unknown>
+ add negative cache and separate TTLs for FUSE performanceAdd a negative cache to avoid repeated lookups for non-existent paths(common with macOS resource forks like ._* files). Separate metadata andcontent TTLs so directory listings expire faster while file content stayscached longer. Add GET /api/v0/mounts/:id/cache-stats endpoint fordebugging cache behavior.<csr-unknown/>
+
 ## v0.1.8 (2026-02-14)
 
 ### New Features
@@ -81,13 +163,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - <csr-id-c63681313cfb66b28eec389c1e7147bdfafad39d/> fix port default, add health/shares commands, gate mount behind fuse
    * feat(cli): fix port default, add health/shares commands, gate mount behind fuse
-- Fix --remote default: derive from config api_port (fallback 5001)
-     instead of hardcoded port 3000
-- Add `jax health` command: checks config dir, livez, readyz endpoints
-- Add `jax bucket shares` subcommand group:
-     - `shares create` to share a bucket with a peer
-     - `shares ls` to list shares on a bucket
-- `shares ls` to list shares on a bucket
+   - `shares create` to share a bucket with a peer
+   - `shares ls` to list shares on a bucket
 * feat(fuse): implement setattr and xattr stubs for FUSE compatibility
 - setattr: handles truncate (size) and mtime changes
 - handle_truncate helper: resizes files via write buffers or Mount
@@ -117,7 +194,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 </details>
 
 <csr-unknown>
-Add POST /api/v0/bucket/shares endpoint for listing sharesGate mount CLI commands behind #[cfg(feature = “fuse”)]Remove untested bucket sync commandUpdate PROJECT_LAYOUT.md with new commands and structure implement missing FUSE operations for Unix command compatibilityAdd missing FUSE operations that were causing “Function not implemented”errors for standard Unix commands (touch, mv, echo > file, truncate):<csr-unknown/>
+Fix –remote default: derive from config api_port (fallback 5001)instead of hardcoded port 3000Add jax health command: checks config dir, livez, readyz endpointsAdd jax bucket shares subcommand group:shares ls to list shares on a bucket<csr-unknown/>
 
 ## v0.1.7 (2026-02-13)
 
@@ -173,9 +250,6 @@ Add POST /api/v0/bucket/shares endpoint for listing sharesGate mount CLI command
  * **[#65](https://github.com/jax-protocol/jax-fs/issues/65)**
     - Bump jax-object-store v0.1.0, jax-common v0.1.6, jax-daemon v0.1.7 ([`f0219f2`](https://github.com/jax-protocol/jax-fs/commit/f0219f2d882d65272b5cbe81a39680a06006a0d3))
 </details>
-
-<csr-unknown>
-JaxFs: FUSE filesystem using fuser with all 10 core operationsMountManager: Lifecycle management (start, stop, auto-mount)InodeTable: Bidirectional inode ↔ path mappingFileCache: LRU cache with TTL for content and metadataSyncEvents: Cache invalidation on peer syncSQLite fuse_mounts table for mount persistencemount_queries.rs for CRUD + status operationsREST API at /api/v0/mounts/ (create, list, get, update, delete, start, stop)CLI commands: jax mount list|add|remove|start|stop|setAuto-mount on daemon startup, graceful unmount on shutdownPlatform-specific unmount (macOS umount, Linux fusermount -u)IPC commands for full mount managementSimplified mountBucket/unmountBucket API with auto mount point selectionOne-click Mount/Unmount buttons on Buckets pageAdvanced Mounts page for manual mount point configurationmacOS: /Volumes/<bucket-name> with Finder sidebar integrationLinux: /media/$USER/<bucket-name>Privilege escalation: AppleScript (macOS), pkexec (Linux)Naming conflict resolution with numeric suffixesDirect Mount access (not HTTP) to avoid self-call deadlockmacOS mount options: volname, local, noappledouble for FindermacOS resource fork filtering (._* files)Write buffering with sync-on-first-write for pending filesfuse feature enabled by default (runtime detection for availability)<csr-unknown/>
 
 ## v0.1.6 (2025-11-18)
 
