@@ -381,17 +381,31 @@ pub async fn stop_mount(_state: State<'_, AppState>, _mount_id: String) -> Resul
     Err("FUSE support not enabled".to_string())
 }
 
-/// Check if FUSE support is available on the host system (local check, no HTTP)
+/// Check if FUSE support is available (local system + daemon capability)
 #[tauri::command]
-pub async fn is_fuse_available() -> Result<bool, String> {
+pub async fn is_fuse_available(state: State<'_, AppState>) -> Result<bool, String> {
     #[cfg(not(feature = "fuse"))]
     {
+        let _ = state; // suppress unused warning
         Ok(false)
     }
 
     #[cfg(feature = "fuse")]
     {
-        Ok(check_fuse_installed())
+        // Check local system first
+        if !check_fuse_installed() {
+            return Ok(false);
+        }
+
+        // Check if daemon has FUSE feature enabled
+        let inner = state.inner.read().await;
+        match inner.as_ref() {
+            Some(daemon) => Ok(daemon
+                .build_info
+                .as_ref()
+                .is_some_and(|b| b.has_feature("fuse"))),
+            None => Ok(false),
+        }
     }
 }
 

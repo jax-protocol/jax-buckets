@@ -13,8 +13,10 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
 
+use common::version::BuildInfo;
 use jax_daemon::http_server::api::client::ApiClient;
 use jax_daemon::http_server::health::liveness::LivezRequest;
+use jax_daemon::http_server::health::version::VersionRequest;
 use reqwest::Url;
 
 /// How the desktop app is connected to the daemon.
@@ -43,6 +45,8 @@ pub struct DaemonInner {
     pub gateway_port: u16,
     pub jax_dir: PathBuf,
     pub mode: DaemonMode,
+    /// Build info from the daemon, used to check feature availability.
+    pub build_info: Option<BuildInfo>,
 }
 
 /// Application state managed by Tauri.
@@ -190,6 +194,12 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
         let client =
             ApiClient::new(&base_url).map_err(|e| format!("Failed to create API client: {}", e))?;
 
+        // Fetch daemon build info to check feature availability
+        let build_info = {
+            let mut c = client.clone();
+            c.call(VersionRequest {}).await.ok()
+        };
+
         let mut inner = state.inner.write().await;
         *inner = Some(DaemonInner {
             client,
@@ -197,6 +207,7 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
             gateway_port,
             jax_dir,
             mode: DaemonMode::Sidecar,
+            build_info,
         });
 
         return Ok(());
@@ -242,6 +253,12 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
     let client =
         ApiClient::new(&base_url).map_err(|e| format!("Failed to create API client: {}", e))?;
 
+    // Fetch daemon build info to check feature availability
+    let build_info = {
+        let mut c = client.clone();
+        c.call(VersionRequest {}).await.ok()
+    };
+
     {
         let mut inner = state.inner.write().await;
         *inner = Some(DaemonInner {
@@ -250,6 +267,7 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
             gateway_port,
             jax_dir: jax_state.jax_dir.clone(),
             mode: DaemonMode::Embedded,
+            build_info,
         });
     }
 

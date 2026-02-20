@@ -53,7 +53,7 @@ pub fn register_panic_logger() {
 }
 
 pub fn report_build_info() {
-    let build = common::prelude::build_info();
+    let build = crate::build_info();
 
     tracing::info!(
         build_profile = ?build.build_profile,

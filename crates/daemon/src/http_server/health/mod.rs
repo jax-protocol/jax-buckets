@@ -9,7 +9,7 @@ mod data_source;
 pub mod identity;
 pub mod liveness;
 mod readiness;
-mod version;
+pub mod version;
 
 use crate::ServiceState;
 
