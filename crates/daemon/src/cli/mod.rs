@@ -4,4 +4,4 @@ pub mod ops;
 
 #[cfg(feature = "fuse")]
 pub use ops::Mount;
-pub use ops::{Bucket, Daemon, Health, Init, Version};
+pub use ops::{Bucket, Daemon, Health, Init, Update, Version};

@@ -42,6 +42,7 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
     - `bucket/publish.rs` - Publish bucket subcommand
     - `bucket/shares/` - Share management subcommands (create, ls)
     - `mount/` - Mount CLI commands (list, add, remove, start, stop, set) — gated behind `fuse` feature
+    - `update.rs` - Self-update command (detects install method, platform, FUSE; delegates to install.sh)
 
 ### `crates/common` - Core Library
 
@@ -113,7 +114,7 @@ Tauri 2.0 desktop application (`jax-desktop`) with SolidJS frontend. Embeds the 
   - `pages/Viewer.tsx` - File viewer (text, markdown, images, video, audio)
   - `pages/Editor.tsx` - Text file editor with save
   - `pages/History.tsx` - Bucket version history with navigation to past versions
-  - `pages/Settings.tsx` - Auto-launch toggle, theme switcher, local config paths
+  - `pages/Settings.tsx` - Auto-launch toggle, theme switcher, update checker, local config paths
   - `components/SharePanel.tsx` - Slide-in panel for peer sharing
 
 ## Other Directories
@@ -130,4 +131,7 @@ Tauri 2.0 desktop application (`jax-desktop`) with SolidJS frontend. Embeds the 
   - `db` - SQLite database helper
   - `minio` - MinIO local server for S3-compatible blob storage testing
   - `utils/` - Utility scripts for demos and development
+- `install.sh` - One-line CLI install/update script
 - `.github/workflows/` - CI and release automation
+  - `release-cli.yml` - CLI binary builds for GitHub releases
+  - `release-desktop.yml` - Desktop app builds with update manifest

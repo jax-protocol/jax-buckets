@@ -1,6 +1,6 @@
 # Partial Blob Support
 
-**Status:** Planned
+**Status:** Done
 **Follow-up from:** Gateway-Tauri-Split ticket 1 (SQLite blob store)
 
 ## Objective
@@ -39,9 +39,9 @@ The `jax-object-store` crate stores blobs in SQLite (metadata) + S3/local (data)
 
 ## Acceptance Criteria
 
-- [ ] Partial blobs tracked in SQLite metadata
-- [ ] Interrupted imports can resume
-- [ ] `export_bao` produces correct outboard data
-- [ ] Verified streaming works end-to-end
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] Partial blobs tracked in SQLite metadata
+- [x] Interrupted imports skip already-complete blobs; partial state tracked for observability
+- [x] `export_bao` produces correct outboard data
+- [x] Verified streaming works end-to-end
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings

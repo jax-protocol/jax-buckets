@@ -13,13 +13,16 @@ use iroh_blobs::Hash;
 use tracing::{debug, info, warn};
 
 use crate::actor::ObjectStoreActor;
-use crate::database::Database;
+use crate::database::{BlobState, Database};
 use crate::error::Result;
 use crate::storage::{ObjectStoreConfig, Storage};
 
 /// Size threshold for generating BAO outboard data (16KB).
 /// Blobs larger than this will have outboard verification data stored separately.
 const OUTBOARD_THRESHOLD: usize = 16 * 1024;
+
+/// Block size for BAO tree operations (matches iroh-blobs IROH_BLOCK_SIZE).
+const IROH_BLOCK_SIZE: bao_tree::BlockSize = bao_tree::BlockSize::from_chunk_log(4);
 
 /// Type alias for the irpc client
 type ApiClient = irpc::Client<iroh_blobs::api::proto::Request>;
@@ -69,6 +72,9 @@ impl BlobStore {
     }
 
     /// Store data and return its content hash.
+    ///
+    /// For blobs larger than the outboard threshold, BAO outboard data is
+    /// computed and stored alongside the blob data for verified streaming.
     pub async fn put(&self, data: Vec<u8>) -> Result<Hash> {
         let size = data.len();
         let hash = Hash::new(&data);
@@ -77,6 +83,13 @@ impl BlobStore {
         debug!(hash = %hash_str, size = size, "storing blob");
 
         let has_outboard = size > OUTBOARD_THRESHOLD;
+        if has_outboard {
+            let outboard =
+                bao_tree::io::outboard::PreOrderMemOutboard::create(&data, IROH_BLOCK_SIZE);
+            self.storage
+                .put_outboard(&hash_str, Bytes::from(outboard.data))
+                .await?;
+        }
         self.storage.put_data(&hash_str, Bytes::from(data)).await?;
         self.db
             .insert_blob(&hash_str, size as i64, has_outboard)
@@ -113,6 +126,48 @@ impl BlobStore {
 
         info!(hash = %hash_str, "blob deleted");
         Ok(true)
+    }
+
+    /// Store data with pre-computed outboard and return its content hash.
+    ///
+    /// Used by import_bao which already has outboard data from the BAO stream.
+    pub async fn put_with_outboard(&self, data: Vec<u8>, outboard: Vec<u8>) -> Result<Hash> {
+        let size = data.len();
+        let hash = Hash::new(&data);
+        let hash_str = hash.to_string();
+
+        debug!(hash = %hash_str, size = size, "storing blob with outboard");
+
+        let has_outboard = !outboard.is_empty();
+        self.storage.put_data(&hash_str, Bytes::from(data)).await?;
+        if has_outboard {
+            self.storage
+                .put_outboard(&hash_str, Bytes::from(outboard))
+                .await?;
+        }
+        self.db
+            .insert_blob(&hash_str, size as i64, has_outboard)
+            .await?;
+
+        info!(hash = %hash_str, size = size, "blob with outboard stored successfully");
+        Ok(hash)
+    }
+
+    /// Insert a partial blob record (import in progress).
+    pub async fn insert_partial(&self, hash: &Hash, size: u64) -> Result<()> {
+        let hash_str = hash.to_string();
+        let has_outboard = size > OUTBOARD_THRESHOLD as u64;
+        self.db
+            .insert_partial_blob(&hash_str, size as i64, has_outboard)
+            .await?;
+        debug!(hash = %hash_str, size = size, "partial blob record created");
+        Ok(())
+    }
+
+    /// Get the state of a blob (Complete, Partial, or None if not found).
+    pub async fn get_state(&self, hash: &Hash) -> Result<Option<BlobState>> {
+        let hash_str = hash.to_string();
+        self.db.get_blob_state(&hash_str).await
     }
 
     /// List all blob hashes in the store.
@@ -280,6 +335,11 @@ mod tests {
 
     /// Test-only methods on BlobStore for verifying internal state.
     impl BlobStore {
+        async fn get_outboard(&self, hash: &Hash) -> Result<Option<Bytes>> {
+            let hash_str = hash.to_string();
+            self.storage.get_outboard(&hash_str).await
+        }
+
         async fn has(&self, hash: &Hash) -> Result<bool> {
             let hash_str = hash.to_string();
             self.db.has_blob(&hash_str).await
@@ -296,11 +356,22 @@ mod tests {
         }
 
         async fn recover_from_storage(&self) -> Result<RecoveryStats> {
-            let mut stats = RecoveryStats::default();
-            let hashes = self.storage.list_data_hashes().await?;
-            stats.found = hashes.len();
+            use futures::TryStreamExt;
 
-            for hash_str in hashes {
+            let mut stats = RecoveryStats::default();
+            let mut stream = std::pin::pin!(self.storage.list_data_hashes_stream());
+
+            while let Some(hash_str) = stream.try_next().await? {
+                stats.found += 1;
+
+                if stats.found % 1000 == 0 {
+                    info!(
+                        found = stats.found,
+                        added = stats.added,
+                        "recovery progress"
+                    );
+                }
+
                 if self.db.has_blob(&hash_str).await? {
                     stats.existing += 1;
                     continue;
@@ -542,5 +613,159 @@ mod tests {
 
         assert!(store.has(&hashes[0]).await.unwrap());
         assert!(store.has(&hashes[2]).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_partial_blob_state_tracking() {
+        let store = BlobStore::new_ephemeral().await.unwrap();
+        let hash = Hash::new(b"some data");
+
+        // Insert partial record
+        store.insert_partial(&hash, 1024).await.unwrap();
+
+        // State should be partial
+        let state = store.get_state(&hash).await.unwrap();
+        assert_eq!(state, Some(BlobState::Partial));
+
+        // get() should return None since it checks complete state only
+        assert!(store.get(&hash).await.unwrap().is_none());
+
+        // Partial blobs should not appear in list
+        let list = store.list().await.unwrap();
+        assert!(list.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_put_with_outboard() {
+        let store = BlobStore::new_ephemeral().await.unwrap();
+
+        // Create data large enough to have outboard
+        let data = vec![42u8; 32 * 1024]; // 32KB > OUTBOARD_THRESHOLD
+        let outboard_data = bao_tree::io::outboard::PreOrderMemOutboard::create(
+            &data,
+            bao_tree::BlockSize::from_chunk_log(4),
+        );
+
+        let hash = store
+            .put_with_outboard(data.clone(), outboard_data.data.clone())
+            .await
+            .unwrap();
+
+        // Should be complete
+        let state = store.get_state(&hash).await.unwrap();
+        assert_eq!(state, Some(BlobState::Complete));
+
+        // Data should be retrievable
+        let retrieved = store.get(&hash).await.unwrap().unwrap();
+        assert_eq!(retrieved.as_ref(), data.as_slice());
+
+        // Outboard should be stored
+        let retrieved_outboard = store.get_outboard(&hash).await.unwrap().unwrap();
+        assert_eq!(retrieved_outboard.as_ref(), outboard_data.data.as_slice());
+    }
+
+    #[tokio::test]
+    async fn test_partial_then_complete() {
+        let store = BlobStore::new_ephemeral().await.unwrap();
+        let data = b"test data for partial then complete".to_vec();
+        let hash = Hash::new(&data);
+
+        // Start as partial
+        store
+            .insert_partial(&hash, data.len() as u64)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get_state(&hash).await.unwrap(),
+            Some(BlobState::Partial)
+        );
+
+        // Complete the import via put (simulates import_bao completing)
+        let stored_hash = store.put(data.clone()).await.unwrap();
+        assert_eq!(hash, stored_hash);
+
+        // Should now be complete
+        assert_eq!(
+            store.get_state(&hash).await.unwrap(),
+            Some(BlobState::Complete)
+        );
+
+        // Data should be retrievable
+        let retrieved = store.get(&hash).await.unwrap().unwrap();
+        assert_eq!(retrieved.as_ref(), data.as_slice());
+    }
+
+    #[tokio::test]
+    async fn test_put_stores_outboard_for_large_blobs() {
+        let store = BlobStore::new_ephemeral().await.unwrap();
+
+        // Small blob (< 16KB threshold) should NOT have outboard
+        let small_data = b"small".to_vec();
+        let small_hash = store.put(small_data).await.unwrap();
+        assert!(store.get_outboard(&small_hash).await.unwrap().is_none());
+
+        // Large blob (> 16KB threshold) should have outboard
+        let large_data = vec![0u8; 32 * 1024];
+        let large_hash = store.put(large_data).await.unwrap();
+        assert!(store.get_outboard(&large_hash).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_export_bao_verified_streaming() {
+        use n0_future::StreamExt;
+
+        let store = ObjectStore::new_ephemeral().await.unwrap();
+
+        // Store a blob
+        let data = b"hello world verified streaming test".to_vec();
+        let tt = store.add_bytes(data.clone()).temp_tag().await.unwrap();
+        let hash = tt.hash();
+
+        // Export BAO and collect items
+        let bao_reader = store.export_bao(hash, bao_tree::ChunkRanges::all());
+        let items: Vec<_> = bao_reader.stream().collect().await;
+
+        // Should have Size, then parent/leaf items, then Done
+        assert!(!items.is_empty(), "BAO export produced no items");
+
+        // First item should be Size
+        let first = items.first().unwrap();
+        assert!(
+            matches!(first, bao_tree::io::mixed::EncodedItem::Size(_)),
+            "first item should be Size, got: {first:?}"
+        );
+
+        // Last item should be Done
+        let last = items.last().unwrap();
+        assert!(matches!(last, bao_tree::io::mixed::EncodedItem::Done));
+
+        // Collect all leaf data
+        let mut reconstructed = vec![0u8; data.len()];
+        for item in &items {
+            if let bao_tree::io::mixed::EncodedItem::Leaf(leaf) = item {
+                let start = leaf.offset as usize;
+                let end = start + leaf.data.len();
+                reconstructed[start..end].copy_from_slice(&leaf.data);
+            }
+        }
+        assert_eq!(reconstructed, data);
+    }
+
+    #[tokio::test]
+    async fn test_blob_status_complete_and_not_found() {
+        let store = ObjectStore::new_ephemeral().await.unwrap();
+
+        // Store a blob normally (complete)
+        let data = b"complete blob".to_vec();
+        let tt = store.add_bytes(data).temp_tag().await.unwrap();
+        let hash = tt.hash();
+
+        let status = store.status(hash).await.unwrap();
+        assert!(matches!(status, BlobStatus::Complete { size: 13 }));
+
+        // Non-existent blob
+        let fake_hash = Hash::new(b"nonexistent");
+        let status = store.status(fake_hash).await.unwrap();
+        assert!(matches!(status, BlobStatus::NotFound));
     }
 }

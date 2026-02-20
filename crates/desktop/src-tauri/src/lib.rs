@@ -54,6 +54,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // On macOS, set activation policy to Accessory to prevent
             // creating new windows when app is activated by external events (like FUSE)

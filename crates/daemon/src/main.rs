@@ -2,7 +2,7 @@
 mod cli;
 
 use clap::{Parser, Subcommand};
-use cli::{args::Args, op::Op, Bucket, Daemon, Health, Init, Version};
+use cli::{args::Args, op::Op, Bucket, Daemon, Health, Init, Update, Version};
 use std::io::IsTerminal;
 
 use owo_colors::OwoColorize;
@@ -17,6 +17,7 @@ command_enum! {
     (Health, Health),
     (Init, Init),
     (Mount, Mount),
+    (Update, Update),
     (Version, Version),
 }
 
@@ -26,6 +27,7 @@ command_enum! {
     (Daemon, Daemon),
     (Health, Health),
     (Init, Init),
+    (Update, Update),
     (Version, Version),
 }
 
