@@ -52,14 +52,21 @@ pub struct OpContext {
     pub client: ApiClient,
     /// Optional custom config path (defaults to ~/.jax)
     pub config_path: Option<PathBuf>,
+    /// Progress bar handle (hidden when stdout is not a TTY)
+    pub progress: indicatif::MultiProgress,
 }
 
 impl OpContext {
-    /// Create context with custom remote URL and optional config path
-    pub fn new(remote: Url, config_path: Option<PathBuf>) -> Result<Self, ApiError> {
+    /// Create context with custom remote URL, optional config path, and progress handle
+    pub fn new(
+        remote: Url,
+        config_path: Option<PathBuf>,
+        progress: indicatif::MultiProgress,
+    ) -> Result<Self, ApiError> {
         Ok(Self {
             client: ApiClient::new(&remote)?,
             config_path,
+            progress,
         })
     }
 }

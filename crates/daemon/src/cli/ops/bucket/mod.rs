@@ -11,18 +11,16 @@ pub mod publish;
 pub mod shares;
 
 use crate::cli::op::Op;
-use jax_daemon::http_server::api::v0::bucket::publish::PublishRequest;
-use jax_daemon::http_server::api::v0::bucket::{CreateRequest, ListRequest};
 
 crate::command_enum! {
-    (Create, CreateRequest),
-    (List, ListRequest),
+    (Create, create::Create),
+    (List, list::List),
     (Add, add::Add),
     (Ls, ls::Ls),
     (Cat, cat::Cat),
     (Shares, shares::Shares),
     (Clone, clone::Clone),
-    (Publish, PublishRequest),
+    (Publish, publish::Publish),
 }
 
 // Rename the generated Command to BucketCommand for clarity

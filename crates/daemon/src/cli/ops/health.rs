@@ -1,9 +1,92 @@
+use std::fmt;
+use std::path::PathBuf;
+
 use clap::Args;
+use owo_colors::OwoColorize;
 
 use jax_daemon::state::AppState;
 
 #[derive(Args, Debug, Clone)]
 pub struct Health;
+
+#[derive(Debug)]
+pub struct ConfigInfo {
+    pub directory: PathBuf,
+    pub api_port: u16,
+    pub gateway_port: u16,
+}
+
+#[derive(Debug)]
+pub enum EndpointStatus {
+    Ok,
+    Unhealthy(String),
+    NotReachable,
+}
+
+#[derive(Debug)]
+pub struct DaemonInfo {
+    pub url: String,
+    pub livez: EndpointStatus,
+    pub readyz: EndpointStatus,
+}
+
+#[derive(Debug)]
+pub struct HealthOutput {
+    pub config: Option<ConfigInfo>,
+    pub config_error: Option<String>,
+    pub daemon: DaemonInfo,
+}
+
+impl fmt::Display for HealthOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}:", "Config".bold())?;
+        match &self.config {
+            Some(info) => {
+                writeln!(
+                    f,
+                    "  {} {}",
+                    "directory:".dimmed(),
+                    info.directory.display()
+                )?;
+                writeln!(f, "  {} {}", "config.toml:".dimmed(), "OK".green())?;
+                writeln!(f, "  {} {}", "db.sqlite:".dimmed(), "OK".green())?;
+                writeln!(f, "  {} {}", "key.pem:".dimmed(), "OK".green())?;
+                writeln!(f, "  {} {}", "blobs/:".dimmed(), "OK".green())?;
+                writeln!(f, "  {} {}", "api_port:".dimmed(), info.api_port)?;
+                writeln!(f, "  {} {}", "gateway_port:".dimmed(), info.gateway_port)?;
+            }
+            None => {
+                if let Some(err) = &self.config_error {
+                    writeln!(f, "  {} {}", "error:".red(), err)?;
+                }
+            }
+        }
+
+        writeln!(f)?;
+        writeln!(f, "{} ({}):", "Daemon".bold(), self.daemon.url)?;
+
+        let status_str = |s: &EndpointStatus| -> String {
+            match s {
+                EndpointStatus::Ok => "OK".green().to_string(),
+                EndpointStatus::Unhealthy(code) => format!("{} ({})", "UNHEALTHY".red(), code),
+                EndpointStatus::NotReachable => "NOT REACHABLE".red().to_string(),
+            }
+        };
+
+        writeln!(
+            f,
+            "  {} {}",
+            "livez:".dimmed(),
+            status_str(&self.daemon.livez)
+        )?;
+        write!(
+            f,
+            "  {} {}",
+            "readyz:".dimmed(),
+            status_str(&self.daemon.readyz)
+        )
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum HealthError {
@@ -14,62 +97,46 @@ pub enum HealthError {
 #[async_trait::async_trait]
 impl crate::cli::op::Op for Health {
     type Error = HealthError;
-    type Output = String;
+    type Output = HealthOutput;
 
     async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
-        let mut lines = Vec::new();
+        let (config, config_error) = match AppState::load(ctx.config_path.clone()) {
+            Ok(state) => (
+                Some(ConfigInfo {
+                    directory: state.jax_dir,
+                    api_port: state.config.api_port,
+                    gateway_port: state.config.gateway_port,
+                }),
+                None,
+            ),
+            Err(e) => (None, Some(e.to_string())),
+        };
 
-        // 1. Check config directory
-        lines.push("Config:".to_string());
-        match AppState::load(ctx.config_path.clone()) {
-            Ok(state) => {
-                lines.push(format!("  directory:    {}", state.jax_dir.display()));
-                lines.push("  config.toml:  OK".to_string());
-                lines.push("  db.sqlite:    OK".to_string());
-                lines.push("  key.pem:      OK".to_string());
-                lines.push("  blobs/:       OK".to_string());
-                lines.push(format!("  api_port:     {}", state.config.api_port));
-                lines.push(format!("  gateway_port: {}", state.config.gateway_port));
-            }
-            Err(e) => {
-                lines.push(format!("  error: {}", e));
-            }
-        }
-
-        // 2. Check daemon liveness
         let base = ctx.client.base_url();
         let client = ctx.client.http_client();
 
-        lines.push(String::new());
-        lines.push(format!("Daemon ({}):", base));
-
         let livez_url = format!("{}/_status/livez", base.as_str().trim_end_matches('/'));
-        match client.get(&livez_url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                lines.push("  livez:  OK".to_string());
-            }
-            Ok(resp) => {
-                lines.push(format!("  livez:  UNHEALTHY ({})", resp.status()));
-            }
-            Err(_) => {
-                lines.push("  livez:  NOT REACHABLE".to_string());
-            }
-        }
+        let livez = match client.get(&livez_url).send().await {
+            Ok(resp) if resp.status().is_success() => EndpointStatus::Ok,
+            Ok(resp) => EndpointStatus::Unhealthy(resp.status().to_string()),
+            Err(_) => EndpointStatus::NotReachable,
+        };
 
-        // 3. Check daemon readiness
         let readyz_url = format!("{}/_status/readyz", base.as_str().trim_end_matches('/'));
-        match client.get(&readyz_url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                lines.push("  readyz: OK".to_string());
-            }
-            Ok(resp) => {
-                lines.push(format!("  readyz: UNHEALTHY ({})", resp.status()));
-            }
-            Err(_) => {
-                lines.push("  readyz: NOT REACHABLE".to_string());
-            }
-        }
+        let readyz = match client.get(&readyz_url).send().await {
+            Ok(resp) if resp.status().is_success() => EndpointStatus::Ok,
+            Ok(resp) => EndpointStatus::Unhealthy(resp.status().to_string()),
+            Err(_) => EndpointStatus::NotReachable,
+        };
 
-        Ok(lines.join("\n"))
+        Ok(HealthOutput {
+            config,
+            config_error,
+            daemon: DaemonInfo {
+                url: base.to_string(),
+                livez,
+                readyz,
+            },
+        })
     }
 }

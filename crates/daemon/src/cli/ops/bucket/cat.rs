@@ -1,52 +1,85 @@
+use std::fmt;
+
 use base64::Engine;
 use clap::Args;
-use jax_daemon::http_server::api::client::ApiError;
+use owo_colors::OwoColorize;
+
+use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::cat::{CatRequest, CatResponse};
-use uuid::Uuid;
 
 #[derive(Args, Debug, Clone)]
 pub struct Cat {
-    /// Bucket ID (or use --name)
-    #[arg(long, group = "bucket_identifier")]
-    pub bucket_id: Option<Uuid>,
-
-    /// Bucket name (or use --bucket-id)
-    #[arg(long, group = "bucket_identifier")]
-    pub name: Option<String>,
+    /// Bucket name or UUID
+    pub bucket: String,
 
     /// Path in bucket to read
-    #[arg(long)]
     pub path: String,
 }
 
+#[derive(Debug)]
+pub enum CatContent {
+    Text(String),
+    Binary(Vec<u8>),
+}
+
+#[derive(Debug)]
+pub struct CatOutput {
+    pub path: String,
+    pub size: usize,
+    pub content: CatContent,
+}
+
+impl fmt::Display for CatOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.content {
+            CatContent::Text(text) => {
+                writeln!(
+                    f,
+                    "{} {}  {} {} bytes",
+                    "File:".dimmed(),
+                    self.path.bold(),
+                    "Size:".dimmed(),
+                    self.size
+                )?;
+                write!(f, "{text}")
+            }
+            CatContent::Binary(bytes) => {
+                writeln!(
+                    f,
+                    "{} {}  {} {} bytes",
+                    "File:".dimmed(),
+                    self.path.bold(),
+                    "Size:".dimmed(),
+                    self.size
+                )?;
+                let hex = bytes
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                write!(f, "{} {hex}", "Binary content (hex):".dimmed())
+            }
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
-pub enum BucketCatError {
+pub enum CatError {
     #[error("API error: {0}")]
     Api(#[from] ApiError),
     #[error("Base64 decode error: {0}")]
     Base64(#[from] base64::DecodeError),
-    #[error("Either --bucket-id or --name must be provided")]
-    NoBucketIdentifier,
 }
 
 #[async_trait::async_trait]
 impl crate::cli::op::Op for Cat {
-    type Error = BucketCatError;
-    type Output = String;
+    type Error = CatError;
+    type Output = CatOutput;
 
     async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
         let mut client = ctx.client.clone();
+        let bucket_id = resolve_bucket(&mut client, &self.bucket).await?;
 
-        // Resolve bucket name to UUID if needed
-        let bucket_id = if let Some(id) = self.bucket_id {
-            id
-        } else if let Some(ref name) = self.name {
-            client.resolve_bucket_name(name).await?
-        } else {
-            return Err(BucketCatError::NoBucketIdentifier);
-        };
-
-        // Create API request
         let request = CatRequest {
             bucket_id,
             path: self.path.clone(),
@@ -54,30 +87,19 @@ impl crate::cli::op::Op for Cat {
             download: None,
         };
 
-        // Call API
         let response: CatResponse = client.call(request).await?;
 
-        // Decode base64 content
         let bytes = base64::engine::general_purpose::STANDARD.decode(&response.content)?;
 
-        // Try to convert to UTF-8 string, or show hex if binary
-        match String::from_utf8(bytes.clone()) {
-            Ok(text) => Ok(format!(
-                "File: {}\nSize: {} bytes\n\n{}",
-                response.path, response.size, text
-            )),
-            Err(_) => {
-                // Binary content - show hex representation
-                let hex = bytes
-                    .iter()
-                    .map(|b| format!("{:02x}", b))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                Ok(format!(
-                    "File: {}\nSize: {} bytes\nBinary content (hex): {}",
-                    response.path, response.size, hex
-                ))
-            }
-        }
+        let content = match String::from_utf8(bytes.clone()) {
+            Ok(text) => CatContent::Text(text),
+            Err(_) => CatContent::Binary(bytes),
+        };
+
+        Ok(CatOutput {
+            path: response.path,
+            size: response.size,
+            content,
+        })
     }
 }

@@ -1,6 +1,8 @@
+use std::fmt;
 use std::path::PathBuf;
 
 use clap::{Args, ValueEnum};
+use owo_colors::OwoColorize;
 
 use jax_daemon::state::{AppConfig, AppState, BlobStoreConfig};
 
@@ -46,6 +48,42 @@ pub struct Init {
     pub blobs_path: Option<PathBuf>,
 }
 
+#[derive(Debug)]
+pub struct InitOutput {
+    pub jax_dir: PathBuf,
+    pub db_path: PathBuf,
+    pub key_path: PathBuf,
+    pub blobs_path: PathBuf,
+    pub config_path: PathBuf,
+    pub api_port: u16,
+    pub gateway_port: u16,
+    pub peer_port: Option<u16>,
+    pub blob_store: String,
+}
+
+impl fmt::Display for InitOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{} jax at {}",
+            "Initialized".green().bold(),
+            self.jax_dir.display().to_string().bold()
+        )?;
+        writeln!(f, "  {} {}", "Database:".dimmed(), self.db_path.display())?;
+        writeln!(f, "  {} {}", "Key:".dimmed(), self.key_path.display())?;
+        writeln!(f, "  {} {}", "Blobs:".dimmed(), self.blobs_path.display())?;
+        writeln!(f, "  {} {}", "Config:".dimmed(), self.config_path.display())?;
+        writeln!(f, "  {} {}", "API port:".dimmed(), self.api_port)?;
+        writeln!(f, "  {} {}", "Gateway port:".dimmed(), self.gateway_port)?;
+        let peer_port_str = match self.peer_port {
+            Some(port) => port.to_string(),
+            None => "ephemeral (auto-assigned)".to_string(),
+        };
+        writeln!(f, "  {} {}", "Peer port:".dimmed(), peer_port_str)?;
+        write!(f, "  {} {}", "Blob store:".dimmed(), self.blob_store)
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum InitError {
     #[error("init failed: {0}")]
@@ -59,7 +97,6 @@ pub enum InitError {
 }
 
 impl Init {
-    /// Build blob store configuration from CLI flags
     fn build_blob_store_config(
         &self,
         jax_dir: &std::path::Path,
@@ -77,10 +114,7 @@ impl Init {
                         }
                         p.clone()
                     }
-                    None => {
-                        // Default to jax_dir/blobs-store/
-                        jax_dir.join("blobs-store")
-                    }
+                    None => jax_dir.join("blobs-store"),
                 };
                 Ok(BlobStoreConfig::Filesystem {
                     path,
@@ -93,7 +127,6 @@ impl Init {
                     InitError::MissingConfig("--s3-url required for S3 backend".to_string())
                 })?;
 
-                // Validate URL format by parsing it
                 BlobStoreConfig::parse_s3_url(&url)?;
 
                 Ok(BlobStoreConfig::S3 { url })
@@ -105,13 +138,10 @@ impl Init {
 #[async_trait::async_trait]
 impl crate::cli::op::Op for Init {
     type Error = InitError;
-    type Output = String;
+    type Output = InitOutput;
 
     async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
-        // Get jax_dir path first so we can use it for blob store config
         let jax_dir = AppState::jax_dir(ctx.config_path.clone())?;
-
-        // Build blob store configuration
         let blob_store = self.build_blob_store_config(&jax_dir)?;
 
         let config = AppConfig {
@@ -123,11 +153,6 @@ impl crate::cli::op::Op for Init {
         };
 
         let state = AppState::init(ctx.config_path.clone(), Some(config))?;
-
-        let peer_port_str = match state.config.peer_port {
-            Some(port) => format!("{}", port),
-            None => "ephemeral (auto-assigned)".to_string(),
-        };
 
         let blob_store_str = match &state.config.blob_store {
             BlobStoreConfig::Legacy => "legacy (iroh FsStore)".to_string(),
@@ -144,34 +169,21 @@ impl crate::cli::op::Op for Init {
             }
         };
 
-        let output = format!(
-            "Initialized jax directory at: {}\n\
-             - Database: {}\n\
-             - Key: {}\n\
-             - Blobs: {}\n\
-             - Config: {}\n\
-             - API port: {}\n\
-             - Gateway port: {}\n\
-             - Peer port: {}\n\
-             - Blob store: {}",
-            state.jax_dir.display(),
-            state.db_path.display(),
-            state.key_path.display(),
-            state.blobs_path.display(),
-            state.config_path.display(),
-            state.config.api_port,
-            state.config.gateway_port,
-            peer_port_str,
-            blob_store_str
-        );
-
-        Ok(output)
+        Ok(InitOutput {
+            jax_dir: state.jax_dir,
+            db_path: state.db_path,
+            key_path: state.key_path,
+            blobs_path: state.blobs_path,
+            config_path: state.config_path,
+            api_port: state.config.api_port,
+            gateway_port: state.config.gateway_port,
+            peer_port: state.config.peer_port,
+            blob_store: blob_store_str,
+        })
     }
 }
 
-/// Mask credentials in S3 URL for display
 fn mask_s3_url(url: &str) -> String {
-    // s3://access_key:secret_key@host:port/bucket -> s3://***:***@host:port/bucket
     if let Some(rest) = url.strip_prefix("s3://") {
         if let Some(at_pos) = rest.find('@') {
             let host_bucket = &rest[at_pos..];

@@ -1,7 +1,10 @@
+use std::fmt;
 use std::io::{self, BufRead, Write};
 use std::process::{Command, Stdio};
 
 use clap::Args;
+use indicatif::ProgressBar;
+use owo_colors::OwoColorize;
 
 const GITHUB_REPO: &str = "jax-protocol/jax-fs";
 const INSTALL_SCRIPT_URL: &str =
@@ -20,7 +23,7 @@ pub struct Update {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum InstallMethod {
+pub enum InstallMethod {
     /// Installed via install script to ~/.local/bin
     Script,
     /// Installed via cargo install to ~/.cargo/bin
@@ -38,6 +41,107 @@ impl InstallMethod {
             InstallMethod::Cargo => "cargo install (~/.cargo/bin)",
             InstallMethod::Source => "source build (target/)",
             InstallMethod::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct UpdateOutput {
+    pub current_version: String,
+    pub install_method: InstallMethod,
+    pub fuse_enabled: bool,
+    pub latest_version: String,
+    pub action: UpdateAction,
+}
+
+#[derive(Debug)]
+pub enum UpdateAction {
+    AlreadyUpToDate,
+    Updated,
+    Cancelled,
+    UnknownMethod,
+}
+
+impl fmt::Display for UpdateOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.action {
+            UpdateAction::AlreadyUpToDate => {
+                write!(
+                    f,
+                    "{} (v{})",
+                    "Already up to date".green().bold(),
+                    self.current_version
+                )
+            }
+            UpdateAction::Updated => {
+                writeln!(f, "  {} {}", "Current:".dimmed(), self.current_version)?;
+                writeln!(f, "  {} {}", "Latest:".dimmed(), self.latest_version)?;
+                writeln!(
+                    f,
+                    "  {} {}",
+                    "Install:".dimmed(),
+                    self.install_method.description()
+                )?;
+                writeln!(
+                    f,
+                    "  {} {}",
+                    "FUSE:".dimmed(),
+                    if self.fuse_enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                )?;
+                writeln!(f)?;
+                write!(
+                    f,
+                    "{} jax {} \u{2192} {}",
+                    "Updated".green().bold(),
+                    self.current_version,
+                    self.latest_version
+                )
+            }
+            UpdateAction::Cancelled => {
+                writeln!(f, "  {} {}", "Current:".dimmed(), self.current_version)?;
+                writeln!(f, "  {} {}", "Latest:".dimmed(), self.latest_version)?;
+                writeln!(
+                    f,
+                    "  {} {}",
+                    "Install:".dimmed(),
+                    self.install_method.description()
+                )?;
+                writeln!(
+                    f,
+                    "  {} {}",
+                    "FUSE:".dimmed(),
+                    if self.fuse_enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                )?;
+                writeln!(f)?;
+                write!(f, "{}", "Update cancelled".yellow().bold())
+            }
+            UpdateAction::UnknownMethod => {
+                writeln!(f, "  {} {}", "Current:".dimmed(), self.current_version)?;
+                writeln!(f, "  {} {}", "Latest:".dimmed(), self.latest_version)?;
+                writeln!(
+                    f,
+                    "  {} {}",
+                    "Install:".dimmed(),
+                    self.install_method.description()
+                )?;
+                writeln!(f)?;
+                writeln!(
+                    f,
+                    "{}",
+                    "Could not detect installation method".yellow().bold()
+                )?;
+                writeln!(f)?;
+                writeln!(f, "To install via script (recommended):")?;
+                write!(f, "  curl -fsSL {} | sh", INSTALL_SCRIPT_URL)
+            }
         }
     }
 }
@@ -107,48 +211,50 @@ pub enum UpdateError {
 #[async_trait::async_trait]
 impl crate::cli::op::Op for Update {
     type Error = UpdateError;
-    type Output = String;
+    type Output = UpdateOutput;
 
-    async fn execute(&self, _ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
+    async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
         let install_method = detect_installation();
-        let current_version = env!("CARGO_PKG_VERSION");
+        let current_version = env!("CARGO_PKG_VERSION").to_string();
         let fuse_enabled = has_fuse_feature();
 
-        eprintln!("Current version: {}", current_version);
-        eprintln!("Installation: {}", install_method.description());
-        eprintln!(
-            "FUSE support: {}",
-            if fuse_enabled { "enabled" } else { "disabled" }
-        );
-        eprintln!();
+        // Fetch latest version with spinner
+        let spinner = ctx
+            .progress
+            .add(ProgressBar::new_spinner().with_message("Checking for updates..."));
+        spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
-        // Fetch latest version
-        eprintln!("Checking for updates...");
-        let latest_version = fetch_latest_version()
-            .await
-            .map_err(|e| UpdateError::Failed(format!("Failed to check for updates: {}", e)))?;
-        eprintln!("Latest version: {}", latest_version);
-        eprintln!();
+        let latest_version = fetch_latest_version().await.map_err(|e| {
+            spinner.finish_and_clear();
+            UpdateError::Failed(format!("Failed to check for updates: {}", e))
+        })?;
 
-        let needs_update = is_newer_version(current_version, &latest_version);
+        spinner.finish_and_clear();
+
+        let needs_update = is_newer_version(&current_version, &latest_version);
 
         if !needs_update && !self.force {
-            return Ok("Already up to date.".to_string());
-        }
-
-        if needs_update {
-            eprintln!(
-                "New version available: {} -> {}",
-                current_version, latest_version
-            );
-        } else {
-            eprintln!("Forcing update...");
+            return Ok(UpdateOutput {
+                current_version,
+                install_method,
+                fuse_enabled,
+                latest_version,
+                action: UpdateAction::AlreadyUpToDate,
+            });
         }
 
         match install_method {
             InstallMethod::Script => {
                 run_install_script(self.fuse || fuse_enabled)
                     .map_err(|e| UpdateError::Failed(e.to_string()))?;
+
+                Ok(UpdateOutput {
+                    current_version,
+                    install_method: InstallMethod::Script,
+                    fuse_enabled,
+                    latest_version,
+                    action: UpdateAction::Updated,
+                })
             }
             InstallMethod::Cargo | InstallMethod::Source => {
                 eprintln!();
@@ -158,8 +264,17 @@ impl crate::cli::op::Op for Update {
                     "Switch to release binary and install to ~/.local/bin?",
                     true,
                 ) {
+                    let method = install_method.clone();
                     run_install_script(self.fuse || fuse_enabled)
                         .map_err(|e| UpdateError::Failed(e.to_string()))?;
+
+                    Ok(UpdateOutput {
+                        current_version,
+                        install_method: method,
+                        fuse_enabled,
+                        latest_version,
+                        action: UpdateAction::Updated,
+                    })
                 } else {
                     eprintln!();
                     eprintln!("To update manually:");
@@ -167,20 +282,24 @@ impl crate::cli::op::Op for Update {
                         "  cargo install --git https://github.com/{} jax-daemon",
                         GITHUB_REPO
                     );
-                    return Ok("Update cancelled.".to_string());
+
+                    Ok(UpdateOutput {
+                        current_version,
+                        install_method,
+                        fuse_enabled,
+                        latest_version,
+                        action: UpdateAction::Cancelled,
+                    })
                 }
             }
-            InstallMethod::Unknown => {
-                eprintln!();
-                eprintln!("Could not detect installation method.");
-                eprintln!();
-                eprintln!("To install via script (recommended):");
-                eprintln!("  curl -fsSL {} | sh", INSTALL_SCRIPT_URL);
-                return Ok("Update cancelled — unknown installation method.".to_string());
-            }
+            InstallMethod::Unknown => Ok(UpdateOutput {
+                current_version,
+                install_method,
+                fuse_enabled,
+                latest_version,
+                action: UpdateAction::UnknownMethod,
+            }),
         }
-
-        Ok("Updated successfully.".to_string())
     }
 }
 
@@ -261,5 +380,61 @@ mod test {
     fn test_detect_installation() {
         // Should return some variant without panicking
         let _ = detect_installation();
+    }
+
+    #[test]
+    fn test_update_output_already_up_to_date() {
+        let output = UpdateOutput {
+            current_version: "0.1.0".to_string(),
+            install_method: InstallMethod::Script,
+            fuse_enabled: false,
+            latest_version: "0.1.0".to_string(),
+            action: UpdateAction::AlreadyUpToDate,
+        };
+        let text = format!("{output}");
+        assert!(text.contains("Already up to date"));
+        assert!(text.contains("0.1.0"));
+    }
+
+    #[test]
+    fn test_update_output_updated() {
+        let output = UpdateOutput {
+            current_version: "0.1.0".to_string(),
+            install_method: InstallMethod::Script,
+            fuse_enabled: false,
+            latest_version: "0.2.0".to_string(),
+            action: UpdateAction::Updated,
+        };
+        let text = format!("{output}");
+        assert!(text.contains("Updated"));
+        assert!(text.contains("0.1.0"));
+        assert!(text.contains("0.2.0"));
+    }
+
+    #[test]
+    fn test_update_output_cancelled() {
+        let output = UpdateOutput {
+            current_version: "0.1.0".to_string(),
+            install_method: InstallMethod::Cargo,
+            fuse_enabled: false,
+            latest_version: "0.2.0".to_string(),
+            action: UpdateAction::Cancelled,
+        };
+        let text = format!("{output}");
+        assert!(text.contains("Update cancelled"));
+    }
+
+    #[test]
+    fn test_update_output_unknown_method() {
+        let output = UpdateOutput {
+            current_version: "0.1.0".to_string(),
+            install_method: InstallMethod::Unknown,
+            fuse_enabled: false,
+            latest_version: "0.2.0".to_string(),
+            action: UpdateAction::UnknownMethod,
+        };
+        let text = format!("{output}");
+        assert!(text.contains("Could not detect installation method"));
+        assert!(text.contains("curl"));
     }
 }

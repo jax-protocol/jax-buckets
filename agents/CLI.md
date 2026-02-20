@@ -29,10 +29,11 @@ An op receives an `OpContext` (an API client and optional config path), does its
 pub struct OpContext {
     pub client: ApiClient,
     pub config_path: Option<PathBuf>,
+    pub progress: indicatif::MultiProgress,
 }
 ```
 
-The context is constructed once in `main()` and passed to every op. It contains everything an op needs to talk to the daemon. The remote URL is resolved from: explicit `--remote` flag > config file `api_port` > hardcoded default.
+The context is constructed once in `main()` and passed to every op. It contains everything an op needs to talk to the daemon. The remote URL is resolved from: explicit `--remote` flag > config file `api_port` > hardcoded default. The `MultiProgress` handle is hidden when stdout is not a TTY.
 
 ### Anatomy of an Op
 
@@ -63,13 +64,13 @@ pub enum MyCommandError {
 #[async_trait::async_trait]
 impl Op for MyCommand {
     type Error = MyCommandError;
-    type Output = String;  // will become a typed struct
+    type Output = MyCommandOutput;
 
     async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
         let mut client = ctx.client.clone();
         let bucket_id = resolve_bucket(&mut client, &self.bucket).await?;
         let response = client.call(SomeRequest { bucket_id }).await?;
-        Ok(format!("did the thing: {}", response.field))
+        Ok(MyCommandOutput { name: response.name, bucket_id })
     }
 }
 ```
@@ -197,27 +198,41 @@ Spinners and progress bars are the one thing that must happen *during* execution
 
 This is a controlled leak — the op knows it *might* show progress, but doesn't decide *how* or *whether* to render it. The boundary decides that when it constructs the context.
 
-## Prettification Strategy
+## Bucket Resolution
 
-### Moving from `String` to typed outputs
+Every command that operates on a bucket accepts a single positional `<BUCKET>` argument that can be either a name or a UUID. The `resolve_bucket()` helper in `client.rs` handles this:
 
-The migration path for each command:
-
-**Before** — op builds a string inline:
 ```rust
-impl Op for CreateRequest {
-    type Output = String;
-
-    async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let response = client.call(self.clone()).await?;
-        Ok(format!("Created bucket: {} (id: {}) at {}",
-            response.name, response.bucket_id, response.created_at))
+pub async fn resolve_bucket(client: &mut ApiClient, identifier: &str) -> Result<Uuid, ApiError> {
+    if let Ok(uuid) = Uuid::parse_str(identifier) {
+        return Ok(uuid);
     }
+    client.resolve_bucket_name(identifier).await
 }
 ```
 
-**After** — op returns data, `Display` formats it:
+Commands that previously used `--bucket-id`/`--name` flag groups or only accepted UUIDs now use this pattern:
+
 ```rust
+pub struct MyCommand {
+    /// Bucket name or UUID
+    pub bucket: String,
+    // ...
+}
+
+async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
+    let mut client = ctx.client.clone();
+    let bucket_id = resolve_bucket(&mut client, &self.bucket).await?;
+    // ...
+}
+```
+
+## Typed Outputs with Styled Display
+
+Every op returns a typed output struct with a `Display` impl. The `Display` impl owns all presentation logic — colors, tables, layout. Example:
+
+```rust
+#[derive(Debug)]
 pub struct CreateOutput {
     pub name: String,
     pub bucket_id: Uuid,
@@ -226,19 +241,21 @@ pub struct CreateOutput {
 
 impl fmt::Display for CreateOutput {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} bucket {}\n  {} {}\n  {} {}",
+        writeln!(f, "{} bucket {}",
             "Created".green().bold(),
-            self.name.bold(),
-            "id:".dimmed(), self.bucket_id,
-            "at:".dimmed(), self.created_at)
+            self.name.bold())?;
+        writeln!(f, "  {} {}", "id:".dimmed(), self.bucket_id)?;
+        write!(f, "  {} {}", "at:".dimmed(), self.created_at)
     }
 }
 
-impl Op for CreateRequest {
+impl Op for Create {
     type Output = CreateOutput;
 
     async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let response = client.call(self.clone()).await?;
+        let mut client = ctx.client.clone();
+        let request = CreateRequest { name: self.name.clone() };
+        let response = client.call(request).await?;
         Ok(CreateOutput {
             name: response.name,
             bucket_id: response.bucket_id,
@@ -248,7 +265,14 @@ impl Op for CreateRequest {
 }
 ```
 
-The op got *simpler* — it just returns the data it already had. The formatting moved to a dedicated impl where it can use colors, alignment, and structure without cluttering the business logic.
+The op just returns the data it already had. Formatting lives in a separate `Display` impl where it can use colors, alignment, and structure without cluttering the business logic.
+
+**Color conventions:**
+- Action words (Created, Uploaded, Cloned, etc.): `.green().bold()`
+- Labels (id:, at:, link:): `.dimmed()`
+- Names/values: `.bold()` for primary identifiers
+- Failure states: `.red()` or `.red().bold()`
+- OK status: `.green()`
 
 ### Tables
 

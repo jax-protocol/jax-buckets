@@ -2,7 +2,7 @@
 mod client;
 mod error;
 
-pub use client::ApiClient;
+pub use client::{resolve_bucket, ApiClient};
 pub use error::ApiError;
 
 use reqwest::{Client, RequestBuilder, Url};
