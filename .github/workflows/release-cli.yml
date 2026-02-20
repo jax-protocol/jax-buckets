@@ -42,7 +42,7 @@ jobs:
             artifact: jax-daemon-darwin-arm64-fuse
 
           - name: macOS Intel
-            runner: macos-13
+            runner: macos-12
             target: x86_64-apple-darwin
             fuse: false
             features: "--no-default-features"
@@ -118,6 +118,8 @@ jobs:
   release:
     name: Create Release
     needs: build
+    # Run even if some builds fail - we'll release what's available
+    if: always() && needs.build.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
